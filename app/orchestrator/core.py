@@ -1,0 +1,1463 @@
+from __future__ import annotations
+
+import asyncio
+import json as _json
+import logging
+import time
+from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+import asyncpg
+from pydantic import BaseModel
+
+from app.skills.base import UsageDetail
+
+if TYPE_CHECKING:
+    from app.services.analysis_cache import AnalysisCacheService
+    from app.services.observability import ObservabilityService
+
+from app.orchestrator.router import WorkflowRouter
+
+_workflow_router = WorkflowRouter()
+
+from app.services.observability import SkillTrace
+from app.skills.tier2.buffett_quality.schemas import (
+    BuffettQualityInput,
+    BuffettQualityOutput,
+    BuffettRatios,
+    DorseyContext as BuffettDorseyContext,
+)
+from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
+from app.skills.tier2.canadian_tax.schemas import (
+    CanadianTaxInput,
+    CanadianTaxOutput,
+)
+from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
+from app.skills.tier2.dorsey_moat.schemas import (
+    DorseyMoatInput,
+    DorseyMoatOutput,
+    DorseyRatios,
+    EarningsContext as DorseyEarningsContext,
+)
+from app.skills.tier2.dorsey_moat.skill import DorseyMoatSkill
+from app.skills.tier2.earnings_quality.schemas import (
+    EarningsQualityInput,
+    EarningsQualityOutput,
+    EarningsQualityRatios,
+    GrahamContext,
+)
+from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
+from app.skills.tier2.graham_analysis.schemas import (
+    GrahamAnalysisInput,
+    GrahamAnalysisOutput,
+    GrahamRatios,
+)
+from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
+from app.skills.tier2.fisher_scuttlebutt.schemas import (
+    FisherInput,
+    FisherOutput,
+)
+from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
+from app.skills.tier2.greenblatt.schemas import (
+    GreenblattInput,
+    GreenblattOutput,
+    GreenblattRatios,
+)
+from app.skills.tier2.greenblatt.skill import GreenblattSkill
+from app.skills.tier2.damodaran_narrative.schemas import (
+    DamodararInput,
+    DamodararOutput,
+    DamodararRatios,
+)
+from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
+from app.skills.tier2.marks_cycles.schemas import (
+    MarksInput,
+    MarksOutput,
+    MarksRatios,
+)
+from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
+from app.skills.tier2.pabrai_dhandho.schemas import (
+    PabraiInput,
+    PabraiOutput,
+    PabraiRatios,
+)
+from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
+from app.skills.tier2.klarman_margin.schemas import (
+    KlarmanInput,
+    KlarmanOutput,
+)
+from app.skills.tier2.klarman_margin.skill import KlarmanMarginSkill
+from app.skills.tier2.lynch_categories.schemas import (
+    LynchInput,
+    LynchOutput,
+    LynchRatios,
+)
+from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
+from app.skills.tier2.munger_mental.schemas import (
+    MungerInput,
+    MungerOutput,
+    ThesisContext,
+)
+from app.skills.tier2.munger_mental.skill import MungerMentalSkill
+from app.skills.tier2.stock_valuation.schemas import (
+    BuffettContext as ValuationBuffettContext,
+    DorseyContext as ValuationDorseyContext,
+    EarningsContext as ValuationEarningsContext,
+    GrahamContext as ValuationGrahamContext,
+    StockValuationInput,
+    StockValuationOutput,
+    ValuationRatios,
+)
+from app.skills.tier2.stock_valuation.skill import StockValuationSkill
+from app.skills.tier2.thesis_builder.schemas import (
+    AllSkillContexts,
+    ThesisBuilderInput,
+    ThesisBuilderOutput,
+)
+from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
+
+logger = logging.getLogger(__name__)
+
+
+def _extract_int(result_json: str, *keys: str) -> int | None:
+    """Navigue dans un JSONB imbriqué et retourne un int ou None."""
+    try:
+        obj = _json.loads(result_json)
+        for key in keys:
+            obj = obj[key]
+        return int(obj)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _extract_str(result_json: str, *keys: str) -> str | None:
+    """Navigue dans un JSONB imbriqué et retourne une str ou None."""
+    try:
+        obj = _json.loads(result_json)
+        for key in keys:
+            obj = obj[key]
+        return str(obj)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+class AnalyzeRequest(BaseModel):
+    """Corps de la requête POST /analyze — section 5.2 de l'architecture."""
+
+    ticker: str
+    ratios: GrahamRatios | None = None
+    workflow: str = "value_graham"
+    earnings_ratios: EarningsQualityRatios | None = None
+    dorsey_ratios: DorseyRatios | None = None
+    buffett_ratios: BuffettRatios | None = None
+    valuation_ratios: ValuationRatios | None = None
+    thesis_ratios: bool = False  # True pour activer thesis_builder en fin de workflow
+    munger_ratios: bool = False  # True pour activer munger après thesis_builder
+    tax_input: CanadianTaxInput | None = None  # Fourni directement par l'utilisateur
+    lynch_ratios: LynchRatios | None = None
+    fisher_input: FisherInput | None = None
+    klarman_input: KlarmanInput | None = None
+    greenblatt_input: GreenblattInput | None = None
+    damodaran_input: DamodararInput | None = None
+    marks_input: MarksInput | None = None
+    pabrai_input: PabraiInput | None = None
+
+
+class AnalyzeResponse(BaseModel):
+    """Réponse complète du workflow company_analysis."""
+
+    analysis_id: str
+    ticker: str
+    workflow: str
+    skills_applied: list[str]
+    graham: GrahamAnalysisOutput | None = None
+    earnings_quality: EarningsQualityOutput | None = None
+    dorsey: DorseyMoatOutput | None = None
+    buffett: BuffettQualityOutput | None = None
+    valuation: StockValuationOutput | None = None
+    thesis: ThesisBuilderOutput | None = None
+    munger: MungerOutput | None = None
+    canadian_tax: CanadianTaxOutput | None = None
+    lynch: LynchOutput | None = None
+    fisher: FisherOutput | None = None
+    klarman: KlarmanOutput | None = None
+    greenblatt: GreenblattOutput | None = None
+    damodaran: DamodararOutput | None = None
+    marks: MarksOutput | None = None
+    pabrai: PabraiOutput | None = None
+    cost_usd: float
+    created_at: str
+
+
+class HistoryEntry(BaseModel):
+    analysis_id: str
+    ticker: str
+    workflow: str
+    skills_applied: list[str]
+    cost_usd: float
+    defensive_score: int | None
+    earnings_verdict: str | None
+    graham_verdict: str | None
+    created_at: str
+
+
+class HistoryResponse(BaseModel):
+    ticker: str
+    entries: list[HistoryEntry]
+    next_before: str | None
+
+
+class TickerMetrics(BaseModel):
+    ticker: str
+    analyses: int
+    cost_usd: float
+
+
+class MetricsResponse(BaseModel):
+    period_days: int
+    total_analyses: int
+    total_cost_usd: float
+    avg_cost_per_analysis: float
+    cache_hit_ratio_avg: float
+    top_tickers: list[TickerMetrics]
+    skills_usage: dict[str, int]
+
+
+class Orchestrator:
+    """
+    Orchestre le workflow company_analysis selon la section 9.1 de l'architecture.
+    Phase 3 : graham → earnings_quality → dorsey_moat → buffett_quality
+              → stock_valuation_triangulation → investment_thesis_builder
+              → munger_mental_models → canadian_tax_considerations.
+    """
+
+    def __init__(
+        self,
+        db_pool: asyncpg.Pool,
+        graham_skill: GrahamAnalysisSkill,
+        earnings_skill: EarningsQualitySkill,
+        dorsey_skill: DorseyMoatSkill | None = None,
+        buffett_skill: BuffettQualitySkill | None = None,
+        valuation_skill: StockValuationSkill | None = None,
+        thesis_skill: ThesisBuilderSkill | None = None,
+        munger_skill: MungerMentalSkill | None = None,
+        canadian_tax_skill: CanadianTaxSkill | None = None,
+        lynch_skill: LynchCategoriesSkill | None = None,
+        fisher_skill: FisherScuttlebuttSkill | None = None,
+        klarman_skill: KlarmanMarginSkill | None = None,
+        greenblatt_skill: GreenblattSkill | None = None,
+        damodaran_skill: DamodararNarrativeSkill | None = None,
+        marks_skill: MarksCyclesSkill | None = None,
+        pabrai_skill: PabraiDhandhoSkill | None = None,
+    ) -> None:
+        self._db = db_pool
+        self._graham = graham_skill
+        self._earnings = earnings_skill
+        self._dorsey = dorsey_skill
+        self._buffett = buffett_skill
+        self._valuation = valuation_skill
+        self._thesis = thesis_skill
+        self._munger = munger_skill
+        self._canadian_tax = canadian_tax_skill
+        self._lynch = lynch_skill
+        self._fisher = fisher_skill
+        self._klarman = klarman_skill
+        self._greenblatt = greenblatt_skill
+        self._damodaran = damodaran_skill
+        self._marks = marks_skill
+        self._pabrai = pabrai_skill
+
+    async def run_company_analysis(
+        self,
+        request: AnalyzeRequest,
+        cache: AnalysisCacheService | None = None,
+        observability: ObservabilityService | None = None,
+    ) -> AnalyzeResponse:
+        """
+        Exécute le workflow company_analysis.
+        Étape 0 : vérifie le cache Redis avant tout appel Claude (si cache fourni).
+        Chaque skill n'est appelé que si ses ratios sont fournis (ou flag activé).
+        """
+        # --- Étape 0 : Cache Redis (circuit court) ---
+        if cache is not None:
+            cached = await cache.get(request.ticker, request.workflow, request.ratios)
+            if cached is not None:
+                logger.debug(
+                    "Cache hit pour %s/%s — 0 appel Claude", request.ticker, request.workflow
+                )
+                return cached.model_copy(update={"cost_usd": 0.0})
+
+        # Résolution du workflow → ensemble des skills autorisés
+        try:
+            _steps = _workflow_router.route(request.workflow)
+            _allowed: frozenset[str] | None = frozenset(s.skill_id for s in _steps)
+        except ValueError:
+            logger.warning(
+                "Workflow inconnu '%s' — tous les skills activés par défaut", request.workflow
+            )
+            _allowed = None  # None = pas de filtre (compatibilité descendante)
+
+        skills_applied: list[str] = []
+        total_cost = 0.0
+        all_usages: list[UsageDetail] = []
+
+        # --- Étape 1 : Graham (si dans le workflow et ratios fournis) ---
+        graham_output: GrahamAnalysisOutput | None = None
+
+        if (_allowed is None or "graham_analysis" in _allowed) and request.ratios is not None:
+            graham_input = GrahamAnalysisInput(ticker=request.ticker, ratios=request.ratios)
+            _t = time.monotonic()
+            graham_output, graham_usage = await self._graham.execute(graham_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(
+                    observability.record_skill_execution(SkillTrace(
+                        skill_id="graham_analysis",
+                        ticker=request.ticker,
+                        cost_usd=graham_usage.cost_usd,
+                        latency_ms=_elapsed_ms,
+                        cache_hit=False,
+                        tokens_input=graham_usage.tokens_input,
+                        tokens_output=graham_usage.tokens_output,
+                        created_at=datetime.now(timezone.utc),
+                    ))
+                )
+            skills_applied.append("graham_analysis")
+            total_cost += graham_usage.cost_usd
+            all_usages.append(graham_usage)
+
+        # --- Étape 2 : Earnings quality (si dans le workflow et données fournies) ---
+        earnings_output: EarningsQualityOutput | None = None
+
+        if (
+            (_allowed is None or "earnings_quality" in _allowed)
+            and request.earnings_ratios is not None
+        ):
+            graham_ctx: GrahamContext | None = None
+            if graham_output is not None:
+                graham_ctx = GrahamContext(
+                    verdict=graham_output.verdict,
+                    defensive_score=graham_output.defensive_score,
+                    marge_securite=graham_output.marge_securite,
+                    drapeaux_rouges=graham_output.drapeaux_rouges,
+                )
+            earnings_input = EarningsQualityInput(
+                ticker=request.ticker,
+                ratios=request.earnings_ratios,
+                graham_context=graham_ctx,
+            )
+            _t = time.monotonic()
+            earnings_output, earnings_usage = await self._earnings.execute(earnings_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="earnings_quality", ticker=request.ticker,
+                    cost_usd=earnings_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=earnings_usage.tokens_input, tokens_output=earnings_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("earnings_quality")
+            total_cost += earnings_usage.cost_usd
+            all_usages.append(earnings_usage)
+
+        # --- Étape 3 : Dorsey moat (si dans le workflow et données fournies) ---
+        dorsey_output: DorseyMoatOutput | None = None
+
+        if (
+            (_allowed is None or "dorsey_moat" in _allowed)
+            and request.dorsey_ratios is not None and self._dorsey is not None
+        ):
+            earnings_ctx: DorseyEarningsContext | None = None
+            if earnings_output is not None:
+                earnings_ctx = DorseyEarningsContext(
+                    verdict=earnings_output.verdict,
+                    z_score=earnings_output.z_score.z_score,
+                    m_score=earnings_output.m_score.m_score,
+                    f_score=earnings_output.f_score.f_score,
+                    drapeaux_rouges=earnings_output.drapeaux_rouges,
+                )
+            dorsey_input = DorseyMoatInput(
+                ticker=request.ticker,
+                ratios=request.dorsey_ratios,
+                earnings_context=earnings_ctx,
+            )
+            _t = time.monotonic()
+            dorsey_output, dorsey_usage = await self._dorsey.execute(dorsey_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="dorsey_moat", ticker=request.ticker,
+                    cost_usd=dorsey_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=dorsey_usage.tokens_input, tokens_output=dorsey_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("dorsey_moat")
+            total_cost += dorsey_usage.cost_usd
+            all_usages.append(dorsey_usage)
+
+        # --- Étape 4 : Buffett quality (si dans le workflow et données fournies) ---
+        buffett_output: BuffettQualityOutput | None = None
+
+        if (
+            (_allowed is None or "buffett_quality" in _allowed)
+            and request.buffett_ratios is not None and self._buffett is not None
+        ):
+            dorsey_ctx: BuffettDorseyContext | None = None
+            if dorsey_output is not None:
+                dorsey_ctx = BuffettDorseyContext(
+                    moat_type=dorsey_output.moat_type,
+                    sources=[
+                        s.source for s in dorsey_output.sources_identifiees
+                        if s.intensite in {"FORTE", "MODÉRÉE"}
+                    ],
+                    roic_durability=dorsey_output.roic_durability,
+                )
+            buffett_input = BuffettQualityInput(
+                ticker=request.ticker,
+                ratios=request.buffett_ratios,
+                dorsey_context=dorsey_ctx,
+            )
+            _t = time.monotonic()
+            buffett_output, buffett_usage = await self._buffett.execute(buffett_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="buffett_quality", ticker=request.ticker,
+                    cost_usd=buffett_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=buffett_usage.tokens_input, tokens_output=buffett_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("buffett_quality")
+            total_cost += buffett_usage.cost_usd
+            all_usages.append(buffett_usage)
+
+        # --- Étape 5 : Stock valuation triangulation (si dans le workflow et données fournies) ---
+        valuation_output: StockValuationOutput | None = None
+
+        if (
+            (_allowed is None or "stock_valuation_triangulation" in _allowed)
+            and request.valuation_ratios is not None and self._valuation is not None
+        ):
+            graham_ctx_val: ValuationGrahamContext | None = None
+            if graham_output is not None:
+                graham_ctx_val = ValuationGrahamContext(
+                    verdict=graham_output.verdict,
+                    defensive_score=graham_output.defensive_score,
+                    marge_securite=graham_output.marge_securite,
+                    valeur_intrinseque_simple=graham_output.valeur_intrinseque_simple,
+                )
+            earnings_ctx_val: ValuationEarningsContext | None = None
+            if earnings_output is not None:
+                earnings_ctx_val = ValuationEarningsContext(
+                    verdict=earnings_output.verdict,
+                    z_score=earnings_output.z_score.z_score,
+                    f_score=earnings_output.f_score.f_score,
+                )
+            dorsey_ctx_val: ValuationDorseyContext | None = None
+            if dorsey_output is not None:
+                dorsey_ctx_val = ValuationDorseyContext(
+                    moat_type=dorsey_output.moat_type,
+                    roic_durability=dorsey_output.roic_durability,
+                )
+            buffett_ctx_val: ValuationBuffettContext | None = None
+            if buffett_output is not None:
+                buffett_ctx_val = ValuationBuffettContext(
+                    quality_score=buffett_output.quality_score,
+                    verdict=buffett_output.verdict,
+                    owner_earnings=buffett_output.owner_earnings,
+                )
+            valuation_input = StockValuationInput(
+                ticker=request.ticker,
+                ratios=request.valuation_ratios,
+                graham_context=graham_ctx_val,
+                earnings_context=earnings_ctx_val,
+                dorsey_context=dorsey_ctx_val,
+                buffett_context=buffett_ctx_val,
+            )
+            _t = time.monotonic()
+            valuation_output, valuation_usage = await self._valuation.execute(valuation_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="stock_valuation_triangulation", ticker=request.ticker,
+                    cost_usd=valuation_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=valuation_usage.tokens_input, tokens_output=valuation_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("stock_valuation_triangulation")
+            total_cost += valuation_usage.cost_usd
+            all_usages.append(valuation_usage)
+
+        # --- Étape 6 : investment_thesis_builder (si dans le workflow et activé) ---
+        thesis_output: ThesisBuilderOutput | None = None
+
+        if (
+            (_allowed is None or "investment_thesis_builder" in _allowed)
+            and request.thesis_ratios and self._thesis is not None
+        ):
+            all_contexts = AllSkillContexts(
+                graham=graham_output,
+                earnings_quality=earnings_output,
+                dorsey=dorsey_output,
+                buffett=buffett_output,
+                valuation=valuation_output,
+            )
+            thesis_input = ThesisBuilderInput(
+                ticker=request.ticker,
+                all_contexts=all_contexts,
+            )
+            _t = time.monotonic()
+            thesis_output, thesis_usage = await self._thesis.execute(thesis_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="investment_thesis_builder", ticker=request.ticker,
+                    cost_usd=thesis_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=thesis_usage.tokens_input, tokens_output=thesis_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("investment_thesis_builder")
+            total_cost += thesis_usage.cost_usd
+            all_usages.append(thesis_usage)
+
+        # --- Étape 7 : munger_mental_models (si dans le workflow et activé) ---
+        munger_output: MungerOutput | None = None
+
+        if (
+            (_allowed is None or "munger_mental_models" in _allowed)
+            and request.munger_ratios and self._munger is not None and thesis_output is not None
+        ):
+            thesis_ctx = ThesisContext(
+                ticker=request.ticker,
+                verdict_final=thesis_output.verdict_final,
+                position_size_pct=thesis_output.position_size_pct,
+                scenario_bull_probabilite=thesis_output.scenario_bull.probabilite,
+                scenario_base_probabilite=thesis_output.scenario_base.probabilite,
+                scenario_bear_probabilite=thesis_output.scenario_bear.probabilite,
+                synthese_narrative=thesis_output.synthese_narrative,
+                kill_criteria=thesis_output.kill_criteria,
+                devils_advocate=thesis_output.devils_advocate,
+            )
+            munger_input = MungerInput(ticker=request.ticker, thesis_context=thesis_ctx)
+            _t = time.monotonic()
+            munger_output, munger_usage = await self._munger.execute(munger_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="munger_mental_models", ticker=request.ticker,
+                    cost_usd=munger_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=munger_usage.tokens_input, tokens_output=munger_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("munger_mental_models")
+            total_cost += munger_usage.cost_usd
+            all_usages.append(munger_usage)
+
+        # --- Étape 8 : canadian_tax_considerations (si dans le workflow et tax_input fourni) ---
+        tax_output: CanadianTaxOutput | None = None
+
+        if (
+            (_allowed is None or "canadian_tax_considerations" in _allowed)
+            and request.tax_input is not None and self._canadian_tax is not None
+        ):
+            _t = time.monotonic()
+            tax_output, tax_usage = await self._canadian_tax.execute(request.tax_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="canadian_tax_considerations", ticker=request.ticker,
+                    cost_usd=tax_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=tax_usage.tokens_input, tokens_output=tax_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("canadian_tax_considerations")
+            total_cost += tax_usage.cost_usd
+            all_usages.append(tax_usage)
+
+        # --- Étape 9 : lynch_categories (si dans le workflow et lynch_ratios fournis) ---
+        lynch_output: LynchOutput | None = None
+
+        if (
+            (_allowed is None or "lynch_categories" in _allowed)
+            and request.lynch_ratios is not None and self._lynch is not None
+        ):
+            lynch_input = LynchInput(ticker=request.ticker, ratios=request.lynch_ratios)
+            _t = time.monotonic()
+            lynch_output, lynch_usage = await self._lynch.execute(lynch_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="lynch_categories", ticker=request.ticker,
+                    cost_usd=lynch_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=lynch_usage.tokens_input, tokens_output=lynch_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("lynch_categories")
+            total_cost += lynch_usage.cost_usd
+            all_usages.append(lynch_usage)
+
+        # --- Étape 10 : fisher_scuttlebutt (si dans le workflow et fisher_input fourni) ---
+        fisher_output: FisherOutput | None = None
+
+        if (
+            (_allowed is None or "fisher_scuttlebutt" in _allowed)
+            and request.fisher_input is not None and self._fisher is not None
+        ):
+            _t = time.monotonic()
+            fisher_output, fisher_usage = await self._fisher.execute(request.fisher_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="fisher_scuttlebutt", ticker=request.ticker,
+                    cost_usd=fisher_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=fisher_usage.tokens_input, tokens_output=fisher_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("fisher_scuttlebutt")
+            total_cost += fisher_usage.cost_usd
+            all_usages.append(fisher_usage)
+
+        # --- Étape 11 : klarman_margin (si dans le workflow et klarman_input fourni) ---
+        klarman_output: KlarmanOutput | None = None
+
+        if (
+            (_allowed is None or "klarman_margin" in _allowed)
+            and request.klarman_input is not None and self._klarman is not None
+        ):
+            _t = time.monotonic()
+            klarman_output, klarman_usage = await self._klarman.execute(request.klarman_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="klarman_margin", ticker=request.ticker,
+                    cost_usd=klarman_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=klarman_usage.tokens_input, tokens_output=klarman_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("klarman_margin")
+            total_cost += klarman_usage.cost_usd
+            all_usages.append(klarman_usage)
+
+        # --- Étape 12 : greenblatt_magic_formula (si dans le workflow et greenblatt_input fourni) ---
+        greenblatt_output: GreenblattOutput | None = None
+
+        if (
+            (_allowed is None or "greenblatt_magic_formula" in _allowed)
+            and request.greenblatt_input is not None and self._greenblatt is not None
+        ):
+            _t = time.monotonic()
+            greenblatt_output, greenblatt_usage = await self._greenblatt.execute(request.greenblatt_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="greenblatt_magic_formula", ticker=request.ticker,
+                    cost_usd=greenblatt_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=greenblatt_usage.tokens_input, tokens_output=greenblatt_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("greenblatt_magic_formula")
+            total_cost += greenblatt_usage.cost_usd
+            all_usages.append(greenblatt_usage)
+
+        # --- Étape 13 : damodaran_narrative (si dans le workflow et damodaran_input fourni) ---
+        damodaran_output: DamodararOutput | None = None
+
+        if (
+            (_allowed is None or "damodaran_narrative" in _allowed)
+            and request.damodaran_input is not None and self._damodaran is not None
+        ):
+            _t = time.monotonic()
+            damodaran_output, damodaran_usage = await self._damodaran.execute(request.damodaran_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="damodaran_narrative", ticker=request.ticker,
+                    cost_usd=damodaran_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=damodaran_usage.tokens_input, tokens_output=damodaran_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("damodaran_narrative")
+            total_cost += damodaran_usage.cost_usd
+            all_usages.append(damodaran_usage)
+
+        # --- Étape 14 : marks_cycles_risk (si dans le workflow et marks_input fourni) ---
+        marks_output: MarksOutput | None = None
+
+        if (
+            (_allowed is None or "marks_cycles_risk" in _allowed)
+            and request.marks_input is not None and self._marks is not None
+        ):
+            _t = time.monotonic()
+            marks_output, marks_usage = await self._marks.execute(request.marks_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="marks_cycles_risk", ticker=request.ticker,
+                    cost_usd=marks_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=marks_usage.tokens_input, tokens_output=marks_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("marks_cycles_risk")
+            total_cost += marks_usage.cost_usd
+            all_usages.append(marks_usage)
+
+        # --- Étape 15 : pabrai_dhandho (si dans le workflow et pabrai_input fourni) ---
+        pabrai_output: PabraiOutput | None = None
+
+        if (
+            (_allowed is None or "pabrai_dhandho" in _allowed)
+            and request.pabrai_input is not None and self._pabrai is not None
+        ):
+            _t = time.monotonic()
+            pabrai_output, pabrai_usage = await self._pabrai.execute(request.pabrai_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="pabrai_dhandho", ticker=request.ticker,
+                    cost_usd=pabrai_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=pabrai_usage.tokens_input, tokens_output=pabrai_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("pabrai_dhandho")
+            total_cost += pabrai_usage.cost_usd
+            all_usages.append(pabrai_usage)
+
+        analysis_id = await self._persist(
+            request, graham_output, earnings_output, dorsey_output, buffett_output,
+            valuation_output, thesis_output, munger_output, tax_output,
+            lynch_output, fisher_output, klarman_output,
+            greenblatt_output, damodaran_output, marks_output, pabrai_output,
+            all_usages
+        )
+
+        response = AnalyzeResponse(
+            analysis_id=str(analysis_id),
+            ticker=request.ticker,
+            workflow=request.workflow,
+            skills_applied=skills_applied,
+            graham=graham_output,
+            earnings_quality=earnings_output,
+            dorsey=dorsey_output,
+            buffett=buffett_output,
+            valuation=valuation_output,
+            thesis=thesis_output,
+            munger=munger_output,
+            canadian_tax=tax_output,
+            lynch=lynch_output,
+            fisher=fisher_output,
+            klarman=klarman_output,
+            greenblatt=greenblatt_output,
+            damodaran=damodaran_output,
+            marks=marks_output,
+            pabrai=pabrai_output,
+            cost_usd=total_cost,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        # --- Étape finale : mise en cache pour les prochains appels ---
+        if cache is not None:
+            await cache.set(request.ticker, request.workflow, request.ratios, response)
+
+        return response
+
+    async def stream_company_analysis(
+        self,
+        request: AnalyzeRequest,
+        cache: AnalysisCacheService | None = None,
+        observability: ObservabilityService | None = None,
+    ) -> AsyncGenerator[dict, None]:
+        """
+        Version streaming de run_company_analysis.
+        Yield des events SSE (dict {event, data}) après chaque skill complété.
+
+        Events émis :
+        - {"event": "skill_start", "data": {"skill_id": str}}
+        - {"event": "skill_result", "data": {"skill_id": str, "result": dict}}
+        - {"event": "complete", "data": AnalyzeResponse.model_dump()}
+        - {"event": "cached", "data": AnalyzeResponse.model_dump()}
+        - {"event": "error", "data": {"message": str}}
+        """
+        # --- Étape 0 : Cache Redis (circuit court) ---
+        if cache is not None:
+            cached = await cache.get(request.ticker, request.workflow, request.ratios)
+            if cached is not None:
+                logger.debug(
+                    "Cache hit (stream) pour %s/%s", request.ticker, request.workflow
+                )
+                yield {"event": "cached", "data": cached.model_copy(update={"cost_usd": 0.0}).model_dump()}
+                return
+
+        try:
+            _steps = _workflow_router.route(request.workflow)
+            _allowed: frozenset[str] | None = frozenset(s.skill_id for s in _steps)
+        except ValueError:
+            logger.warning(
+                "Workflow inconnu '%s' (stream) — tous les skills activés", request.workflow
+            )
+            _allowed = None
+
+        skills_applied: list[str] = []
+        total_cost = 0.0
+        all_usages: list[UsageDetail] = []
+
+        graham_output: GrahamAnalysisOutput | None = None
+        if (_allowed is None or "graham_analysis" in _allowed) and request.ratios is not None:
+            yield {"event": "skill_start", "data": {"skill_id": "graham_analysis"}}
+            graham_input = GrahamAnalysisInput(ticker=request.ticker, ratios=request.ratios)
+            _t = time.monotonic()
+            graham_output, graham_usage = await self._graham.execute(graham_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="graham_analysis", ticker=request.ticker,
+                    cost_usd=graham_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=graham_usage.tokens_input, tokens_output=graham_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("graham_analysis")
+            total_cost += graham_usage.cost_usd
+            all_usages.append(graham_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "graham_analysis", "result": graham_output.model_dump()}}
+
+        earnings_output: EarningsQualityOutput | None = None
+        if (
+            (_allowed is None or "earnings_quality" in _allowed)
+            and request.earnings_ratios is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "earnings_quality"}}
+            graham_ctx: GrahamContext | None = None
+            if graham_output is not None:
+                graham_ctx = GrahamContext(
+                    verdict=graham_output.verdict,
+                    defensive_score=graham_output.defensive_score,
+                    marge_securite=graham_output.marge_securite,
+                    drapeaux_rouges=graham_output.drapeaux_rouges,
+                )
+            earnings_input = EarningsQualityInput(
+                ticker=request.ticker, ratios=request.earnings_ratios, graham_context=graham_ctx,
+            )
+            _t = time.monotonic()
+            earnings_output, earnings_usage = await self._earnings.execute(earnings_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="earnings_quality", ticker=request.ticker,
+                    cost_usd=earnings_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=earnings_usage.tokens_input, tokens_output=earnings_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("earnings_quality")
+            total_cost += earnings_usage.cost_usd
+            all_usages.append(earnings_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "earnings_quality", "result": earnings_output.model_dump()}}
+
+        dorsey_output: DorseyMoatOutput | None = None
+        if (
+            (_allowed is None or "dorsey_moat" in _allowed)
+            and request.dorsey_ratios is not None and self._dorsey is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "dorsey_moat"}}
+            earnings_ctx: DorseyEarningsContext | None = None
+            if earnings_output is not None:
+                earnings_ctx = DorseyEarningsContext(
+                    verdict=earnings_output.verdict,
+                    z_score=earnings_output.z_score.z_score,
+                    m_score=earnings_output.m_score.m_score,
+                    f_score=earnings_output.f_score.f_score,
+                    drapeaux_rouges=earnings_output.drapeaux_rouges,
+                )
+            dorsey_input = DorseyMoatInput(
+                ticker=request.ticker, ratios=request.dorsey_ratios, earnings_context=earnings_ctx,
+            )
+            _t = time.monotonic()
+            dorsey_output, dorsey_usage = await self._dorsey.execute(dorsey_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="dorsey_moat", ticker=request.ticker,
+                    cost_usd=dorsey_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=dorsey_usage.tokens_input, tokens_output=dorsey_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("dorsey_moat")
+            total_cost += dorsey_usage.cost_usd
+            all_usages.append(dorsey_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "dorsey_moat", "result": dorsey_output.model_dump()}}
+
+        buffett_output: BuffettQualityOutput | None = None
+        if (
+            (_allowed is None or "buffett_quality" in _allowed)
+            and request.buffett_ratios is not None and self._buffett is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "buffett_quality"}}
+            dorsey_ctx: BuffettDorseyContext | None = None
+            if dorsey_output is not None:
+                dorsey_ctx = BuffettDorseyContext(
+                    moat_type=dorsey_output.moat_type,
+                    sources=[s.source for s in dorsey_output.sources_identifiees if s.intensite in {"FORTE", "MODÉRÉE"}],
+                    roic_durability=dorsey_output.roic_durability,
+                )
+            buffett_input = BuffettQualityInput(
+                ticker=request.ticker, ratios=request.buffett_ratios, dorsey_context=dorsey_ctx,
+            )
+            _t = time.monotonic()
+            buffett_output, buffett_usage = await self._buffett.execute(buffett_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="buffett_quality", ticker=request.ticker,
+                    cost_usd=buffett_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=buffett_usage.tokens_input, tokens_output=buffett_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("buffett_quality")
+            total_cost += buffett_usage.cost_usd
+            all_usages.append(buffett_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "buffett_quality", "result": buffett_output.model_dump()}}
+
+        valuation_output: StockValuationOutput | None = None
+        if (
+            (_allowed is None or "stock_valuation_triangulation" in _allowed)
+            and request.valuation_ratios is not None and self._valuation is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "stock_valuation_triangulation"}}
+            graham_ctx_val: ValuationGrahamContext | None = None
+            if graham_output is not None:
+                graham_ctx_val = ValuationGrahamContext(
+                    verdict=graham_output.verdict, defensive_score=graham_output.defensive_score,
+                    marge_securite=graham_output.marge_securite,
+                    valeur_intrinseque_simple=graham_output.valeur_intrinseque_simple,
+                )
+            earnings_ctx_val: ValuationEarningsContext | None = None
+            if earnings_output is not None:
+                earnings_ctx_val = ValuationEarningsContext(
+                    verdict=earnings_output.verdict,
+                    z_score=earnings_output.z_score.z_score,
+                    f_score=earnings_output.f_score.f_score,
+                )
+            dorsey_ctx_val: ValuationDorseyContext | None = None
+            if dorsey_output is not None:
+                dorsey_ctx_val = ValuationDorseyContext(
+                    moat_type=dorsey_output.moat_type, roic_durability=dorsey_output.roic_durability,
+                )
+            buffett_ctx_val: ValuationBuffettContext | None = None
+            if buffett_output is not None:
+                buffett_ctx_val = ValuationBuffettContext(
+                    quality_score=buffett_output.quality_score,
+                    verdict=buffett_output.verdict,
+                    owner_earnings=buffett_output.owner_earnings,
+                )
+            valuation_input = StockValuationInput(
+                ticker=request.ticker, ratios=request.valuation_ratios,
+                graham_context=graham_ctx_val, earnings_context=earnings_ctx_val,
+                dorsey_context=dorsey_ctx_val, buffett_context=buffett_ctx_val,
+            )
+            _t = time.monotonic()
+            valuation_output, valuation_usage = await self._valuation.execute(valuation_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="stock_valuation_triangulation", ticker=request.ticker,
+                    cost_usd=valuation_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=valuation_usage.tokens_input, tokens_output=valuation_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("stock_valuation_triangulation")
+            total_cost += valuation_usage.cost_usd
+            all_usages.append(valuation_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "stock_valuation_triangulation", "result": valuation_output.model_dump()}}
+
+        thesis_output: ThesisBuilderOutput | None = None
+        if (
+            (_allowed is None or "investment_thesis_builder" in _allowed)
+            and request.thesis_ratios and self._thesis is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "investment_thesis_builder"}}
+            all_contexts = AllSkillContexts(
+                graham=graham_output, earnings_quality=earnings_output,
+                dorsey=dorsey_output, buffett=buffett_output, valuation=valuation_output,
+            )
+            thesis_input = ThesisBuilderInput(ticker=request.ticker, all_contexts=all_contexts)
+            _t = time.monotonic()
+            thesis_output, thesis_usage = await self._thesis.execute(thesis_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="investment_thesis_builder", ticker=request.ticker,
+                    cost_usd=thesis_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=thesis_usage.tokens_input, tokens_output=thesis_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("investment_thesis_builder")
+            total_cost += thesis_usage.cost_usd
+            all_usages.append(thesis_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "investment_thesis_builder", "result": thesis_output.model_dump()}}
+
+        munger_output: MungerOutput | None = None
+        if (
+            (_allowed is None or "munger_mental_models" in _allowed)
+            and request.munger_ratios and self._munger is not None and thesis_output is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "munger_mental_models"}}
+            thesis_ctx = ThesisContext(
+                ticker=request.ticker, verdict_final=thesis_output.verdict_final,
+                position_size_pct=thesis_output.position_size_pct,
+                scenario_bull_probabilite=thesis_output.scenario_bull.probabilite,
+                scenario_base_probabilite=thesis_output.scenario_base.probabilite,
+                scenario_bear_probabilite=thesis_output.scenario_bear.probabilite,
+                synthese_narrative=thesis_output.synthese_narrative,
+                kill_criteria=thesis_output.kill_criteria,
+                devils_advocate=thesis_output.devils_advocate,
+            )
+            munger_input = MungerInput(ticker=request.ticker, thesis_context=thesis_ctx)
+            _t = time.monotonic()
+            munger_output, munger_usage = await self._munger.execute(munger_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="munger_mental_models", ticker=request.ticker,
+                    cost_usd=munger_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=munger_usage.tokens_input, tokens_output=munger_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("munger_mental_models")
+            total_cost += munger_usage.cost_usd
+            all_usages.append(munger_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "munger_mental_models", "result": munger_output.model_dump()}}
+
+        tax_output: CanadianTaxOutput | None = None
+        if (
+            (_allowed is None or "canadian_tax_considerations" in _allowed)
+            and request.tax_input is not None and self._canadian_tax is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "canadian_tax_considerations"}}
+            _t = time.monotonic()
+            tax_output, tax_usage = await self._canadian_tax.execute(request.tax_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="canadian_tax_considerations", ticker=request.ticker,
+                    cost_usd=tax_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=tax_usage.tokens_input, tokens_output=tax_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("canadian_tax_considerations")
+            total_cost += tax_usage.cost_usd
+            all_usages.append(tax_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "canadian_tax_considerations", "result": tax_output.model_dump()}}
+
+        lynch_output: LynchOutput | None = None
+        if (
+            (_allowed is None or "lynch_categories" in _allowed)
+            and request.lynch_ratios is not None and self._lynch is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "lynch_categories"}}
+            lynch_input = LynchInput(ticker=request.ticker, ratios=request.lynch_ratios)
+            _t = time.monotonic()
+            lynch_output, lynch_usage = await self._lynch.execute(lynch_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="lynch_categories", ticker=request.ticker,
+                    cost_usd=lynch_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=lynch_usage.tokens_input, tokens_output=lynch_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("lynch_categories")
+            total_cost += lynch_usage.cost_usd
+            all_usages.append(lynch_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "lynch_categories", "result": lynch_output.model_dump()}}
+
+        fisher_output: FisherOutput | None = None
+        if (
+            (_allowed is None or "fisher_scuttlebutt" in _allowed)
+            and request.fisher_input is not None and self._fisher is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "fisher_scuttlebutt"}}
+            _t = time.monotonic()
+            fisher_output, fisher_usage = await self._fisher.execute(request.fisher_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="fisher_scuttlebutt", ticker=request.ticker,
+                    cost_usd=fisher_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=fisher_usage.tokens_input, tokens_output=fisher_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("fisher_scuttlebutt")
+            total_cost += fisher_usage.cost_usd
+            all_usages.append(fisher_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "fisher_scuttlebutt", "result": fisher_output.model_dump()}}
+
+        klarman_output: KlarmanOutput | None = None
+        if (
+            (_allowed is None or "klarman_margin" in _allowed)
+            and request.klarman_input is not None and self._klarman is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "klarman_margin"}}
+            _t = time.monotonic()
+            klarman_output, klarman_usage = await self._klarman.execute(request.klarman_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="klarman_margin", ticker=request.ticker,
+                    cost_usd=klarman_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=klarman_usage.tokens_input, tokens_output=klarman_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("klarman_margin")
+            total_cost += klarman_usage.cost_usd
+            all_usages.append(klarman_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "klarman_margin", "result": klarman_output.model_dump()}}
+
+        greenblatt_output: GreenblattOutput | None = None
+        if (
+            (_allowed is None or "greenblatt_magic_formula" in _allowed)
+            and request.greenblatt_input is not None and self._greenblatt is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "greenblatt_magic_formula"}}
+            _t = time.monotonic()
+            greenblatt_output, greenblatt_usage = await self._greenblatt.execute(request.greenblatt_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="greenblatt_magic_formula", ticker=request.ticker,
+                    cost_usd=greenblatt_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=greenblatt_usage.tokens_input, tokens_output=greenblatt_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("greenblatt_magic_formula")
+            total_cost += greenblatt_usage.cost_usd
+            all_usages.append(greenblatt_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "greenblatt_magic_formula", "result": greenblatt_output.model_dump()}}
+
+        damodaran_output: DamodararOutput | None = None
+        if (
+            (_allowed is None or "damodaran_narrative" in _allowed)
+            and request.damodaran_input is not None and self._damodaran is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "damodaran_narrative"}}
+            _t = time.monotonic()
+            damodaran_output, damodaran_usage = await self._damodaran.execute(request.damodaran_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="damodaran_narrative", ticker=request.ticker,
+                    cost_usd=damodaran_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=damodaran_usage.tokens_input, tokens_output=damodaran_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("damodaran_narrative")
+            total_cost += damodaran_usage.cost_usd
+            all_usages.append(damodaran_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "damodaran_narrative", "result": damodaran_output.model_dump()}}
+
+        marks_output: MarksOutput | None = None
+        if (
+            (_allowed is None or "marks_cycles_risk" in _allowed)
+            and request.marks_input is not None and self._marks is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "marks_cycles_risk"}}
+            _t = time.monotonic()
+            marks_output, marks_usage = await self._marks.execute(request.marks_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="marks_cycles_risk", ticker=request.ticker,
+                    cost_usd=marks_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=marks_usage.tokens_input, tokens_output=marks_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("marks_cycles_risk")
+            total_cost += marks_usage.cost_usd
+            all_usages.append(marks_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "marks_cycles_risk", "result": marks_output.model_dump()}}
+
+        pabrai_output: PabraiOutput | None = None
+        if (
+            (_allowed is None or "pabrai_dhandho" in _allowed)
+            and request.pabrai_input is not None and self._pabrai is not None
+        ):
+            yield {"event": "skill_start", "data": {"skill_id": "pabrai_dhandho"}}
+            _t = time.monotonic()
+            pabrai_output, pabrai_usage = await self._pabrai.execute(request.pabrai_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="pabrai_dhandho", ticker=request.ticker,
+                    cost_usd=pabrai_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=pabrai_usage.tokens_input, tokens_output=pabrai_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("pabrai_dhandho")
+            total_cost += pabrai_usage.cost_usd
+            all_usages.append(pabrai_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "pabrai_dhandho", "result": pabrai_output.model_dump()}}
+
+        analysis_id = await self._persist(
+            request, graham_output, earnings_output, dorsey_output, buffett_output,
+            valuation_output, thesis_output, munger_output, tax_output,
+            lynch_output, fisher_output, klarman_output,
+            greenblatt_output, damodaran_output, marks_output, pabrai_output,
+            all_usages,
+        )
+
+        response = AnalyzeResponse(
+            analysis_id=str(analysis_id),
+            ticker=request.ticker,
+            workflow=request.workflow,
+            skills_applied=skills_applied,
+            graham=graham_output,
+            earnings_quality=earnings_output,
+            dorsey=dorsey_output,
+            buffett=buffett_output,
+            valuation=valuation_output,
+            thesis=thesis_output,
+            munger=munger_output,
+            canadian_tax=tax_output,
+            lynch=lynch_output,
+            fisher=fisher_output,
+            klarman=klarman_output,
+            greenblatt=greenblatt_output,
+            damodaran=damodaran_output,
+            marks=marks_output,
+            pabrai=pabrai_output,
+            cost_usd=total_cost,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        if cache is not None:
+            await cache.set(request.ticker, request.workflow, request.ratios, response)
+
+        yield {"event": "complete", "data": response.model_dump()}
+
+    async def _persist(
+        self,
+        request: AnalyzeRequest,
+        graham_output: GrahamAnalysisOutput | None,
+        earnings_output: EarningsQualityOutput | None,
+        dorsey_output: DorseyMoatOutput | None,
+        buffett_output: BuffettQualityOutput | None,
+        valuation_output: StockValuationOutput | None,
+        thesis_output: ThesisBuilderOutput | None,
+        munger_output: MungerOutput | None,
+        tax_output: CanadianTaxOutput | None,
+        lynch_output: LynchOutput | None,
+        fisher_output: FisherOutput | None,
+        klarman_output: KlarmanOutput | None,
+        greenblatt_output: GreenblattOutput | None,
+        damodaran_output: DamodararOutput | None,
+        marks_output: MarksOutput | None,
+        pabrai_output: PabraiOutput | None,
+        usages: list[UsageDetail],
+    ) -> str:
+        """Insère l'analyse agrégée dans analysis_history et retourne l'UUID généré."""
+        skills_list: list[str] = []
+        if graham_output:
+            skills_list.append("graham_analysis")
+        if earnings_output:
+            skills_list.append("earnings_quality")
+        if dorsey_output:
+            skills_list.append("dorsey_moat")
+        if buffett_output:
+            skills_list.append("buffett_quality")
+        if valuation_output:
+            skills_list.append("stock_valuation_triangulation")
+        if thesis_output:
+            skills_list.append("investment_thesis_builder")
+        if munger_output:
+            skills_list.append("munger_mental_models")
+        if tax_output:
+            skills_list.append("canadian_tax_considerations")
+        if lynch_output:
+            skills_list.append("lynch_categories")
+        if fisher_output:
+            skills_list.append("fisher_scuttlebutt")
+        if klarman_output:
+            skills_list.append("klarman_margin")
+        if greenblatt_output:
+            skills_list.append("greenblatt_magic_formula")
+        if damodaran_output:
+            skills_list.append("damodaran_narrative")
+        if marks_output:
+            skills_list.append("marks_cycles_risk")
+        if pabrai_output:
+            skills_list.append("pabrai_dhandho")
+        skills_used = _json.dumps(skills_list)
+
+        input_data = _json.dumps(request.ratios.model_dump() if request.ratios is not None else {})
+
+        result_dict: dict = {}
+        if graham_output:
+            result_dict["graham"] = graham_output.model_dump()
+        if earnings_output:
+            result_dict["earnings_quality"] = earnings_output.model_dump()
+        if dorsey_output:
+            result_dict["dorsey_moat"] = dorsey_output.model_dump()
+        if buffett_output:
+            result_dict["buffett_quality"] = buffett_output.model_dump()
+        if valuation_output:
+            result_dict["stock_valuation"] = valuation_output.model_dump()
+        if thesis_output:
+            result_dict["investment_thesis_builder"] = thesis_output.model_dump()
+        if munger_output:
+            result_dict["munger_mental_models"] = munger_output.model_dump()
+        if tax_output:
+            result_dict["canadian_tax_considerations"] = tax_output.model_dump()
+        if lynch_output:
+            result_dict["lynch_categories"] = lynch_output.model_dump()
+        if fisher_output:
+            result_dict["fisher_scuttlebutt"] = fisher_output.model_dump()
+        if klarman_output:
+            result_dict["klarman_margin"] = klarman_output.model_dump()
+        if greenblatt_output:
+            result_dict["greenblatt_magic_formula"] = greenblatt_output.model_dump()
+        if damodaran_output:
+            result_dict["damodaran_narrative"] = damodaran_output.model_dump()
+        if marks_output:
+            result_dict["marks_cycles_risk"] = marks_output.model_dump()
+        if pabrai_output:
+            result_dict["pabrai_dhandho"] = pabrai_output.model_dump()
+        result = _json.dumps(result_dict)
+
+        total_cost = sum(u.cost_usd for u in usages)
+        total_tokens_input = sum(u.tokens_input for u in usages)
+        total_tokens_output = sum(u.tokens_output for u in usages)
+        total_tokens_cache_r = sum(u.tokens_cache_read for u in usages)
+        total_tokens_cache_c = sum(u.tokens_cache_creation for u in usages)
+
+        row = await self._db.fetchrow(
+            """
+            INSERT INTO analysis_history (
+                ticker, workflow_name, skills_used, input_data, result,
+                cost_usd, tokens_input, tokens_output,
+                tokens_cache_read, tokens_cache_creation
+            )
+            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)
+            RETURNING id
+            """,
+            request.ticker,
+            request.workflow,
+            skills_used,
+            input_data,
+            result,
+            total_cost,
+            total_tokens_input,
+            total_tokens_output,
+            total_tokens_cache_r,
+            total_tokens_cache_c,
+        )
+
+        return str(row["id"])
+
+    async def get_metrics(self, days: int = 30) -> MetricsResponse:
+        """Agrège les métriques depuis analysis_history sur la période demandée."""
+        global_row = await self._db.fetchrow(
+            """
+            SELECT
+                COUNT(*)                                                    AS total,
+                COALESCE(SUM(cost_usd), 0)                                  AS total_cost,
+                COALESCE(AVG(
+                    CASE
+                        WHEN tokens_input + tokens_cache_read + tokens_cache_creation > 0
+                        THEN tokens_cache_read::float
+                             / (tokens_input + tokens_cache_read + tokens_cache_creation)
+                        ELSE 0
+                    END
+                ), 0)                                                        AS avg_cache_hit
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            """,
+            str(days),
+        )
+
+        ticker_rows = await self._db.fetch(
+            """
+            SELECT ticker, COUNT(*) AS nb, SUM(cost_usd) AS total_cost
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY ticker
+            ORDER BY total_cost DESC
+            LIMIT 20
+            """,
+            str(days),
+        )
+
+        skill_rows = await self._db.fetch(
+            """
+            SELECT skill, COUNT(*) AS nb
+            FROM analysis_history,
+                 jsonb_array_elements_text(skills_used) AS skill
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY skill
+            ORDER BY nb DESC
+            """,
+            str(days),
+        )
+
+        total = int(global_row["total"])
+        total_cost = float(global_row["total_cost"])
+
+        return MetricsResponse(
+            period_days=days,
+            total_analyses=total,
+            total_cost_usd=round(total_cost, 6),
+            avg_cost_per_analysis=round(total_cost / total, 6) if total > 0 else 0.0,
+            cache_hit_ratio_avg=round(float(global_row["avg_cache_hit"]), 4),
+            top_tickers=[
+                TickerMetrics(
+                    ticker=row["ticker"],
+                    analyses=int(row["nb"]),
+                    cost_usd=round(float(row["total_cost"]), 6),
+                )
+                for row in ticker_rows
+            ],
+            skills_usage={row["skill"]: int(row["nb"]) for row in skill_rows},
+        )
+
+    async def get_history(
+        self,
+        ticker: str,
+        limit: int = 10,
+        before: datetime | None = None,
+    ) -> HistoryResponse:
+        """
+        Retourne les analyses passées pour un ticker, triées par date décroissante.
+        Utilise un cursor sur created_at pour la pagination stable.
+        """
+        rows = await self._db.fetch(
+            """
+            SELECT id, ticker, workflow_name, skills_used, cost_usd, result, created_at
+            FROM analysis_history
+            WHERE ticker = $1
+              AND ($2::timestamptz IS NULL OR created_at < $2)
+            ORDER BY created_at DESC
+            LIMIT $3
+            """,
+            ticker,
+            before,
+            limit + 1,
+        )
+
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        entries = [
+            HistoryEntry(
+                analysis_id=str(row["id"]),
+                ticker=row["ticker"],
+                workflow=row["workflow_name"],
+                skills_applied=_json.loads(row["skills_used"]),
+                cost_usd=float(row["cost_usd"]),
+                defensive_score=_extract_int(row["result"], "graham", "defensive_score"),
+                graham_verdict=_extract_str(row["result"], "graham", "verdict"),
+                earnings_verdict=_extract_str(row["result"], "earnings_quality", "verdict"),
+                created_at=row["created_at"].isoformat(),
+            )
+            for row in rows
+        ]
+
+        next_before = entries[-1].created_at if has_more and entries else None
+
+        return HistoryResponse(ticker=ticker, entries=entries, next_before=next_before)

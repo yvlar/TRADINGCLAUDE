@@ -1,4 +1,36 @@
 {
+  "skillListingMaxDescChars": 3000,
   "skillListingBudgetFraction": 0.05,
-  "skillListingMaxDescChars": 3000
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_analysis_cache.py tests/test_screener.py -v --tb=short -q)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\ivess\\\\OneDrive\\\\Documents\\\\tradingClaude\\\\tests\\\\\" -Name)",
+      "Bash(dir \"c:\\\\Users\\\\ivess\\\\OneDrive\\\\Documents\\\\tradingClaude\")",
+      "Bash(python -m http.server 3000 --directory frontend)",
+      "Bash(Start-Process \"http://localhost:3000\")",
+      "Bash(powershell -command \"Start-Process 'http://localhost:3000'\")",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(docker-compose ps *)",
+      "Bash(curl -s http://localhost:8000/healthz)",
+      "Bash(curl -s \"http://localhost:8000/extract?ticker=BNS\")",
+      "Bash(curl -s -X POST http://localhost:8000/analyze -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s -X POST http://localhost:8000/analyze -H 'Content-Type: application/json' -d '{\"ticker\":\"BNS\",\"ratios\":{\"pe\":15.69,\"pb\":1.49,\"current_ratio\":null,\"debt_equity\":0.0,\"eps_growth_10y\":0.27,\"price\":77.53,\"book_value\":52.0,\"eps_ttm\":4.94,\"revenue_bn\":33.25,\"dividend_years\":190},\"workflow\":\"value_graham\"}')",
+      "Bash(docker-compose logs *)",
+      "Bash(docker-compose up *)",
+      "Bash(python -m json.tool)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(python -m pytest tests/test_watchlist.py -v --tb=short)",
+      "Bash(python -m pytest tests/ -v -q --tb=short --ignore=tests/load)",
+      "Bash(python -m pytest tests/test_dorsey_moat.py::TestOrchestratorDorsey::test_orchestrator_avec_dorsey -v --tb=long)",
+      "Bash(python -m pytest tests/test_watchlist.py tests/test_integration_sync.py tests/test_integration_async.py tests/test_middleware.py tests/test_schemas.py -v -q --tb=short)"
+    ]
+  }
 }

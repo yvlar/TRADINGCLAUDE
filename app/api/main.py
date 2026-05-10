@@ -1,0 +1,460 @@
+from __future__ import annotations
+
+import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import AsyncGenerator
+
+import anthropic
+import asyncpg
+import httpx
+import redis.asyncio as aioredis
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api.endpoints.analyze_stream import router as analyze_stream_router
+from app.api.endpoints.extract import router as extract_router
+from app.api.endpoints.jobs import router as jobs_router
+from app.api.endpoints.report import router as report_router
+from app.api.endpoints.screen import router as screen_router
+from app.api.endpoints.telemetry import router as telemetry_router
+from app.api.endpoints.watchlist import router as watchlist_router
+from app.api.endpoints.ws_metrics import router as ws_metrics_router
+from app.logging_config import configure_logging
+from app.middleware.auth import BearerTokenMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.observability.langfuse_client import LangfuseTracer
+from app.orchestrator.core import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    HistoryResponse,
+    MetricsResponse,
+    Orchestrator,
+)
+from app.rag.client import RagClient
+from app.rag.embeddings import EmbeddingClient
+from app.rag.service import RagService
+from app.skills.base import SkillConfig
+from app.skills.tier1.sedar_plus import SedarPlusExtractor
+from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
+from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
+from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
+from app.skills.tier2.dorsey_moat.skill import DorseyMoatSkill
+from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
+from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
+from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
+from app.skills.tier2.greenblatt.skill import GreenblattSkill
+from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
+from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
+from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
+from app.skills.tier2.klarman_margin.skill import KlarmanMarginSkill
+from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
+from app.skills.tier2.munger_mental.skill import MungerMentalSkill
+from app.skills.tier2.stock_valuation.skill import StockValuationSkill
+from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
+from app.services.analysis_cache import AnalysisCacheService
+from app.services.observability import ObservabilityService
+from app.services.screener import ScreenerService
+from app.services.watchlist_service import WatchlistService
+from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
+_VERSION = "3.0.0"
+
+
+def _get_env(key: str, default: str | None = None) -> str:
+    """Lit une variable d'environnement, lève une erreur explicite si absente et sans défaut."""
+    value = os.environ.get(key, default)
+    if value is None:
+        raise RuntimeError(f"Variable d'environnement manquante : {key}")
+    return value
+
+
+def _init_langfuse_if_configured():
+    """Retourne une instance Langfuse si les clés sont présentes, sinon None."""
+    lf_secret = os.environ.get("LANGFUSE_SECRET_KEY")
+    if not lf_secret:
+        return None
+    try:
+        from langfuse import Langfuse  # type: ignore[import]
+
+        return Langfuse(
+            secret_key=lf_secret,
+            public_key=_get_env("LANGFUSE_PUBLIC_KEY"),
+            host=_get_env("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        )
+    except ImportError:
+        logger.warning("Package langfuse non installé — traces Langfuse (ObservabilityService) désactivées")
+        return None
+    except Exception:
+        logger.exception("Erreur lors de l'initialisation de Langfuse — mode Redis-only")
+        return None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Initialisation et fermeture des ressources partagées."""
+    api_key = _get_env("ANTHROPIC_API_KEY")
+    model = _get_env("CLAUDE_MODEL", "claude-sonnet-4-6")
+    db_url = _get_env("DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote")
+    qdrant_url = _get_env("QDRANT_URL", "http://qdrant:6333")
+    qdrant_coll = _get_env("QDRANT_COLLECTION", "investment_knowledge")
+    redis_url = _get_env("REDIS_URL", "redis://redis:6379/0")
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    top_k = int(_get_env("RAG_TOP_K", "5"))
+
+    timeout_s = float(_get_env("CLAUDE_TIMEOUT_S", str(_DEFAULT_TIMEOUT_S)))
+    max_retries = int(_get_env("CLAUDE_MAX_RETRIES", str(_DEFAULT_MAX_RETRIES)))
+    cache_ttl = int(_get_env("ANALYSIS_CACHE_TTL", "86400"))
+
+    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+
+    anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
+
+    rag_client = RagClient(url=qdrant_url, collection=qdrant_coll)
+    await rag_client.ensure_collection()
+
+    rag_service: RagService | None = None
+    if openai_key:
+        embedder = EmbeddingClient(api_key=openai_key)
+        rag_service = RagService(rag_client=rag_client, embedder=embedder)
+        logger.info("RAG activé — collection '%s'", qdrant_coll)
+    else:
+        logger.warning("OPENAI_API_KEY absente — RAG désactivé, citations = []")
+
+    tracer: LangfuseTracer | None = None
+    lf_secret = os.environ.get("LANGFUSE_SECRET_KEY")
+    if lf_secret:
+        tracer = LangfuseTracer(
+            secret_key=lf_secret,
+            public_key=_get_env("LANGFUSE_PUBLIC_KEY"),
+            host=_get_env("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        )
+    else:
+        logger.warning("LANGFUSE_SECRET_KEY absente — traçage Langfuse désactivé")
+
+    skill_config = SkillConfig(
+        timeout_s=timeout_s,
+        max_retries=max_retries,
+        tracer=tracer,
+    )
+
+    graham_skill = GrahamAnalysisSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    earnings_skill = EarningsQualitySkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    dorsey_skill = DorseyMoatSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    buffett_skill = BuffettQualitySkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    valuation_skill = StockValuationSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    thesis_skill = ThesisBuilderSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    munger_skill = MungerMentalSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    canadian_tax_skill = CanadianTaxSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    lynch_skill = LynchCategoriesSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    fisher_skill = FisherScuttlebuttSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    klarman_skill = KlarmanMarginSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    greenblatt_skill = GreenblattSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    damodaran_skill = DamodararNarrativeSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    marks_skill = MarksCyclesSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    pabrai_skill = PabraiDhandhoSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
+    orchestrator = Orchestrator(
+        db_pool=db_pool,
+        graham_skill=graham_skill,
+        earnings_skill=earnings_skill,
+        dorsey_skill=dorsey_skill,
+        buffett_skill=buffett_skill,
+        valuation_skill=valuation_skill,
+        thesis_skill=thesis_skill,
+        munger_skill=munger_skill,
+        canadian_tax_skill=canadian_tax_skill,
+        lynch_skill=lynch_skill,
+        fisher_skill=fisher_skill,
+        klarman_skill=klarman_skill,
+        greenblatt_skill=greenblatt_skill,
+        damodaran_skill=damodaran_skill,
+        marks_skill=marks_skill,
+        pabrai_skill=pabrai_skill,
+    )
+
+    yahoo_extractor = YahooFinanceExtractor()
+    sedar_extractor = SedarPlusExtractor()
+
+    redis_pool = aioredis.from_url(redis_url, decode_responses=True)
+
+    analysis_cache = AnalysisCacheService(redis_client=redis_pool, ttl_seconds=cache_ttl)
+
+    screener = ScreenerService(
+        orchestrator=orchestrator,
+        extractor=yahoo_extractor,
+        cache=analysis_cache,
+    )
+
+    langfuse_client = _init_langfuse_if_configured()
+    obs_service = ObservabilityService(
+        redis_client=redis_pool,
+        langfuse_client=langfuse_client,
+        daily_threshold_usd=float(os.getenv("COST_ALERT_THRESHOLD_USD", "1.0")),
+    )
+
+    watchlist_service = WatchlistService(db_pool=db_pool)
+
+    app.state.orchestrator = orchestrator
+    app.state.db_pool = db_pool
+    app.state.qdrant_url = qdrant_url
+    app.state.yahoo_extractor = yahoo_extractor
+    app.state.sedar_extractor = sedar_extractor
+    app.state.redis_pool = redis_pool
+    app.state.analysis_cache = analysis_cache
+    app.state.screener = screener
+    app.state.observability = obs_service
+    app.state.watchlist_service = watchlist_service
+
+    logger.info("Copilote financier démarré — version %s", _VERSION)
+    yield
+
+    if tracer:
+        tracer.shutdown()
+    await db_pool.close()
+    await rag_client.close()
+    await redis_pool.aclose()
+
+
+app = FastAPI(
+    title="Copilote Financier IA",
+    version=_VERSION,
+    description="API d'analyse financière multi-skills basée sur Claude",
+    lifespan=lifespan,
+)
+
+_api_key_env = os.environ.get("API_KEY", "")
+_redis_url_env = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+
+app.include_router(analyze_stream_router)
+app.include_router(extract_router)
+app.include_router(jobs_router)
+app.include_router(report_router)
+app.include_router(screen_router)
+app.include_router(telemetry_router)
+app.include_router(watchlist_router)
+app.include_router(ws_metrics_router)
+
+# Ordre inversé d'exécution : BearerToken s'exécute avant RateLimit dans le pipeline
+app.add_middleware(RateLimitMiddleware, redis_url=_redis_url_env)
+app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Erreur non gérée sur %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
+@app.get("/healthz", summary="Vérification de santé du service")
+async def healthz(request: Request) -> JSONResponse:
+    """Vérifie le statut du service, de PostgreSQL et de Qdrant."""
+    checks: dict[str, str] = {"status": "ok", "version": _VERSION}
+    status_code = 200
+
+    try:
+        await request.app.state.db_pool.fetchval("SELECT 1")
+        checks["postgres"] = "ok"
+    except Exception:
+        logger.exception("PostgreSQL indisponible lors du healthz")
+        checks["postgres"] = "error"
+        checks["status"] = "degraded"
+        status_code = 503
+
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{request.app.state.qdrant_url}/healthz")
+            checks["qdrant"] = "ok" if resp.status_code == 200 else "error"
+            if resp.status_code != 200:
+                checks["status"] = "degraded"
+                status_code = 503
+    except Exception:
+        logger.exception("Qdrant indisponible lors du healthz")
+        checks["qdrant"] = "error"
+        checks["status"] = "degraded"
+        status_code = 503
+
+    return JSONResponse(content=checks, status_code=status_code)
+
+
+@app.post(
+    "/analyze",
+    response_model=AnalyzeResponse,
+    summary="Lance le workflow company_analysis",
+    description=(
+        "Phase 3 : exécute graham_analysis, puis earnings_quality si earnings_ratios fournis, "
+        "puis dorsey_moat si dorsey_ratios fournis, "
+        "puis buffett_quality si buffett_ratios fournis, "
+        "puis stock_valuation_triangulation si valuation_ratios fournis, "
+        "puis investment_thesis_builder si thesis_ratios=true, "
+        "puis munger_mental_models si munger_ratios=true (nécessite thesis_ratios=true), "
+        "puis canadian_tax_considerations si tax_input fourni. "
+        "Les ratios financiers doivent être fournis manuellement par l'utilisateur."
+    ),
+)
+async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
+    """
+    Exécute le workflow company_analysis sur le ticker et les ratios fournis.
+    Retourne une analyse complète selon les paramètres présents.
+    """
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    cache = getattr(request.app.state, "analysis_cache", None)
+    observability = getattr(request.app.state, "observability", None)
+    try:
+        return await orchestrator.run_company_analysis(
+            body, cache=cache, observability=observability
+        )
+    except Exception as exc:
+        logger.exception("Erreur lors de l'analyse de %s", body.ticker)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get(
+    "/history",
+    response_model=HistoryResponse,
+    summary="Historique des analyses par ticker",
+)
+async def history(
+    request: Request,
+    ticker: str,
+    limit: int = 10,
+    before: str | None = None,
+) -> HistoryResponse:
+    """
+    Retourne les analyses passées pour un ticker (max 50 par page).
+    `before` : cursor ISO 8601 (valeur de `next_before` de la page précédente).
+    """
+    if limit < 1 or limit > 50:
+        raise HTTPException(status_code=422, detail="limit doit être entre 1 et 50")
+
+    before_dt: datetime | None = None
+    if before:
+        try:
+            before_dt = datetime.fromisoformat(before)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="before : format ISO 8601 requis")
+
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    return await orchestrator.get_history(ticker=ticker, limit=limit, before=before_dt)
+
+
+@app.get(
+    "/metrics",
+    response_model=MetricsResponse,
+    summary="Métriques agrégées sur la période",
+)
+async def metrics(
+    request: Request,
+    days: int = 30,
+) -> MetricsResponse:
+    """
+    Retourne les métriques d'utilisation depuis analysis_history.
+    - `days` : fenêtre de temps en jours (défaut 30, max 365)
+    """
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    return await orchestrator.get_metrics(days=days)

@@ -1,0 +1,650 @@
+"""Tests des modèles Pydantic — validation des inputs et outputs (0 appel réseau)."""
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from app.skills.base import Citation
+from app.skills.tier2.buffett_quality.schemas import (
+    BuffettFiltre,
+    BuffettQualityOutput,
+    BuffettRatios,
+)
+from app.skills.tier2.canadian_tax.schemas import CanadianTaxInput, CanadianTaxOutput
+from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput, DorseyRatios, MoatSource
+from app.skills.tier2.earnings_quality.schemas import (
+    CScoreDetail,
+    CScoreSignal,
+    EarningsQualityOutput,
+    FScoreCriterion,
+    FScoreDetail,
+    MScoreDetail,
+    SloanDetail,
+    ZScoreDetail,
+)
+from app.skills.tier2.graham_analysis.schemas import (
+    GrahamAnalysisInput,
+    GrahamAnalysisOutput,
+    GrahamCriterion,
+    GrahamRatios,
+)
+from app.skills.tier2.munger_mental.schemas import BiaisCognitif, MungerOutput, ThesisContext
+from app.skills.tier2.stock_valuation.schemas import (
+    SensitivityMatrix,
+    StockValuationOutput,
+    ValuationMethod,
+)
+from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput, ThesisScenario
+
+
+# ---------------------------------------------------------------------------
+# Helpers locaux
+# ---------------------------------------------------------------------------
+
+
+def _f_criteria(scores: list[bool]) -> list[FScoreCriterion]:
+    noms = [
+        "ROA > 0", "CFO > 0", "ROA en hausse", "CFO > bénéfice net",
+        "Désendettement", "Current ratio en hausse", "Pas d'émission d'actions",
+        "Marge brute en hausse", "Asset turnover en hausse",
+    ]
+    return [FScoreCriterion(nom=noms[i], passe=scores[i], detail="test") for i in range(9)]
+
+
+def _c_signaux(present: list[bool]) -> list[CScoreSignal]:
+    noms = [
+        "Divergence NI-CFO", "DSO en hausse", "DIO en hausse",
+        "Autres actifs courants", "Dépréciation réduite", "Émission d'actions",
+    ]
+    return [CScoreSignal(nom=noms[i], present=present[i], detail="test") for i in range(6)]
+
+
+def _moat_sources(intensites: list[str] | None = None) -> list[MoatSource]:
+    sources = [
+        "intangibles", "switching_costs", "network_effects",
+        "cost_advantages", "efficient_scale",
+    ]
+    if intensites is None:
+        intensites = ["ABSENTE"] * 5
+    return [
+        MoatSource(source=sources[i], present=False, intensite=intensites[i], justification="test")
+        for i in range(5)
+    ]
+
+
+def _buffett_filtres(passes: list[bool] | None = None) -> list[BuffettFiltre]:
+    noms = [
+        "compréhensible", "economics favorables", "management", "prix attractif"
+    ]
+    if passes is None:
+        passes = [False] * 4
+    return [
+        BuffettFiltre(filtre=noms[i], passe=passes[i], score=int(passes[i]), justification="test")
+        for i in range(4)
+    ]
+
+
+def _valuation_methodes() -> list[ValuationMethod]:
+    return [
+        ValuationMethod(methode="dcf", valeur=90.0, hypotheses="WACC 8%, g 3%"),
+        ValuationMethod(methode="comparables", valeur=95.0, hypotheses="EV/EBITDA 12x"),
+        ValuationMethod(methode="sectoriel", valeur=88.0, hypotheses="P/BV 1.5x"),
+    ]
+
+
+def _thesis_context() -> ThesisContext:
+    return ThesisContext(
+        ticker="TEST",
+        verdict_final="ACCUMULER",
+        position_size_pct=3.0,
+        scenario_bull_probabilite=0.30,
+        scenario_base_probabilite=0.50,
+        scenario_bear_probabilite=0.20,
+        synthese_narrative="Thèse de test.",
+        kill_criteria=["kill 1", "kill 2"],
+        devils_advocate="Argument contre.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Graham (existants, conservés)
+# ---------------------------------------------------------------------------
+
+class TestGrahamRatios:
+    def test_champs_requis_valides(self):
+        ratios = GrahamRatios(
+            pe=15.0, pb=1.2, current_ratio=2.5, debt_equity=0.3,
+            eps_growth_10y=0.40, price=100.0, book_value=83.0,
+        )
+        assert ratios.pe == 15.0
+        assert ratios.pb == 1.2
+
+    def test_current_ratio_none_banque(self, ratios_bns):
+        assert ratios_bns.current_ratio is None
+
+    def test_champs_optionnels_absents_par_defaut_none(self):
+        ratios = GrahamRatios(
+            pe=10.0, pb=1.0, current_ratio=2.0,
+            debt_equity=0.2, eps_growth_10y=0.5,
+            price=50.0, book_value=50.0,
+        )
+        assert ratios.eps_ttm is None
+        assert ratios.revenue_bn is None
+        assert ratios.dividend_years is None
+        assert ratios.no_deficit_years is None
+
+    def test_champs_optionnels_renseignes(self, ratios_bns):
+        assert ratios_bns.eps_ttm == 7.25
+        assert ratios_bns.revenue_bn == 38.0
+        assert ratios_bns.dividend_years == 190
+        assert ratios_bns.no_deficit_years == 10
+
+    def test_pe_manquant_leve_erreur(self):
+        with pytest.raises(ValidationError) as exc_info:
+            GrahamRatios(
+                pb=1.0, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=0.3, price=50.0, book_value=50.0,
+            )
+        assert "pe" in str(exc_info.value)
+
+    def test_pb_manquant_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            GrahamRatios(
+                pe=10.0, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=0.3, price=50.0, book_value=50.0,
+            )
+
+    def test_eps_growth_negatif_accepte(self):
+        ratios = GrahamRatios(
+            pe=5.0, pb=0.5, current_ratio=1.5, debt_equity=0.5,
+            eps_growth_10y=-0.15, price=30.0, book_value=60.0,
+        )
+        assert ratios.eps_growth_10y == -0.15
+
+
+class TestGrahamAnalysisInput:
+    def test_construction_valide(self, ratios_msft):
+        inp = GrahamAnalysisInput(ticker="MSFT", ratios=ratios_msft)
+        assert inp.ticker == "MSFT"
+        assert inp.ratios.pe == 34.2
+
+    def test_ticker_manquant_leve_erreur(self, ratios_msft):
+        with pytest.raises(ValidationError):
+            GrahamAnalysisInput(ratios=ratios_msft)
+
+    def test_ratios_manquants_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            GrahamAnalysisInput(ticker="MSFT")
+
+
+class TestGrahamCriterion:
+    def test_construction_valide(self):
+        c = GrahamCriterion(
+            numero=1, nom="Taille suffisante", passe=True,
+            valeur_observee="38 G$", seuil="> 700 M$", commentaire="Critère satisfait.",
+        )
+        assert c.passe is True
+        assert c.numero == 1
+
+    def test_passe_false_valide(self):
+        c = GrahamCriterion(
+            numero=6, nom="P/E modéré", passe=False,
+            valeur_observee="34.2", seuil="≤ 15", commentaire="P/E trop élevé.",
+        )
+        assert c.passe is False
+
+
+class TestGrahamAnalysisOutput:
+    def test_construction_complete_valide(self, graham_output_msft):
+        assert graham_output_msft.ticker == "MSFT"
+        assert graham_output_msft.defensive_score == 2
+        assert graham_output_msft.enterprising_score == 2
+        assert len(graham_output_msft.criteria_defensif) == 8
+        assert len(graham_output_msft.criteria_entreprenant) == 5
+
+    def test_graham_output_exactement_8_criteria_defensif(self, graham_output_msft):
+        assert len(graham_output_msft.criteria_defensif) == 8
+
+    def test_graham_output_exactement_5_criteria_entreprenant(self, graham_output_msft):
+        assert len(graham_output_msft.criteria_entreprenant) == 5
+
+    def test_graham_defensive_score_plage_0_8(self, graham_output_msft):
+        assert 0 <= graham_output_msft.defensive_score <= 8
+
+    def test_graham_marge_securite_fraction(self, graham_output_msft):
+        """marge_securite est une fraction, pas un pourcentage (abs < 2.0)."""
+        assert graham_output_msft.marge_securite is not None
+        assert abs(graham_output_msft.marge_securite) < 2.0
+
+    def test_citations_vides_par_defaut(self, graham_output_msft):
+        assert graham_output_msft.citations == []
+
+    def test_cost_usd_non_nul(self, graham_output_msft):
+        assert graham_output_msft.cost_usd > 0.0
+
+    def test_defensive_score_hors_borne_leve_erreur(self):
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
+        with pytest.raises(ValidationError):
+            GrahamAnalysisOutput(
+                ticker="X", profil_applique="LES_DEUX", defensive_score=9,
+                enterprising_score=0,
+                criteria_defensif=_make_criteria_defensif(),
+                criteria_entreprenant=_make_criteria_entreprenant(),
+                drapeaux_rouges=[], verdict="REJETER",
+                verdict_detail="Test.", recommandation_prochaine_etape=[],
+            )
+
+    def test_model_validator_rejette_7_criteres_defensifs(self):
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
+        with pytest.raises(ValidationError) as exc_info:
+            GrahamAnalysisOutput(
+                ticker="X", profil_applique="LES_DEUX", defensive_score=0,
+                enterprising_score=0,
+                criteria_defensif=_make_criteria_defensif()[:7],
+                criteria_entreprenant=_make_criteria_entreprenant(),
+                drapeaux_rouges=[], verdict="REJETER",
+                verdict_detail="Test.", recommandation_prochaine_etape=[],
+            )
+        assert "criteria_defensif" in str(exc_info.value)
+
+    def test_model_validator_rejette_4_criteres_entrepreneuriaux(self):
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
+        with pytest.raises(ValidationError) as exc_info:
+            GrahamAnalysisOutput(
+                ticker="X", profil_applique="LES_DEUX", defensive_score=0,
+                enterprising_score=0,
+                criteria_defensif=_make_criteria_defensif(),
+                criteria_entreprenant=_make_criteria_entreprenant()[:4],
+                drapeaux_rouges=[], verdict="REJETER",
+                verdict_detail="Test.", recommandation_prochaine_etape=[],
+            )
+        assert "criteria_entreprenant" in str(exc_info.value)
+
+
+class TestCitation:
+    def test_construction_valide(self):
+        c = Citation(
+            source=".claude/skills/graham-stock-screening/references/graham-defensif.md",
+            extrait="Current ratio ≥ 2.0",
+            score=0.87,
+        )
+        assert c.score == 0.87
+
+
+# ---------------------------------------------------------------------------
+# Earnings Quality
+# ---------------------------------------------------------------------------
+
+class TestEarningsQualityOutput:
+    def _make_output(self, **overrides) -> EarningsQualityOutput:
+        base = dict(
+            ticker="TEST",
+            is_financial=False,
+            m_score=MScoreDetail(
+                dsri=None, gmi=None, aqi=None, sgi=1.0, depi=None,
+                sgai=None, tata=0.0, lvgi=None, m_score=-2.5,
+                interpretation="sous_seuil",
+            ),
+            z_score=ZScoreDetail(variante="Z_original", z_score=3.0, interpretation="zone_sure"),
+            f_score=FScoreDetail(
+                criteria=_f_criteria([True] * 9), f_score=9, interpretation="fort"
+            ),
+            c_score=CScoreDetail(
+                signaux=_c_signaux([False] * 6), c_score=0, interpretation="propre"
+            ),
+            sloan=SloanDetail(accrual_ratio=-0.02, interpretation="qualite_elevee"),
+            drapeaux_rouges=[],
+            verdict="AUCUN_SIGNAL",
+            verdict_detail="Aucun signal.",
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return EarningsQualityOutput(**base)
+
+    def test_earnings_f_score_exactement_9_criteria(self):
+        output = self._make_output()
+        assert len(output.f_score.criteria) == 9
+
+    def test_earnings_c_score_exactement_6_signaux(self):
+        output = self._make_output()
+        assert len(output.c_score.signaux) == 6
+
+    def test_earnings_verdict_valide(self):
+        verdicts = {"AUCUN_SIGNAL", "ATTENTION", "WATCHLIST", "REJETER"}
+        for v in verdicts:
+            output = self._make_output(verdict=v)
+            assert output.verdict == v
+
+    def test_earnings_verdict_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(verdict="INCONNU")
+
+    def test_f_score_7_criteria_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(
+                f_score=FScoreDetail(
+                    criteria=_f_criteria([True] * 9)[:7],
+                    f_score=7,
+                    interpretation="test",
+                )
+            )
+
+    def test_c_score_5_signaux_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(
+                c_score=CScoreDetail(
+                    signaux=_c_signaux([False] * 6)[:5],
+                    c_score=0,
+                    interpretation="test",
+                )
+            )
+
+
+# ---------------------------------------------------------------------------
+# Dorsey Moat
+# ---------------------------------------------------------------------------
+
+class TestDorseyMoatOutput:
+    def _make_output(self, **overrides) -> DorseyMoatOutput:
+        base = dict(
+            ticker="TEST",
+            moat_type="NARROW",
+            sources_identifiees=_moat_sources(),
+            roic_durability="MODÉRÉE",
+            verdict_detail="Test.",
+            drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return DorseyMoatOutput(**base)
+
+    def test_dorsey_sources_exactement_5(self):
+        output = self._make_output()
+        assert len(output.sources_identifiees) == 5
+
+    def test_dorsey_moat_type_valide(self):
+        for moat in {"WIDE", "NARROW", "NONE"}:
+            output = self._make_output(moat_type=moat)
+            assert output.moat_type == moat
+
+    def test_dorsey_moat_type_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(moat_type="INCONNU")
+
+    def test_dorsey_roic_durability_valide(self):
+        for d in {"FORTE", "MODÉRÉE", "FAIBLE"}:
+            output = self._make_output(roic_durability=d)
+            assert output.roic_durability == d
+
+    def test_dorsey_roic_durability_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(roic_durability="INCONNUE")
+
+    def test_dorsey_4_sources_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(sources_identifiees=_moat_sources()[:4])
+
+
+# ---------------------------------------------------------------------------
+# Buffett Quality
+# ---------------------------------------------------------------------------
+
+class TestBuffettQualityOutput:
+    def _make_output(self, **overrides) -> BuffettQualityOutput:
+        base = dict(
+            ticker="TEST",
+            filtres=_buffett_filtres([True, True, False, False]),
+            owner_earnings=8.5,
+            quality_score=2,
+            verdict="QUALITE_CORRECTE",
+            verdict_detail="Test.",
+            drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return BuffettQualityOutput(**base)
+
+    def test_buffett_filtres_exactement_4(self):
+        output = self._make_output()
+        assert len(output.filtres) == 4
+
+    def test_buffett_quality_score_plage_0_4(self):
+        for score in range(5):
+            output = self._make_output(quality_score=score)
+            assert 0 <= output.quality_score <= 4
+
+    def test_buffett_verdict_valide(self):
+        for v in {"COMPOUNDER", "QUALITE_CORRECTE", "REJETER"}:
+            output = self._make_output(verdict=v)
+            assert output.verdict == v
+
+    def test_buffett_verdict_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(verdict="INCONNU")
+
+    def test_buffett_3_filtres_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(filtres=_buffett_filtres()[:3])
+
+    def test_buffett_quality_score_hors_plage_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(quality_score=5)
+
+
+# ---------------------------------------------------------------------------
+# Stock Valuation Triangulation
+# ---------------------------------------------------------------------------
+
+class TestStockValuationOutput:
+    def _make_output(self, **overrides) -> StockValuationOutput:
+        base = dict(
+            ticker="TEST",
+            methodes=_valuation_methodes(),
+            fourchette_basse=80.0,
+            fourchette_centrale=91.0,
+            fourchette_haute=105.0,
+            marge_securite_composite=0.12,
+            matrice_sensibilite=SensitivityMatrix(
+                wacc_range=[0.07, 0.08, 0.09],
+                growth_range=[0.02, 0.03, 0.04],
+                values=[[85.0, 90.0, 95.0], [80.0, 85.0, 90.0], [75.0, 80.0, 85.0]],
+            ),
+            verdict="SOUS_EVALUE",
+            verdict_detail="Test.",
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return StockValuationOutput(**base)
+
+    def test_valuation_methodes_exactement_3(self):
+        output = self._make_output()
+        assert len(output.methodes) == 3
+
+    def test_valuation_fourchette_ordre(self):
+        output = self._make_output()
+        assert output.fourchette_basse <= output.fourchette_centrale
+        assert output.fourchette_centrale <= output.fourchette_haute
+
+    def test_valuation_fourchette_incoherente_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(fourchette_basse=100.0, fourchette_centrale=80.0)
+
+    def test_valuation_matrice_coherente(self):
+        output = self._make_output()
+        m = output.matrice_sensibilite
+        assert len(m.values) == len(m.wacc_range)
+        for row in m.values:
+            assert len(row) == len(m.growth_range)
+
+    def test_valuation_verdict_valide(self):
+        for v in {"SOUS_EVALUE", "JUSTE_VALEUR", "SUREVALUE"}:
+            output = self._make_output(verdict=v)
+            assert output.verdict == v
+
+    def test_valuation_verdict_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(verdict="INCONNU")
+
+    def test_valuation_2_methodes_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(methodes=_valuation_methodes()[:2])
+
+
+# ---------------------------------------------------------------------------
+# Thesis Builder
+# ---------------------------------------------------------------------------
+
+class TestThesisBuilderOutput:
+    def _make_output(self, **overrides) -> ThesisBuilderOutput:
+        base = dict(
+            ticker="TEST",
+            scenario_bull=ThesisScenario(probabilite=0.30, rendement_cible=0.40, hypotheses=["h1"]),
+            scenario_base=ThesisScenario(probabilite=0.50, rendement_cible=0.15, hypotheses=["h2"]),
+            scenario_bear=ThesisScenario(probabilite=0.20, rendement_cible=-0.20, hypotheses=["h3"]),
+            kill_criteria=["kill 1", "kill 2"],
+            devils_advocate="Argument contre.",
+            position_size_pct=4.0,
+            verdict_final="ACCUMULER",
+            synthese_narrative="Thèse formelle de test.",
+        )
+        base.update(overrides)
+        return ThesisBuilderOutput(**base)
+
+    def test_thesis_probabilites_somme_1(self):
+        output = self._make_output()
+        total = (
+            output.scenario_bull.probabilite
+            + output.scenario_base.probabilite
+            + output.scenario_bear.probabilite
+        )
+        assert abs(total - 1.0) <= 0.01
+
+    def test_thesis_probabilites_ne_sommant_pas_1_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(
+                scenario_bull=ThesisScenario(probabilite=0.50, rendement_cible=0.40, hypotheses=["h"]),
+                scenario_base=ThesisScenario(probabilite=0.50, rendement_cible=0.15, hypotheses=["h"]),
+                scenario_bear=ThesisScenario(probabilite=0.20, rendement_cible=-0.20, hypotheses=["h"]),
+            )
+
+    def test_thesis_position_size_plage_0_10(self):
+        for size in [0.0, 2.5, 5.0, 10.0]:
+            output = self._make_output(position_size_pct=size)
+            assert 0.0 <= output.position_size_pct <= 10.0
+
+    def test_thesis_position_size_hors_plage_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(position_size_pct=11.0)
+
+    def test_thesis_verdict_valide(self):
+        for v in {"ACHETER", "ACCUMULER", "CONSERVER", "VENDRE"}:
+            output = self._make_output(verdict_final=v)
+            assert output.verdict_final == v
+
+    def test_thesis_verdict_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(verdict_final="INCONNU")
+
+
+# ---------------------------------------------------------------------------
+# Munger Mental Models
+# ---------------------------------------------------------------------------
+
+class TestMungerOutput:
+    def _make_output(self, **overrides) -> MungerOutput:
+        base = dict(
+            ticker="TEST",
+            biais_detectes=[
+                BiaisCognitif(
+                    nom="Commitment Bias",
+                    description="Trop attaché à la thèse initiale.",
+                    impact_sur_these="MODERE",
+                )
+            ],
+            inversion_analysis="Qu'est-ce qui ferait échouer la thèse ?",
+            lollapalooza_risk=False,
+            verdict_comportemental="BIAIS_DETECTE",
+            verdict_detail="Un biais détecté, vigilance requise.",
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return MungerOutput(**base)
+
+    def test_munger_biais_impact_valide(self):
+        for impact in {"MINEUR", "MODERE", "MAJEUR"}:
+            biais = BiaisCognitif(
+                nom="Test", description="desc", impact_sur_these=impact
+            )
+            assert biais.impact_sur_these == impact
+
+    def test_munger_biais_impact_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(
+                biais_detectes=[
+                    BiaisCognitif(nom="Test", description="desc", impact_sur_these="CRITIQUE")
+                ]
+            )
+
+    def test_munger_verdict_valide(self):
+        for v in {"CONFIANCE_JUSTIFIEE", "BIAIS_DETECTE", "ALERTE_ROUGE"}:
+            output = self._make_output(verdict_comportemental=v)
+            assert output.verdict_comportemental == v
+
+    def test_munger_verdict_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(verdict_comportemental="INCONNU")
+
+
+# ---------------------------------------------------------------------------
+# Canadian Tax
+# ---------------------------------------------------------------------------
+
+class TestCanadianTaxSchemas:
+    def _make_output(self, **overrides) -> CanadianTaxOutput:
+        base = dict(
+            ticker="TEST",
+            compte_recommande="CELI",
+            justification_fiscale="Action de croissance → CELI prioritaire.",
+            impact_retenue_us=None,
+            strategie_smith_manoeuvre=False,
+            taux_inclusion_gain_capital=0.50,
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return CanadianTaxOutput(**base)
+
+    def test_tax_compte_recommande_valide(self):
+        for compte in {"CELI", "REER", "CELIAPP", "NON_ENREGISTRE"}:
+            output = self._make_output(compte_recommande=compte)
+            assert output.compte_recommande == compte
+
+    def test_tax_compte_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            self._make_output(compte_recommande="BROKERAGE")
+
+    def test_tax_province_invalide_leve_erreur(self):
+        with pytest.raises(ValidationError):
+            CanadianTaxInput(
+                ticker="TEST",
+                position_size_pct=3.0,
+                verdict_final="ACCUMULER",
+                province="XX",
+            )
+
+    def test_tax_province_valide_acceptee(self):
+        for province in {"QC", "ON", "BC", "AB"}:
+            inp = CanadianTaxInput(
+                ticker="TEST",
+                position_size_pct=3.0,
+                verdict_final="ACCUMULER",
+                province=province,
+            )
+            assert inp.province == province
+
+    def test_tax_taux_inclusion_fraction(self):
+        output = self._make_output()
+        assert 0 < output.taux_inclusion_gain_capital <= 1.0
+
+    def test_tax_taux_inclusion_50_pct(self):
+        output = self._make_output(taux_inclusion_gain_capital=0.50)
+        assert output.taux_inclusion_gain_capital == 0.50

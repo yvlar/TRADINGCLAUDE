@@ -1,0 +1,4 @@
+{env.DOMAIN} {
+    reverse_proxy copilote:8000
+    tls {env.CADDY_EMAIL}
+}

@@ -1,0 +1,22 @@
+services:
+  copilote:
+    ports: []
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    env_file:
+      - .env
+    depends_on:
+      - copilote
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
