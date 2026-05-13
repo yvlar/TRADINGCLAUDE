@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import asyncpg
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.skills.base import UsageDetail
+from app.utils.ticker_sanitizer import sanitize_ticker
 
 if TYPE_CHECKING:
     from app.services.analysis_cache import AnalysisCacheService
@@ -120,6 +121,36 @@ from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
 logger = logging.getLogger(__name__)
 
 
+def _detect_inter_skill_conflicts(
+    graham: "GrahamAnalysisOutput | None",
+    buffett: "BuffettQualityOutput | None",
+    earnings: "EarningsQualityOutput | None",
+    dorsey: "DorseyMoatOutput | None",
+) -> list[str]:
+    """Détecte les contradictions flagrantes entre les verdicts de skills."""
+    conflicts: list[str] = []
+
+    if graham is not None and buffett is not None:
+        if graham.defensive_verdict == "REJETER" and buffett.verdict == "COMPOUNDER":
+            conflicts.append(
+                "graham=REJETER + buffett=COMPOUNDER : contradiction fondamentale — revue manuelle requise"
+            )
+
+    if earnings is not None and buffett is not None:
+        if earnings.verdict == "REJETER" and buffett.verdict == "COMPOUNDER":
+            conflicts.append(
+                "earnings_quality=REJETER + buffett=COMPOUNDER : risque comptable sur supposé compounder"
+            )
+
+    if graham is not None and earnings is not None:
+        if graham.defensive_verdict == "PASSE" and earnings.verdict == "REJETER":
+            conflicts.append(
+                "graham=PASSE + earnings_quality=REJETER : scores défensifs positifs mais risque de manipulation comptable"
+            )
+
+    return conflicts
+
+
 def _extract_int(result_json: str, *keys: str) -> int | None:
     """Navigue dans un JSONB imbriqué et retourne un int ou None."""
     try:
@@ -147,6 +178,11 @@ class AnalyzeRequest(BaseModel):
 
     ticker: str
     ratios: GrahamRatios | None = None
+
+    @field_validator("ticker")
+    @classmethod
+    def valider_ticker(cls, v: str) -> str:
+        return sanitize_ticker(v)
     workflow: str = "value_graham"
     earnings_ratios: EarningsQualityRatios | None = None
     dorsey_ratios: DorseyRatios | None = None
@@ -188,6 +224,10 @@ class AnalyzeResponse(BaseModel):
     pabrai: PabraiOutput | None = None
     cost_usd: float
     created_at: str
+    inter_skill_conflicts: list[str] = Field(
+        default_factory=list,
+        description="Contradictions détectées entre verdicts de skills — calculé de façon déterministe.",
+    )
 
 
 class HistoryEntry(BaseModel):
@@ -731,6 +771,10 @@ class Orchestrator:
             all_usages
         )
 
+        inter_skill_conflicts = _detect_inter_skill_conflicts(
+            graham_output, buffett_output, earnings_output, dorsey_output
+        )
+
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -753,6 +797,7 @@ class Orchestrator:
             pabrai=pabrai_output,
             cost_usd=total_cost,
             created_at=datetime.now(timezone.utc).isoformat(),
+            inter_skill_conflicts=inter_skill_conflicts,
         )
 
         # --- Étape finale : mise en cache pour les prochains appels ---
@@ -1203,6 +1248,10 @@ class Orchestrator:
             all_usages,
         )
 
+        inter_skill_conflicts = _detect_inter_skill_conflicts(
+            graham_output, buffett_output, earnings_output, dorsey_output
+        )
+
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1225,6 +1274,7 @@ class Orchestrator:
             pabrai=pabrai_output,
             cost_usd=total_cost,
             created_at=datetime.now(timezone.utc).isoformat(),
+            inter_skill_conflicts=inter_skill_conflicts,
         )
 
         if cache is not None:

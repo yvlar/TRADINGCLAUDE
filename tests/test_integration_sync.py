@@ -23,10 +23,11 @@ BODY_TEST = {
     },
 }
 
-BODY_SANS_PE = {
+BODY_SANS_PB = {
+    # pb manquant — pe est optionnel depuis Sprint 36, pb reste requis
     "ticker": TICKER_TEST,
     "ratios": {
-        "pb": 1.5,
+        "pe": 11.0,
         "current_ratio": 2.0,
         "debt_equity": 0.30,
         "eps_growth_10y": 0.30,
@@ -73,16 +74,27 @@ async def test_analyze_skills_applied_contient_graham(client):
 
 
 async def test_analyze_ratios_manquants_422(client):
-    r = await client.post("/analyze", json=BODY_SANS_PE)
+    r = await client.post("/analyze", json=BODY_SANS_PB)
     assert r.status_code == 422
 
 
 async def test_analyze_ticker_vide_422(client):
     body = {**BODY_TEST, "ticker": ""}
     r = await client.post("/analyze", json=body)
-    # FastAPI accepte un ticker vide (pas de contrainte Pydantic sur la chaîne vide)
-    # Le test vérifie que la requête est bien envoyée et que le serveur répond
-    assert r.status_code in {200, 422}
+    assert r.status_code == 422
+
+
+async def test_analyze_ticker_invalide_422(client):
+    for ticker_invalide in ["DROP TABLE", "BNS; rm -rf", "B.NS.TO", "TOOLONGTICKERX"]:
+        r = await client.post("/analyze", json={**BODY_TEST, "ticker": ticker_invalide})
+        assert r.status_code == 422, f"Attendu 422 pour ticker {ticker_invalide!r}"
+
+
+async def test_analyze_ticker_minuscules_accepte(client):
+    """Un ticker en minuscules est normalisé automatiquement → 200 (pas 422)."""
+    body = {**BODY_TEST, "ticker": "bns"}
+    r = await client.post("/analyze", json=body)
+    assert r.status_code == 200
 
 
 async def test_history_apres_analyse(client):

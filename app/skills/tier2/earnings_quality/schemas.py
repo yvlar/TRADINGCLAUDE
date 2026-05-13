@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from app.skills.base import Citation
 
@@ -131,6 +131,19 @@ class EarningsQualityOutput(BaseModel):
     recommandation_prochaine_etape: list[str]
     citations: list[Citation] = Field(default_factory=list)
     cost_usd: float = 0.0
+
+    @computed_field
+    @property
+    def confidence_score(self) -> float:
+        """Fraction des 5 cadres analytiques calculables (score non-None)."""
+        cadres = [
+            self.m_score.m_score is not None,
+            self.z_score.z_score is not None,
+            True,  # f_score : toujours calculable (int ge=0 le=9)
+            True,  # c_score : toujours calculable (int ge=0 le=6)
+            self.sloan.accrual_ratio is not None,
+        ]
+        return round(sum(1 for c in cadres if c) / len(cadres), 2)
 
     @model_validator(mode="after")
     def valider_comptes_cadres(self) -> "EarningsQualityOutput":

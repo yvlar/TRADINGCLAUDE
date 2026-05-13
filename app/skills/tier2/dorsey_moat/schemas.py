@@ -53,6 +53,10 @@ class DorseyMoatOutput(BaseModel):
     recommandation_prochaine_etape: list[str]
     citations: list[Citation] = Field(default_factory=list)
     cost_usd: float = 0.0
+    confidence_score: float = Field(
+        default=0.0,
+        description="Fraction des champs DorseyRatios fournis — calculé dans execute(), jamais via prompt.",
+    )
 
     @model_validator(mode="after")
     def valider_sources(self) -> "DorseyMoatOutput":

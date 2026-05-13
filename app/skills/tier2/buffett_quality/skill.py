@@ -152,6 +152,11 @@ class BuffettQualitySkill(SkillBase):
         data = _parse_claude_json(raw_text)
         cost_usd = calculate_cost(response.usage, self._model)
 
+        # confidence_score = fraction des champs BuffettRatios non-None (complétude des données)
+        _ratios_fields = list(input_data.ratios.model_fields.keys())
+        _non_null = sum(1 for f in _ratios_fields if getattr(input_data.ratios, f) is not None)
+        data["confidence_score"] = round(_non_null / len(_ratios_fields), 2) if _ratios_fields else 0.0
+
         tokens_input = response.usage.input_tokens
         tokens_output = response.usage.output_tokens
         tokens_cache_r = getattr(response.usage, "cache_read_input_tokens", 0)

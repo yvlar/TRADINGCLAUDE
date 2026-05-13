@@ -78,41 +78,102 @@ de l'infrastructure.
 ### Phases d'implémentation
 | Phase | État | Description |
 |-------|------|-------------|
-| **Phase 0** | ✅ Complète | API FastAPI + graham_analysis skill + PostgreSQL |
-| Phase 1 | 🔜 Semaines 2-3 | Ingestion RAG dans Qdrant, get_citations() |
-| Phase 2 | 🔜 Mois 1-2 | Skills restants, extracteurs automatiques |
-| Phase 3 | 🔜 Mois 2-3 | Pipeline de synthèse, investment_thesis_builder |
+| **Phase 0** | ✅ | API FastAPI + graham_analysis skill + PostgreSQL |
+| **Phase 1** | ✅ | Infrastructure RAG Qdrant, get_citations(), Langfuse, retry backoff |
+| **Phase 2** | ✅ | 17 skills en production, extracteurs tier1, screener multi-tickers |
+| **Phase 3** | 🔄 Sprint 36 | Eval framework qualité IA, sanitisation ticker, pipeline synthèse |
 
 ### Structure du projet
 ```
 TradingClaude/
 ├── CLAUDE.md                          # Ce fichier
+├── ROADMAP.md                         # Source de vérité des sprints (sprint actif, historique)
 ├── architecture-copilote-financier.md # Source de vérité technique (sections 3.2, 7.3, 8.2, 9.1, 10, 11.2)
-├── docker-compose.yml                 # 4 services : copilote, postgres, qdrant, redis
+├── docker-compose.yml                 # 5 services : copilote, postgres, qdrant, redis, celery
 ├── Dockerfile                         # Image Python 3.11 pour le service copilote
 ├── requirements.txt                   # Dépendances Python
 ├── .env                               # Variables d'environnement (NE PAS committer)
 ├── .env.example                       # Template des variables requises
 │
-├── app/                               # Service FastAPI (Phase 0+)
+├── app/
 │   ├── api/
-│   │   └── main.py                    # Endpoints /healthz et /analyze
+│   │   ├── main.py                    # Lifespan, CORS, middlewares, routeurs
+│   │   └── endpoints/
+│   │       ├── analyze_stream.py      # POST /analyze (SSE streaming)
+│   │       ├── screen.py              # POST /screen (multi-tickers, max 20)
+│   │       ├── extract.py             # POST /extract (ratios depuis ticker)
+│   │       ├── jobs.py                # GET/POST /jobs (Celery async)
+│   │       ├── report.py              # GET /report/{ticker}
+│   │       ├── watchlist.py           # CRUD /watchlist
+│   │       ├── telemetry.py           # GET /telemetry/summary|costs|cache|latency
+│   │       └── ws_metrics.py          # WebSocket /ws/metrics
+│   │
 │   ├── orchestrator/
-│   │   └── core.py                    # Workflow company_analysis + persistance
-│   └── skills/
-│       └── tier2/
-│           └── graham_analysis/       # Premier skill implémenté
-│               ├── skill.py           # GrahamAnalysisSkill (hérite de SkillBase)
-│               ├── schemas.py         # Pydantic : GrahamRatios, GrahamAnalysisOutput
-│               └── prompts/
-│                   └── system.md      # System prompt complet (prompt caching activé)
+│   │   ├── core.py                    # Workflow company_analysis + persistance
+│   │   └── router.py                  # Dispatche vers les skills selon la requête
+│   │
+│   ├── skills/
+│   │   ├── base.py                    # SkillBase — classe parente de tous les skills
+│   │   ├── tier1/                     # Extracteurs de données
+│   │   │   ├── yahoo_finance.py       # Ratios depuis yfinance
+│   │   │   └── sedar_plus.py          # Documents SEDAR+
+│   │   └── tier2/                     # 15 skills d'analyse (chacun : skill.py + schemas.py + prompts/)
+│   │       ├── graham_analysis/
+│   │       ├── earnings_quality/
+│   │       ├── dorsey_moat/
+│   │       ├── buffett_quality/
+│   │       ├── stock_valuation/
+│   │       ├── thesis_builder/
+│   │       ├── munger_mental/
+│   │       ├── canadian_tax/
+│   │       ├── lynch_categories/
+│   │       ├── fisher_scuttlebutt/
+│   │       ├── klarman_margin/
+│   │       ├── greenblatt/
+│   │       ├── damodaran_narrative/
+│   │       ├── marks_cycles/
+│   │       └── pabrai_dhandho/
+│   │
+│   ├── rag/                           # Phase 1 — RAG Qdrant
+│   │   ├── client.py                  # Connexion Qdrant
+│   │   ├── embeddings.py              # Génération embeddings (OpenAI)
+│   │   └── service.py                 # RagService — get_citations()
+│   │
+│   ├── middleware/
+│   │   ├── auth.py                    # BearerTokenMiddleware
+│   │   └── rate_limit.py              # RateLimitMiddleware
+│   │
+│   ├── observability/
+│   │   └── langfuse_client.py         # LangfuseTracer (optionnel si LANGFUSE_SECRET_KEY)
+│   │
+│   ├── services/
+│   │   ├── analysis_cache.py          # Cache Redis pour les analyses
+│   │   ├── screener.py                # Screener multi-tickers
+│   │   ├── report.py                  # Génération de rapports
+│   │   ├── watchlist_service.py       # Service watchlist
+│   │   ├── price_alert_service.py     # Alertes de prix
+│   │   └── email_service.py           # Envoi de rapports par courriel
+│   │
+│   ├── workers/
+│   │   ├── celery_app.py              # Configuration Celery
+│   │   └── tasks.py                   # Tâches async (analyses longues)
+│   │
+│   ├── models/
+│   │   └── watchlist.py               # Modèle Pydantic watchlist
+│   │
+│   ├── utils/
+│   │   ├── costs.py                   # Calcul cost_usd depuis usage tokens
+│   │   ├── retry.py                   # Retry exponentiel 429/529
+│   │   └── ticker_sanitizer.py        # Validation et normalisation des tickers
+│   │
+│   └── logging_config.py              # Logging structuré JSON
 │
 ├── infra/
 │   └── postgres/
-│       └── init.sql                   # Table analysis_history (section 7.3)
+│       └── init.sql                   # Table analysis_history
 │
 ├── .claude/
-│   └── skills/                        # Les 15 skills — base de connaissances
+│   └── skills/                        # Les 15 skills — base de connaissances (source de vérité)
 │
 └── analyses/                          # Analyses complètes générées (ex: BNS-2026-05.md)
 ```
@@ -121,18 +182,20 @@ TradingClaude/
 
 ## Stack technique
 
-### Service copilote (nouveau — Phase 0)
+### Service copilote
 - **Python 3.11** — runtime
-- **FastAPI ≥ 0.115** — API REST async
+- **FastAPI ≥ 0.115** — API REST async (SSE streaming, WebSocket)
 - **Anthropic SDK ≥ 0.40** — API Claude avec prompt caching
 - **asyncpg ≥ 0.29** — driver PostgreSQL async
 - **Pydantic v2** — validation des données
+- **Celery** — tâches asynchrones longues (analyses background)
+- **Langfuse** — observabilité LLM (optionnel, activé si `LANGFUSE_SECRET_KEY`)
 - **Docker Compose** — orchestration locale homelab
 
 ### Infrastructure
 - **PostgreSQL 16** — historique des analyses (`analysis_history`)
-- **Qdrant v1.9** — vecteurs RAG (Phase 1+)
-- **Redis 7** — cache sessions (Phase 1+)
+- **Qdrant v1.9** — vecteurs RAG, collection `investment_knowledge`
+- **Redis 7** — cache analyses + sessions Celery
 
 ### Outils d'analyse existants
 - **React + TypeScript** — interfaces de screening interactives
@@ -210,6 +273,24 @@ Un sprint n'est **pas terminé** tant que ces deux fichiers n'ont pas été mis 
 
 `prompt-mise-a-jour-roadmap.md` doit toujours inclure une section **SPRINTS SUGGÉRÉS** proposant 3-5 nouveaux sprints non encore planifiés, avec objectif, complexité et justification courte.
 
+**Ces mises à jour sont automatiques — ne pas demander confirmation à Yves. Les exécuter dès que les livrables du sprint sont validés.**
+
+### Autonomie pendant un sprint — actions sans confirmation requise
+
+Durant l'exécution d'un sprint, Claude Code est autorisé à effectuer les actions suivantes **sans demander de confirmation** :
+
+- **Modifier des fichiers existants** — éditer tout fichier Python, TypeScript, Markdown, JSON, YAML du projet
+- **Créer de nouveaux fichiers** — nouveaux modules, schemas, tests, prompts, services
+- **Exécuter des tests** — `pytest`, `vitest`, et toute commande de test du projet
+- **Exécuter des commandes bash** — linting, formatage, vérifications statiques, inspection de fichiers
+
+**Exceptions — confirmation obligatoire avant d'agir :**
+- `git push` ou toute opération affectant le dépôt distant
+- `docker-compose down` ou destruction d'infrastructure
+- Suppression de fichiers (`rm`, `del`)
+- Modification de `.env` ou de fichiers de secrets
+- Toute opération irréversible sur la base de données (DROP, DELETE sans WHERE)
+
 ### Avant de coder ou analyser
 1. Lire le skill concerné dans `.claude/skills/{skill-name}/SKILL.md`
 2. Consulter les `references/*.md` du skill pour les formules et seuils précis
@@ -270,18 +351,32 @@ Utiliser `unittest.mock.patch` (backend) ou `vi.mock` (frontend) selon le contex
 ## Commandes fréquentes
 
 ```bash
-# Démarrer l'infrastructure complète (Phase 0)
+# Démarrer l'infrastructure complète
 docker-compose up -d
 
 # Vérifier que le service est opérationnel
 curl localhost:8000/healthz
 
-# Lancer une analyse Graham via l'API
+# Analyse complète via SSE streaming (retourne les 15 skills progressivement)
 curl -X POST localhost:8000/analyze \
   -H "Content-Type: application/json" \
-  -d '{"ticker":"BNS","ratios":{"pe":11.0,"pb":1.3,"current_ratio":null,
-       "debt_equity":0.45,"eps_growth_10y":0.27,"price":80,"book_value":61.5,
-       "eps_ttm":7.25,"revenue_bn":38,"dividend_years":190}}'
+  -d '{"ticker":"BNS"}'
+
+# Screener multi-tickers (max 20)
+curl -X POST localhost:8000/screen \
+  -H "Content-Type: application/json" \
+  -d '{"tickers":["BNS","TD","RY"]}'
+
+# Extraire les ratios financiers depuis Yahoo Finance
+curl -X POST localhost:8000/extract -H "Content-Type: application/json" \
+  -d '{"ticker":"BNS"}'
+
+# Historique des analyses
+curl "localhost:8000/history?ticker=BNS"
+
+# Métriques / observabilité
+curl "localhost:8000/metrics?days=30"
+curl "localhost:8000/telemetry/summary"
 
 # Logs du service copilote
 docker-compose logs -f copilote
@@ -292,7 +387,7 @@ docker-compose down
 # Reconstruire après modification du code
 docker-compose up -d --build copilote
 
-# Connexion directe à PostgreSQL (vérifier les analyses persistées)
+# Connexion directe à PostgreSQL
 docker-compose exec postgres psql -U copilote -d copilote \
   -c "SELECT ticker, defensive_score, cost_usd, created_at FROM analysis_history ORDER BY created_at DESC LIMIT 10;"
 ```
@@ -314,14 +409,14 @@ python -m pytest backtests/tests/
 
 ## Ajout d'un nouveau skill (Phase 2+)
 
-Pour implémenter un nouveau skill dans l'API (ex: `earnings_quality`) :
+Pour implémenter un nouveau skill dans l'API :
 
 1. Créer `app/skills/tier2/{skill_name}/` avec `skill.py`, `schemas.py`, `prompts/system.md`
-2. Hériter de `SkillBase` dans `skill.py` (défini dans `graham_analysis/skill.py` en Phase 0, migrer vers `app/skills/base.py` en Phase 2)
+2. Hériter de `SkillBase` dans `skill.py` (`app/skills/base.py`)
 3. Le system prompt doit dépasser **1 024 tokens** pour bénéficier du prompt caching
-4. Ajouter le skill au workflow dans `app/orchestrator/core.py`
+4. Ajouter le skill au workflow dans `app/orchestrator/core.py` et `router.py`
 5. Le skill source de vérité est dans `.claude/skills/{skill-name}/SKILL.md` — le prompt doit être fidèle à ce contenu
-6. Pas de test automatisé en Phase 0-1 — validation manuelle via curl
+6. Couvrir selon la pyramide de tests : schemas (unitaire) + endpoint (intégration)
 
 ---
 
@@ -333,5 +428,5 @@ Pour implémenter un nouveau skill dans l'API (ex: `earnings_quality`) :
 
 ---
 
-*Dernière mise à jour : Mai 2026 — Yves / TradingClaude*  
-*Phase 0 complète : API FastAPI + graham_analysis + prompt caching + PostgreSQL*
+*Dernière mise à jour : 2026-05-13 — Yves / TradingClaude*  
+*Phase 3 active — Sprint 38 — 17 skills en production, RAG Qdrant, Celery, Langfuse, SSE streaming*

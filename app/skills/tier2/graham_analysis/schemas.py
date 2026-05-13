@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+import logging
+
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from app.skills.base import Citation
+
+_logger = logging.getLogger(__name__)
 
 
 class GrahamRatios(BaseModel):
     """Ratios financiers fournis manuellement par l'utilisateur en Phase 0."""
 
-    pe: float = Field(description="Price/Earnings ratio (cours / BPA)")
+    pe: float | None = Field(None, description="Price/Earnings ratio (cours / BPA). None si société déficitaire sans BPA publiable.")
     pb: float = Field(description="Price/Book ratio (cours / valeur comptable par action)")
     current_ratio: float | None = Field(None, description="Actif circulant / Passif circulant (None pour les banques)")
     debt_equity: float = Field(description="Dette totale / Capitaux propres")
@@ -21,6 +25,48 @@ class GrahamRatios(BaseModel):
     revenue_bn: float | None = Field(None, description="Revenus annuels en milliards de la devise du titre")
     dividend_years: int | None = Field(None, description="Nombre d'années consécutives de dividendes versés")
     no_deficit_years: int | None = Field(None, description="Nombre d'années sans déficit sur les dernières années")
+
+    @model_validator(mode="after")
+    def valider_coherence_ratios(self) -> "GrahamRatios":
+        """Détecte les incohérences financières — WARNING uniquement, jamais d'exception."""
+        if self.pe is not None and self.pe < 0:
+            _logger.warning(
+                "GrahamRatios: P/E négatif (pe=%.2f) — déficit ou BPA négatif", self.pe
+            )
+
+        if self.pb < 0:
+            _logger.warning(
+                "GrahamRatios: P/B négatif (pb=%.2f) — valeur comptable négative (cas extrême)", self.pb
+            )
+
+        if self.eps_growth_10y > 5.0:
+            _logger.warning(
+                "GrahamRatios: eps_growth_10y=%.2f suspect (> 500%% de croissance sur 10 ans)",
+                self.eps_growth_10y,
+            )
+
+        # Triangle pe / price / eps_ttm
+        if (
+            self.pe is not None
+            and self.eps_ttm is not None
+            and self.price is not None
+            and self.eps_ttm != 0
+            and abs(self.pe) > 0.01
+        ):
+            pe_calcule = self.price / self.eps_ttm
+            ecart = abs(pe_calcule - self.pe) / abs(self.pe)
+            if ecart > 0.50:
+                _logger.warning(
+                    "GrahamRatios: incohérence P/E forte — fourni=%.1f, calculé=%.1f (écart %.0f%%)",
+                    self.pe, pe_calcule, ecart * 100,
+                )
+            elif ecart > 0.15:
+                _logger.warning(
+                    "GrahamRatios: incohérence P/E — fourni=%.1f, calculé=%.1f (écart %.0f%%)",
+                    self.pe, pe_calcule, ecart * 100,
+                )
+
+        return self
 
 
 class GrahamAnalysisInput(BaseModel):
@@ -46,10 +92,15 @@ class GrahamAnalysisOutput(BaseModel):
 
     ticker: str
     profil_applique: str = Field(description="Toujours LES_DEUX en Phase 0")
-    defensive_score: int = Field(ge=0, le=8, description="Critères défensifs satisfaits sur 8")
     enterprising_score: int = Field(ge=0, le=5, description="Critères entrepreneuriaux satisfaits sur 5")
     criteria_defensif: list[GrahamCriterion] = Field(description="Les 8 critères défensifs évalués")
     criteria_entreprenant: list[GrahamCriterion] = Field(description="Les 5 critères entrepreneuriaux évalués")
+
+    @computed_field
+    @property
+    def defensive_score(self) -> int:
+        """Décompte déterministe des critères défensifs satisfaits — jamais via prompt."""
+        return sum(1 for c in self.criteria_defensif if c.passe)
     valeur_intrinseque_simple: float | None = Field(
         None, description="V = BPA × (8.5 + 2g). Null si BPA incalculable."
     )
@@ -67,6 +118,30 @@ class GrahamAnalysisOutput(BaseModel):
     )
     citations: list[Citation] = Field(default_factory=list, description="Citations RAG — vide si OPENAI_API_KEY absente")
     cost_usd: float = Field(default=0.0, description="Coût API Claude de cet appel en USD")
+
+    @computed_field
+    @property
+    def defensive_verdict(self) -> str:
+        """
+        Verdict de scoring pur dérivé du defensive_score — jamais via prompt.
+        Seuils : PASSE ≥ 6, BORDERLINE 4-5, REJETER ≤ 3.
+        Utilisé comme cible stable dans le golden dataset des evals.
+        """
+        if self.defensive_score >= 6:
+            return "PASSE"
+        if self.defensive_score >= 4:
+            return "BORDERLINE"
+        return "REJETER"
+
+    @computed_field
+    @property
+    def confidence_score(self) -> float:
+        """Fraction des critères Graham avec données réelles (valeur_observee != DONNÉES_MANQUANTES)."""
+        all_criteria = self.criteria_defensif + self.criteria_entreprenant
+        if not all_criteria:
+            return 0.0
+        evaluables = sum(1 for c in all_criteria if c.valeur_observee != "DONNÉES_MANQUANTES")
+        return round(evaluables / len(all_criteria), 2)
 
     @model_validator(mode="after")
     def valider_comptes_criteres(self) -> "GrahamAnalysisOutput":

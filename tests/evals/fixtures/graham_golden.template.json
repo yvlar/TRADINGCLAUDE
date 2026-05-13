@@ -1,0 +1,502 @@
+[
+  {
+    "id": "MSFT_TEMPLATE",
+    "ticker": "MSFT",
+    "company_name": "Microsoft Corporation",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 8],
+      "must_pass_criteria": [],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "JNJ_TEMPLATE",
+    "ticker": "JNJ",
+    "company_name": "Johnson & Johnson",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [3, 4, 5],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "KO_TEMPLATE",
+    "ticker": "KO",
+    "company_name": "The Coca-Cola Company",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [3, 4],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — dividend king 60+ ans",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "PG_TEMPLATE",
+    "ticker": "PG",
+    "company_name": "Procter & Gamble",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [3, 4],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — dividend king 60+ ans",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "WMT_TEMPLATE",
+    "ticker": "WMT",
+    "company_name": "Walmart Inc.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 8],
+      "must_pass_criteria": [1, 3, 4],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — revenue > $600B, dividendes 50+ ans",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "CNR_TO_TEMPLATE",
+    "ticker": "CNR.TO",
+    "company_name": "Canadian National Railway",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 8],
+      "must_pass_criteria": [3, 4],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — rail canadien, moat très large",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "ENB_TO_TEMPLATE",
+    "ticker": "ENB.TO",
+    "company_name": "Enbridge Inc.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 8],
+      "must_pass_criteria": [3],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — infrastructure énergie, dividendes ~30 ans",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "FTS_TO_TEMPLATE",
+    "ticker": "FTS.TO",
+    "company_name": "Fortis Inc.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 8],
+      "must_pass_criteria": [3, 4],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — utilité canadienne, 50 ans croissance dividende",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "TSLA_TEMPLATE",
+    "ticker": "TSLA",
+    "company_name": "Tesla, Inc.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 3],
+      "must_pass_criteria": [],
+      "must_red_flag": ["P/E"]
+    },
+    "rationale_yves": "À documenter par Yves — PE très élevé (~100x), aucun dividende, croissance incohérente",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "PLTR_TEMPLATE",
+    "ticker": "PLTR",
+    "company_name": "Palantir Technologies",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 3],
+      "must_pass_criteria": [],
+      "must_red_flag": ["P/E", "dividende"]
+    },
+    "rationale_yves": "À documenter par Yves — PE > 200x, aucun dividende, petite capitalisation relative",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "GME_TEMPLATE",
+    "ticker": "GME",
+    "company_name": "GameStop Corp.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 2],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dividende"]
+    },
+    "rationale_yves": "À documenter par Yves — modèle déclinant, résultats négatifs, aucun dividende",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "AMC_TEMPLATE",
+    "ticker": "AMC",
+    "company_name": "AMC Entertainment Holdings",
+    "inputs": {
+      "pe": null,
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 1],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dette", "dividende"]
+    },
+    "rationale_yves": "À documenter par Yves — dette massive, pertes opérationnelles, pe=null (aucun bénéfice)",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "RIVN_TEMPLATE",
+    "ticker": "RIVN",
+    "company_name": "Rivian Automotive",
+    "inputs": {
+      "pe": null,
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 1],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dividende"]
+    },
+    "rationale_yves": "À documenter par Yves — startup EV, pertes structurelles, pe=null",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "NKLA_TEMPLATE",
+    "ticker": "NKLA",
+    "company_name": "Nikola Corporation",
+    "inputs": {
+      "pe": null,
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 1],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dividende"]
+    },
+    "rationale_yves": "À documenter par Yves — fraude historique, pertes structurelles, pe=null",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "BNS_TO_TEMPLATE",
+    "ticker": "BNS.TO",
+    "company_name": "Bank of Nova Scotia",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": null,
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [3],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — banque canadienne, current_ratio=null, dette élevée typique secteur",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "RY_TO_TEMPLATE",
+    "ticker": "RY.TO",
+    "company_name": "Royal Bank of Canada",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": null,
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [3],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — plus grande banque canadienne, current_ratio=null",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "INTC_TEMPLATE",
+    "ticker": "INTC",
+    "company_name": "Intel Corporation",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — semi-conducteurs, revenus en baisse, capex élevé, dividende récemment coupé",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "T_TEMPLATE",
+    "ticker": "T",
+    "company_name": "AT&T Inc.",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [],
+      "must_red_flag": ["dette"]
+    },
+    "rationale_yves": "À documenter par Yves — télécom, dette très élevée, dividende coupé en 2022",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "IBM_TEMPLATE",
+    "ticker": "IBM",
+    "company_name": "International Business Machines",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [3],
+      "must_red_flag": []
+    },
+    "rationale_yves": "À documenter par Yves — vieille tech en transformation, dette élevée, dividende maintenu",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  },
+  {
+    "id": "F_TEMPLATE",
+    "ticker": "F",
+    "company_name": "Ford Motor Company",
+    "inputs": {
+      "pe": "PLACEHOLDER",
+      "pb": "PLACEHOLDER",
+      "current_ratio": "PLACEHOLDER",
+      "debt_equity": "PLACEHOLDER",
+      "eps_growth_10y": "PLACEHOLDER",
+      "price": "PLACEHOLDER",
+      "book_value": "PLACEHOLDER",
+      "eps_ttm": "PLACEHOLDER",
+      "revenue_bn": "PLACEHOLDER",
+      "dividend_years": "PLACEHOLDER"
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [4, 5],
+      "must_pass_criteria": [],
+      "must_red_flag": ["cyclique"]
+    },
+    "rationale_yves": "À documenter par Yves — auto cyclique, BPA très variable, dette élevée",
+    "data_source_date": "PLACEHOLDER (ex: 2026-05-12)"
+  }
+]

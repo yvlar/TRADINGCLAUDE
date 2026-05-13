@@ -89,6 +89,40 @@ def test_screen_tickers_max_depasse_422():
         ScreenRequest(tickers=[f"T{i}" for i in range(21)])
 
 
+def test_screen_ticker_invalide_leve_422():
+    """Ticker avec caractères invalides → HTTPException 422."""
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        ScreenRequest(tickers=["BNS", "DROP TABLE", "TD"])
+    assert exc_info.value.status_code == 422
+
+
+async def test_screen_endpoint_ticker_invalide_422(client):
+    """POST /screen avec un ticker invalide → 422."""
+    payload = {"tickers": ["BNS; rm -rf /"], "workflow": "value_graham"}
+    resp = await client.post("/screen", json=payload)
+    assert resp.status_code == 422
+
+
+async def test_screen_ticker_normalise_majuscules(client):
+    """POST /screen avec ticker en minuscules → normalisé en majuscules."""
+    payload = {
+        "tickers": ["msft"],
+        "workflow": "value_graham",
+        "ratios_map": {
+            "msft": {
+                "pe": 34.2, "pb": 12.1, "current_ratio": 1.34,
+                "debt_equity": 0.28, "eps_growth_10y": 0.85,
+                "price": 420.0, "book_value": 35.0,
+            }
+        },
+    }
+    resp = await client.post("/screen", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resultats"][0]["ticker"] == "MSFT"
+
+
 # ---------------------------------------------------------------------------
 # Tests du tri des résultats
 # ---------------------------------------------------------------------------

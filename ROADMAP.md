@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-10 — Sprint 35 complété**
+**Dernière mise à jour : 2026-05-13 — Sprint 37 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 3.0.0 |
+| **Version** | 3.1.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 36 — À définir |
-| **Dernier sprint complété** | Sprint 35 — SSE Streaming ✅ |
+| **Sprint actif** | Sprint 38 — Scoring composite unifié 🔜 |
+| **Dernier sprint complété** | Sprint 37 — Validation anti-hallucination ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
@@ -1503,18 +1503,150 @@ cd frontend && npm test                         # 50 tests Vitest verts
 
 ---
 
-### Sprint 36 — À définir 🔜
+### Sprint 36 — Eval framework qualité IA + Sanitisation ticker ✅
 
-**Objectif :** À valider parmi les sprints suggérés ci-dessous.
+**Objectif :** Mesurer la qualité des sorties Claude via un dataset golden de 20 tickers calibrés,
+détecter les dérives de verdict après chaque changement de prompt, et sécuriser les entrées ticker
+avec validation et normalisation systématique.
 
-#### Sprints suggérés
+#### Fichiers créés
 
-| Sprint suggéré | Objectif | Complexité | Justification |
-|----------------|---------|-----------|---------------|
-| **Validation anti-hallucination** | Sanity checks financiers avant appel Claude (`pe < 0`, ROIC aberrant, contradictions inter-skills) + `confidence_score` par skill | Moyenne | Confiance : les schemas Pydantic valident les types mais pas la cohérence financière — un P/E négatif passe sans avertissement |
-| **Scoring composite unifié** | Moteur 0-100 agrégé (Graham 20 %, Buffett 20 %, Moat 15 %, Earnings 15 %, Valuation 20 %, Cycle 10 %) → score global + niveau conviction | Moyenne | Comparabilité : 15 verdicts textuels isolés ne permettent pas de comparer deux tickers ni de suivre un score dans le temps |
-| **Performance tracking** | Stocker `price_at_analysis` + `intrinsic_value_at_analysis` → calcul rétrospectif 3m/6m/1y via Celery beat | Moyenne | Validation empirique : impossible de mesurer si le système identifie réellement de bonnes opportunités sans historique prix |
-| **Page analyse SSE dans le frontend** | Indicateur de progression visible pour l'utilisateur dans l'UI complète — barre de progression + résultats partiels enrichis | Faible | UX : la mécanique SSE fonctionne ; l'interface utilisateur peut être améliorée (barre globale %, résumé partiel, annulation) |
+```
+app/utils/ticker_sanitizer.py                   # sanitize_ticker() — regex + HTTP 422
+tests/test_ticker_sanitizer.py                   # 28 tests (11 valides + 14 invalides + 3 standalone)
+tests/evals/__init__.py                          # Package evals
+tests/evals/conftest.py                          # eval_client — AsyncClient réel, JAMAIS de mock Claude
+tests/evals/fixtures/__init__.py                 # load_graham_golden() → list[dict]
+tests/evals/eval_runner.py                       # EvalResult, EvalReport, EvalRunner.run_all()
+tests/evals/fixtures/graham_golden.template.json # 20 tickers (PASSE×8, BORDERLINE×6, REJETER×6)
+```
+
+#### Fichiers modifiés
+
+```
+app/skills/tier2/graham_analysis/schemas.py  # defensive_verdict @computed_field + pe: float | None
+tests/test_schemas.py                         # test_pe_null_accepte + test_pe_negatif_accepte (remplacement test_pe_manquant)
+tests/test_api.py                             # test_body_sans_pb_retourne_422 (pb = champ requis restant)
+tests/test_integration_sync.py               # BODY_SANS_PB (pe optionnel, pb requis)
+tests/test_report.py                          # payload invalides → pb manquant (pas pe)
+```
+
+#### Décisions d'architecture prises
+
+| Décision | Choix retenu | Raison |
+|----------|-------------|--------|
+| **`defensive_verdict`** | `@computed_field` dérivé de `defensive_score` (PASSE≥6, BORDERLINE 4-5, REJETER≤3) | Cible stable pour les evals — jamais générée par Claude, toujours déterministe |
+| **`pe: float \| None`** | Nullable, défaut `None` | Sociétés déficitaires (NKLA, RIVN, AMC) — critère PE échoue automatiquement si `None` |
+| **Format golden dataset** | Clé `inputs` (pas `ratios`), `defensive_score_range: [min, max]` | Distingue les entrées API des sorties attendues ; plage plutôt que valeur exacte pour tolérer la variabilité Claude |
+| **`@pytest.mark.evals`** | `call_claude_with_retry` **JAMAIS patché** dans `tests/evals/` | Les evals mesurent le vrai comportement Claude — mocker Claude annulerait leur utilité |
+
+#### Progression
+
+| Livrable | Statut |
+|----------|--------|
+| `sanitize_ticker()` + 28 tests | ✅ Complété |
+| `defensive_verdict` computed_field | ✅ Complété |
+| `pe: float \| None` + 4 tests mis à jour | ✅ Complété |
+| EvalRunner + conftest + fixtures infra | ✅ Complété |
+| `graham_golden.template.json` (20 tickers) | ✅ Complété |
+| Intégrer `sanitize_ticker()` dans 3 endpoints | ✅ Complété — core.py + screen.py + watchlist.py |
+| `graham_golden.json` (données réelles Yahoo) | ✅ Complété — 20 cas calibrés par Yves |
+| `tests/evals/test_graham_evals.py` | ✅ Complété |
+| `pytest tests/evals/ -m evals` ≥ 18/20 | ✅ **20/20 PASS (100 %)** |
+
+#### Intégration `sanitize_ticker()` restante
+
+```python
+# app/orchestrator/core.py — @field_validator sur AnalyzeRequest.ticker
+@field_validator("ticker")
+@classmethod
+def validate_ticker(cls, v: str) -> str:
+    return sanitize_ticker(v)
+
+# app/api/endpoints/screen.py — avant ScreenerService.screen()
+# app/api/endpoints/watchlist.py — avant PostgreSQL insert
+```
+
+#### Tests evals — structure attendue (`tests/evals/test_graham_evals.py`)
+
+```python
+@pytest.mark.evals
+async def test_graham_golden_dataset(eval_client, graham_golden):
+    """Exécute tous les cas du golden dataset contre l'API réelle."""
+    runner = EvalRunner(client=eval_client)
+    report = await runner.run_all(graham_golden)
+
+    assert report.pass_rate >= 0.90, f"Taux de réussite {report.pass_rate:.0%} < 90%"
+    assert report.verdict_drift_rate <= 0.10
+    report.print_summary()
+```
+
+Note : le payload mappe `inputs → ratios` lors de l'appel `POST /analyze`.
+
+#### Critères de succès
+
+- [x] `pytest tests/test_ticker_sanitizer.py -v` → 28 tests verts
+- [x] `pytest tests/ -v -q --ignore=tests/evals` → 817+ passés (pas de régression)
+- [x] `graham_golden.json` rempli avec vrais ratios Yahoo Finance
+- [x] `pytest tests/evals/ -m evals` → **20/20 (100 %)** — appels Claude réels ✅
+
+---
+
+### Sprint 37 — Validation anti-hallucination ✅
+
+**Objectif :** Sanity checks financiers avant appel Claude + détection contradictions inter-skills +
+extension du `confidence_score` déterministe aux skills Buffett, Earnings et Dorsey.
+
+#### Livrables
+
+| Livrable | Statut |
+|----------|--------|
+| `@model_validator` sur `GrahamRatios` : pe<0, pb<0, eps_growth_10y>5, triangle pe/price/eps_ttm | ✅ |
+| `confidence_score` Graham (`@computed_field` valeur_observee) | ✅ |
+| `confidence_score` Buffett (champ régulier, calculé dans execute() depuis ratios non-None) | ✅ |
+| `confidence_score` EarningsQuality (`@computed_field` depuis cadres M/Z/F/C/Sloan) | ✅ |
+| `confidence_score` Dorsey (champ régulier, calculé dans execute() depuis ratios non-None) | ✅ |
+| `_detect_inter_skill_conflicts()` + `inter_skill_conflicts: list[str]` dans `AnalyzeResponse` | ✅ |
+| 27 nouveaux tests (validators + confidence × 4 skills + inter-skill conflicts) | ✅ |
+
+#### Critères de succès
+
+- [x] `pytest tests/evals/ -m evals` → 20/20 toujours verts après ajout validateurs
+- [x] `inter_skill_conflicts` détecté pour Buffett=COMPOUNDER + Graham=REJETER
+- [x] `confidence_score` calculé de façon déterministe sur 4 skills (Graham, Buffett, Earnings, Dorsey)
+- [x] `pytest -m "not e2e and not evals"` → 851 tests CI verts (pas de régression, 25 échecs pré-existants)
+
+#### Décisions d'architecture
+- **GrahamRatios validators** : WARNING log uniquement, jamais HTTP 422 — les données imparfaites passent
+- **confidence_score stratégie** : `@computed_field` quand l'output encode la complétude (valeur_observee / None-able), champ régulier sinon (calculé dans execute() depuis les inputs)
+- **inter_skill_conflicts** : `list[str]` dans AnalyzeResponse (pas `bool`) — messages explicites pour revue manuelle
+
+---
+
+### Sprint 38 — Scoring composite unifié 🔜
+
+**Objectif :** Calculer un score global 0-100 agrégeant les 6 skills principaux avec pondération fixe.
+
+#### Livrables prévus
+
+| Livrable | Pondération |
+|----------|------------|
+| Graham : `defensive_score / 8` × 20 pts | 20 % |
+| Buffett : `quality_score / 4` × 20 pts | 20 % |
+| Dorsey : `moat_type` (WIDE=20, NARROW=13, NONE=0) × pondération | 15 % |
+| EarningsQuality : `f_score / 9` × 15 pts | 15 % |
+| Valuation : `marge_securite_composite` × 20 pts | 20 % |
+| Marks cycles : pondération sentiment × 10 pts | 10 % |
+
+#### Fichiers prévus
+- `app/services/composite_score.py` — `CompositeScore`, `compute_composite_score(response: AnalyzeResponse)`
+- `app/orchestrator/core.py` — ajouter `composite_score: CompositeScore | None` dans `AnalyzeResponse`
+- `tests/test_composite_score.py` — tests unitaires (calculs, plages, None-safety)
+
+#### Critères de succès
+- [ ] Score 0-100 présent dans `AnalyzeResponse` si au moins 2 skills exécutés
+- [ ] Tests unitaires couvrent toutes les combinaisons de skills présents/absents
+- [ ] Aucune régression CI (851+ tests verts)
 
 ---
 
@@ -1542,4 +1674,5 @@ cd frontend && npm test                         # 50 tests Vitest verts
 *Sprint 33 complété : Qualité bénéfices fonctionnelle — extract_earnings_quality() + ExtractResponse + checkbox AnalyzeForm + 5 tests backend + 3 tests frontend — 45 tests Vitest verts — version 2.8.0*
 *Sprint 34 complété : Tests E2E Sprint 33 — 3 tests Playwright (autofill Graham, checkbox earnings active, analyse complète) + fix mock extract_earnings_quality dans conftest E2E — 19 tests E2E verts — version 2.9.0*
 *Sprint 35 complété : SSE Streaming — POST /analyze-stream + stream_company_analysis() + StreamingProgress React + streamAnalyze() fetch/ReadableStream + 8 tests backend + 5 tests frontend — 50 tests Vitest verts — version 3.0.0*
-*Sprint 36 : À définir*
+*Sprint 36 complété : Eval framework qualité IA + Sanitisation ticker — defensive_verdict computed_field + defensive_score computed_field + pe nullable + sanitize_ticker() intégré dans 3 endpoints + EvalRunner + graham_golden.json 20 cas + test_graham_evals.py **20/20 PASS** — 817 tests CI verts*
+*Sprint 37 complété : Validation anti-hallucination — @model_validator GrahamRatios (pe<0, pb<0, eps_growth>5, triangle pe/price/eps_ttm) + confidence_score sur 4 skills (Graham @computed_field, Buffett/Dorsey champ régulier, Earnings @computed_field) + _detect_inter_skill_conflicts() + inter_skill_conflicts dans AnalyzeResponse — 27 nouveaux tests — 851 tests CI verts — version 3.1.0*

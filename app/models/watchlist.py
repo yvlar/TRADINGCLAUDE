@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from app.utils.ticker_sanitizer import sanitize_ticker
 
 
 class WatchlistEntry(BaseModel):
@@ -27,3 +28,8 @@ class WatchlistCreate(BaseModel):
     workflow: str = "value_graham"
     ratios: GrahamRatios | None = None
     score_alerte_min: int | None = None
+
+    @field_validator("ticker")
+    @classmethod
+    def valider_ticker(cls, v: str) -> str:
+        return sanitize_ticker(v)

@@ -156,6 +156,35 @@ async def test_watchlist_celery_task_mock():
 
 
 @pytest.mark.asyncio
+async def test_watchlist_ticker_invalide_422(watchlist_client):
+    """POST /watchlist avec ticker invalide → 422 avant appel au service."""
+    client, mock_service = watchlist_client
+    resp = await client.post(
+        "/watchlist",
+        json={"ticker": "DROP TABLE", "workflow": "value_graham"},
+    )
+    assert resp.status_code == 422
+    mock_service.add_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_watchlist_ticker_normalise_majuscules(watchlist_client):
+    """POST /watchlist avec ticker en minuscules → normalisé BNS."""
+    client, mock_service = watchlist_client
+    entry = _make_entry("BNS")
+    mock_service.add_entry.return_value = entry
+
+    resp = await client.post(
+        "/watchlist",
+        json={"ticker": "bns", "workflow": "value_graham"},
+    )
+    assert resp.status_code == 201
+    args, _ = mock_service.add_entry.call_args
+    body_recu: WatchlistCreate = args[0]
+    assert body_recu.ticker == "BNS"
+
+
+@pytest.mark.asyncio
 async def test_watchlist_alerte_score_bas(caplog):
     """WARNING loggué si last_score < score_alerte_min."""
     entry_id = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")

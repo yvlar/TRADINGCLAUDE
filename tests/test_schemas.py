@@ -139,13 +139,21 @@ class TestGrahamRatios:
         assert ratios_bns.dividend_years == 190
         assert ratios_bns.no_deficit_years == 10
 
-    def test_pe_manquant_leve_erreur(self):
-        with pytest.raises(ValidationError) as exc_info:
-            GrahamRatios(
-                pb=1.0, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=0.3, price=50.0, book_value=50.0,
-            )
-        assert "pe" in str(exc_info.value)
+    def test_pe_null_accepte_societe_deficitaire(self):
+        """pe=None est valide depuis Sprint 36 — sociétés sans bénéfices publiables (RIVN, NKLA…)."""
+        ratios = GrahamRatios(
+            pe=None, pb=1.0, current_ratio=2.0, debt_equity=0.2,
+            eps_growth_10y=0.3, price=50.0, book_value=50.0,
+        )
+        assert ratios.pe is None
+
+    def test_pe_negatif_accepte_deficit_explicite(self):
+        """pe < 0 est valide — déficit explicite."""
+        ratios = GrahamRatios(
+            pe=-5.0, pb=1.0, current_ratio=2.0, debt_equity=0.2,
+            eps_growth_10y=0.3, price=50.0, book_value=50.0,
+        )
+        assert ratios.pe == -5.0
 
     def test_pb_manquant_leve_erreur(self):
         with pytest.raises(ValidationError):
@@ -648,3 +656,364 @@ class TestCanadianTaxSchemas:
     def test_tax_taux_inclusion_50_pct(self):
         output = self._make_output(taux_inclusion_gain_capital=0.50)
         assert output.taux_inclusion_gain_capital == 0.50
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — Validateurs GrahamRatios (WARNING, jamais HTTP 422)
+# ---------------------------------------------------------------------------
+
+class TestGrahamRatiosValidateurs:
+    """Les validateurs logguent un WARNING mais ne lèvent jamais de ValidationError."""
+
+    def test_pe_negatif_loggue_warning_sans_erreur(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            ratios = GrahamRatios(
+                pe=-5.0, pb=1.0, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=0.3, price=50.0, book_value=50.0,
+            )
+        assert ratios.pe == -5.0
+        assert "P/E négatif" in caplog.text
+
+    def test_pb_negatif_loggue_warning_sans_erreur(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            ratios = GrahamRatios(
+                pe=10.0, pb=-0.5, current_ratio=1.5, debt_equity=0.3,
+                eps_growth_10y=0.2, price=50.0, book_value=-25.0,
+            )
+        assert ratios.pb == -0.5
+        assert "P/B négatif" in caplog.text
+
+    def test_eps_growth_suspect_loggue_warning_sans_erreur(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            ratios = GrahamRatios(
+                pe=15.0, pb=2.0, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=6.5, price=100.0, book_value=50.0,
+            )
+        assert ratios.eps_growth_10y == 6.5
+        assert "eps_growth_10y" in caplog.text
+
+    def test_triangle_pe_incoherent_loggue_warning_sans_erreur(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            # pe=15.0, price/eps_ttm = 100/3 ≈ 33.3 → écart > 15 %
+            ratios = GrahamRatios(
+                pe=15.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=0.3, price=100.0, book_value=66.0,
+                eps_ttm=3.0,
+            )
+        assert ratios.pe == 15.0
+        assert "incohérence P/E" in caplog.text
+
+    def test_triangle_coherent_aucun_warning(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            # pe=10.0, price/eps_ttm = 100/10 = 10.0 → cohérent
+            ratios = GrahamRatios(
+                pe=10.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
+                eps_growth_10y=0.3, price=100.0, book_value=66.0,
+                eps_ttm=10.0,
+            )
+        assert ratios.pe == 10.0
+        assert "incohérence P/E" not in caplog.text
+
+    def test_incoherence_ne_rejette_pas_la_requete(self):
+        """Données aberrantes → WARNING uniquement, jamais de ValidationError."""
+        ratios = GrahamRatios(
+            pe=15.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
+            eps_growth_10y=10.0,  # 1000 % — très suspect
+            price=100.0, book_value=66.0,
+            eps_ttm=1.0,  # pe_calcule = 100.0 ≠ 15.0
+        )
+        assert ratios is not None  # aucune exception
+
+    def test_ratios_normaux_aucun_warning(self, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
+            GrahamRatios(
+                pe=12.0, pb=1.2, current_ratio=2.5, debt_equity=0.3,
+                eps_growth_10y=0.45, price=60.0, book_value=50.0,
+                eps_ttm=5.0,  # 60/5 = 12.0 = pe → cohérent
+            )
+        assert caplog.text == ""
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — confidence_score Graham
+# ---------------------------------------------------------------------------
+
+class TestGrahamConfidenceScore:
+    def test_confidence_score_tous_criteres_evalues(self, graham_output_msft):
+        """valeur_observee='test' sur 13 critères → confidence = 1.0."""
+        assert graham_output_msft.confidence_score == 1.0
+
+    def test_confidence_score_avec_donnees_manquantes(self):
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
+        criteria = _make_criteria_defensif()
+        # Marquer 2 critères défensifs comme données manquantes
+        criteria[0] = GrahamCriterion(
+            numero=1, nom="Taille", passe=False,
+            valeur_observee="DONNÉES_MANQUANTES", seuil="> 700 M$", commentaire="inconnu",
+        )
+        criteria[1] = GrahamCriterion(
+            numero=2, nom="Solidité", passe=False,
+            valeur_observee="DONNÉES_MANQUANTES", seuil="≥ 2.0", commentaire="inconnu",
+        )
+        output = GrahamAnalysisOutput(
+            ticker="TEST", profil_applique="LES_DEUX",
+            enterprising_score=0,
+            criteria_defensif=criteria,
+            criteria_entreprenant=_make_criteria_entreprenant(),
+            drapeaux_rouges=[], verdict="REJETER",
+            verdict_detail="Test.", recommandation_prochaine_etape=[],
+        )
+        # 6 défensifs "test" + 5 entrepreneuriaux "test" = 11/13
+        assert output.confidence_score == round(11 / 13, 2)
+
+    def test_confidence_score_plage_0_1(self, graham_output_msft):
+        assert 0.0 <= graham_output_msft.confidence_score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — confidence_score Buffett
+# ---------------------------------------------------------------------------
+
+class TestBuffettConfidenceScore:
+    def _make_output(self, **overrides) -> "BuffettQualityOutput":
+        base = dict(
+            ticker="TEST",
+            filtres=_buffett_filtres([True, True, False, False]),
+            owner_earnings=8.5,
+            quality_score=2,
+            verdict="QUALITE_CORRECTE",
+            verdict_detail="Test.",
+            drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        from app.skills.tier2.buffett_quality.schemas import BuffettQualityOutput
+        return BuffettQualityOutput(**base)
+
+    def test_confidence_score_present(self):
+        output = self._make_output()
+        assert hasattr(output, "confidence_score")
+
+    def test_confidence_score_default_zero(self):
+        """Par défaut 0.0 — sera calculé par execute() en production."""
+        output = self._make_output()
+        assert output.confidence_score == 0.0
+
+    def test_confidence_score_settable(self):
+        output = self._make_output()
+        output.confidence_score = 0.75
+        assert output.confidence_score == 0.75
+
+    def test_confidence_score_plage_0_1_apres_set(self):
+        output = self._make_output()
+        output.confidence_score = 0.89
+        assert 0.0 <= output.confidence_score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — confidence_score EarningsQuality
+# ---------------------------------------------------------------------------
+
+class TestEarningsConfidenceScore:
+    def _make_output(self, **overrides) -> EarningsQualityOutput:
+        base = dict(
+            ticker="TEST",
+            is_financial=False,
+            m_score=MScoreDetail(
+                dsri=None, gmi=None, aqi=None, sgi=1.0, depi=None,
+                sgai=None, tata=0.0, lvgi=None, m_score=-2.5,
+                interpretation="sous_seuil",
+            ),
+            z_score=ZScoreDetail(variante="Z_original", z_score=3.0, interpretation="zone_sure"),
+            f_score=FScoreDetail(
+                criteria=_f_criteria([True] * 9), f_score=9, interpretation="fort"
+            ),
+            c_score=CScoreDetail(
+                signaux=_c_signaux([False] * 6), c_score=0, interpretation="propre"
+            ),
+            sloan=SloanDetail(accrual_ratio=-0.02, interpretation="qualite_elevee"),
+            drapeaux_rouges=[],
+            verdict="AUCUN_SIGNAL",
+            verdict_detail="Aucun signal.",
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        return EarningsQualityOutput(**base)
+
+    def test_confidence_score_tous_cadres_calculables(self):
+        """m_score, z_score, sloan tous non-None → confidence = 1.0."""
+        output = self._make_output()
+        assert output.confidence_score == 1.0
+
+    def test_confidence_score_mscore_manquant(self):
+        """m_score=None, z_score, sloan présents → 4/5 = 0.8."""
+        output = self._make_output(
+            m_score=MScoreDetail(
+                dsri=None, gmi=None, aqi=None, sgi=None, depi=None,
+                sgai=None, tata=None, lvgi=None, m_score=None,
+                interpretation="données_insuffisantes",
+            )
+        )
+        assert output.confidence_score == round(4 / 5, 2)
+
+    def test_confidence_score_deux_cadres_manquants(self):
+        """m_score=None, sloan=None → 3/5 = 0.6."""
+        output = self._make_output(
+            m_score=MScoreDetail(
+                dsri=None, gmi=None, aqi=None, sgi=None, depi=None,
+                sgai=None, tata=None, lvgi=None, m_score=None,
+                interpretation="données_insuffisantes",
+            ),
+            sloan=SloanDetail(accrual_ratio=None, interpretation="données_insuffisantes"),
+        )
+        assert output.confidence_score == round(3 / 5, 2)
+
+    def test_confidence_score_plage_0_1(self):
+        output = self._make_output()
+        assert 0.0 <= output.confidence_score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — confidence_score Dorsey
+# ---------------------------------------------------------------------------
+
+class TestDorseyConfidenceScore:
+    def _make_output(self, **overrides) -> "DorseyMoatOutput":
+        base = dict(
+            ticker="TEST",
+            moat_type="NARROW",
+            sources_identifiees=_moat_sources(),
+            roic_durability="MODÉRÉE",
+            verdict_detail="Test.",
+            drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+        base.update(overrides)
+        from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput
+        return DorseyMoatOutput(**base)
+
+    def test_confidence_score_present(self):
+        output = self._make_output()
+        assert hasattr(output, "confidence_score")
+
+    def test_confidence_score_default_zero(self):
+        """Par défaut 0.0 — sera calculé par execute() en production."""
+        output = self._make_output()
+        assert output.confidence_score == 0.0
+
+    def test_confidence_score_settable(self):
+        output = self._make_output()
+        output.confidence_score = 0.58
+        assert output.confidence_score == 0.58
+
+    def test_confidence_score_plage_0_1_apres_set(self):
+        output = self._make_output()
+        output.confidence_score = 0.42
+        assert 0.0 <= output.confidence_score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Sprint 37 — inter_skill_conflicts dans AnalyzeResponse
+# ---------------------------------------------------------------------------
+
+class TestInterSkillConflicts:
+    def test_inter_skill_conflicts_field_present_par_defaut_vide(self):
+        from app.orchestrator.core import AnalyzeResponse
+        resp = AnalyzeResponse(
+            analysis_id="test-id",
+            ticker="TEST",
+            workflow="value_graham",
+            skills_applied=[],
+            cost_usd=0.0,
+            created_at="2026-01-01T00:00:00",
+        )
+        assert hasattr(resp, "inter_skill_conflicts")
+        assert resp.inter_skill_conflicts == []
+
+    def test_detect_conflict_graham_rejeter_buffett_compounder(self):
+        from app.orchestrator.core import _detect_inter_skill_conflicts
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
+        from app.skills.tier2.buffett_quality.schemas import BuffettFiltre, BuffettQualityOutput
+
+        # Graham REJETER : tous critères passe=False → defensive_score=0 → REJETER
+        graham = GrahamAnalysisOutput(
+            ticker="TEST", profil_applique="LES_DEUX",
+            enterprising_score=0,
+            criteria_defensif=_make_criteria_defensif(),
+            criteria_entreprenant=_make_criteria_entreprenant(),
+            drapeaux_rouges=[], verdict="REJETER",
+            verdict_detail="Test.", recommandation_prochaine_etape=[],
+        )
+        assert graham.defensive_verdict == "REJETER"
+
+        buffett = BuffettQualityOutput(
+            ticker="TEST",
+            filtres=[
+                BuffettFiltre(filtre="compréhensible", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="economics", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="management", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="prix", passe=True, score=1, justification="OK"),
+            ],
+            owner_earnings=8.5, quality_score=4, verdict="COMPOUNDER",
+            verdict_detail="Compounder.", drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+
+        conflicts = _detect_inter_skill_conflicts(graham, buffett, None, None)
+        assert len(conflicts) == 1
+        assert "graham=REJETER" in conflicts[0]
+        assert "buffett=COMPOUNDER" in conflicts[0]
+
+    def test_detect_conflict_earnings_rejeter_buffett_compounder(self):
+        from app.orchestrator.core import _detect_inter_skill_conflicts
+        from app.skills.tier2.buffett_quality.schemas import BuffettFiltre, BuffettQualityOutput
+
+        buffett = BuffettQualityOutput(
+            ticker="TEST",
+            filtres=[
+                BuffettFiltre(filtre="compréhensible", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="economics", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="management", passe=True, score=1, justification="OK"),
+                BuffettFiltre(filtre="prix", passe=True, score=1, justification="OK"),
+            ],
+            owner_earnings=8.5, quality_score=4, verdict="COMPOUNDER",
+            verdict_detail="Compounder.", drapeaux_rouges=[],
+            recommandation_prochaine_etape=[],
+        )
+        # earnings REJETER
+        earnings = EarningsQualityOutput(
+            ticker="TEST", is_financial=False,
+            m_score=MScoreDetail(
+                dsri=None, gmi=None, aqi=None, sgi=1.0, depi=None,
+                sgai=None, tata=0.0, lvgi=None, m_score=-1.0,
+                interpretation="manipulation_possible",
+            ),
+            z_score=ZScoreDetail(variante="Z_original", z_score=1.0, interpretation="zone_danger"),
+            f_score=FScoreDetail(criteria=_f_criteria([False] * 9), f_score=0, interpretation="faible"),
+            c_score=CScoreDetail(signaux=_c_signaux([True] * 6), c_score=6, interpretation="risque"),
+            sloan=SloanDetail(accrual_ratio=0.15, interpretation="accruals_elevees"),
+            drapeaux_rouges=["manipulation détectée"],
+            verdict="REJETER",
+            verdict_detail="Rejeter.",
+            recommandation_prochaine_etape=[],
+        )
+
+        conflicts = _detect_inter_skill_conflicts(None, buffett, earnings, None)
+        assert any("earnings_quality=REJETER" in c for c in conflicts)
+
+    def test_aucun_conflict_si_verdicts_coherents(self):
+        from app.orchestrator.core import _detect_inter_skill_conflicts
+        # Pas de contradictions → liste vide
+        conflicts = _detect_inter_skill_conflicts(None, None, None, None)
+        assert conflicts == []
+
+    def test_aucun_conflict_si_graham_none(self):
+        from app.orchestrator.core import _detect_inter_skill_conflicts
+        conflicts = _detect_inter_skill_conflicts(None, None, None, None)
+        assert conflicts == []

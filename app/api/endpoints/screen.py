@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.services.screener import ScreenerService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class ScreenRequest(BaseModel):
             raise ValueError("Au moins un ticker requis")
         if len(self.tickers) > 20:
             raise ValueError("Maximum 20 tickers par appel")
+        self.tickers = [sanitize_ticker(t) for t in self.tickers]
         return self
 
 

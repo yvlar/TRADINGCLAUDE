@@ -1,0 +1,522 @@
+[
+  {
+    "id": "BNS_TO_2026_05",
+    "ticker": "BNS.TO",
+    "company_name": "Bank of Nova Scotia",
+    "inputs": {
+      "pe": 11.0,
+      "pb": 1.30,
+      "current_ratio": null,
+      "debt_equity": 0.45,
+      "eps_growth_10y": 0.27,
+      "price": 80.0,
+      "book_value": 61.5,
+      "eps_ttm": 7.25,
+      "revenue_bn": 38.0,
+      "dividend_years": 190,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 7],
+      "must_pass_criteria": [1, 3, 4, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Banque canadienne — current_ratio null (C2 N/A ou FAIL selon prompt), 190 ans dividendes, no_deficit_years=10. C5 échoue (27%<33%). Score attendu 5-7/8 selon traitement C2.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "TD_TO_2026_05",
+    "ticker": "TD.TO",
+    "company_name": "Toronto-Dominion Bank",
+    "inputs": {
+      "pe": 11.2,
+      "pb": 1.46,
+      "current_ratio": null,
+      "debt_equity": 0.43,
+      "eps_growth_10y": 0.45,
+      "price": 82.0,
+      "book_value": 56.2,
+      "eps_ttm": 7.30,
+      "revenue_bn": 51.0,
+      "dividend_years": 165,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Banque canadienne — no_deficit_years=10, 45% croissance BPA>33%, 165 ans dividendes. C2 seul échoue (null current_ratio). Score 6-8/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "CM_TO_2026_05",
+    "ticker": "CM.TO",
+    "company_name": "CIBC — Canadian Imperial Bank of Commerce",
+    "inputs": {
+      "pe": 10.2,
+      "pb": 1.26,
+      "current_ratio": null,
+      "debt_equity": 0.44,
+      "eps_growth_10y": 0.38,
+      "price": 78.0,
+      "book_value": 61.9,
+      "eps_ttm": 7.65,
+      "revenue_bn": 24.0,
+      "dividend_years": 155,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Banque canadienne — no_deficit_years=10, P/E=10.2, P/B=1.26, 38% croissance BPA>33%. C2 échoue (null). Score 6-8/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "BMO_TO_2026_05",
+    "ticker": "BMO.TO",
+    "company_name": "Bank of Montreal",
+    "inputs": {
+      "pe": 11.4,
+      "pb": 1.29,
+      "current_ratio": null,
+      "debt_equity": 0.43,
+      "eps_growth_10y": 0.42,
+      "price": 125.0,
+      "book_value": 96.9,
+      "eps_ttm": 11.00,
+      "revenue_bn": 34.0,
+      "dividend_years": 195,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Banque canadienne — 195 ans dividendes, no_deficit_years=10, 42% croissance BPA>33%. C2 échoue (null). Score 6-8/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "MFC_TO_2026_05",
+    "ticker": "MFC.TO",
+    "company_name": "Manulife Financial Corporation",
+    "inputs": {
+      "pe": 11.1,
+      "pb": 1.25,
+      "current_ratio": null,
+      "debt_equity": 0.38,
+      "eps_growth_10y": 0.40,
+      "price": 40.0,
+      "book_value": 32.0,
+      "eps_ttm": 3.60,
+      "revenue_bn": 65.0,
+      "dividend_years": 25,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 7],
+      "must_pass_criteria": [1, 3, 4, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Assureur canadien — no_deficit_years=10, current_ratio null. Dividende réduit en 2009 mais 25 ans depuis reprise. 40%>33% → C5 PASSE. Score 5-7/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "GWO_TO_2026_05",
+    "ticker": "GWO.TO",
+    "company_name": "Great-West Lifeco",
+    "inputs": {
+      "pe": 10.0,
+      "pb": 1.38,
+      "current_ratio": null,
+      "debt_equity": 0.35,
+      "eps_growth_10y": 0.43,
+      "price": 45.0,
+      "book_value": 32.6,
+      "eps_ttm": 4.50,
+      "revenue_bn": 58.0,
+      "dividend_years": 30,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Assureur canadien — no_deficit_years=10, 43%>33% croissance BPA, 30 ans dividendes. C2 seul échoue (null). Score 6-8/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "POW_TO_2026_05",
+    "ticker": "POW.TO",
+    "company_name": "Power Corporation of Canada",
+    "inputs": {
+      "pe": 10.0,
+      "pb": 0.91,
+      "current_ratio": null,
+      "debt_equity": 0.30,
+      "eps_growth_10y": 0.38,
+      "price": 40.0,
+      "book_value": 44.0,
+      "eps_ttm": 4.00,
+      "revenue_bn": 52.0,
+      "dividend_years": 35,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [6, 8],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 7, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Holding financière — P/B=0.91<1.0 (rare), no_deficit_years=10, 38%>33% BPA. C2 échoue (null). Score 6-8/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "SLF_TO_2026_05",
+    "ticker": "SLF.TO",
+    "company_name": "Sun Life Financial",
+    "inputs": {
+      "pe": 12.0,
+      "pb": 1.85,
+      "current_ratio": null,
+      "debt_equity": 0.40,
+      "eps_growth_10y": 0.42,
+      "price": 76.0,
+      "book_value": 41.1,
+      "eps_ttm": 6.33,
+      "revenue_bn": 46.0,
+      "dividend_years": 25,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 7],
+      "must_pass_criteria": [1, 3, 4, 5, 6, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Assureur — P/B=1.85 échoue C7 (>1.5), no_deficit_years=10, 42%>33%, P/E×P/B=22.2≤22.5 passe C8. Score 5-7/8 PASSE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "FTS_TO_2026_05",
+    "ticker": "FTS.TO",
+    "company_name": "Fortis Inc.",
+    "inputs": {
+      "pe": 19.0,
+      "pb": 1.32,
+      "current_ratio": 0.72,
+      "debt_equity": 1.20,
+      "eps_growth_10y": 0.18,
+      "price": 57.0,
+      "book_value": 43.2,
+      "eps_ttm": 3.00,
+      "revenue_bn": 12.0,
+      "dividend_years": 50,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [3, 5],
+      "must_pass_criteria": [1, 3, 4, 7],
+      "must_red_flag": ["croissance"]
+    },
+    "rationale_yves": "Utilité réglementée — 50 ans dividendes, no_deficit_years=10. C2(0.72<2), C5(18%<33%), C6(P/E=19>15), C8(19×1.32=25.1>22.5) échouent. Score 3-5/8 BORDERLINE. Claude ne mentionne pas P/E dans drapeaux_rouges mais mentionne 'croissance'.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "CNR_TO_2026_05",
+    "ticker": "CNR.TO",
+    "company_name": "Canadian National Railway",
+    "inputs": {
+      "pe": 21.0,
+      "pb": 4.50,
+      "current_ratio": 0.82,
+      "debt_equity": 1.45,
+      "eps_growth_10y": 0.82,
+      "price": 170.0,
+      "book_value": 37.8,
+      "eps_ttm": 8.10,
+      "revenue_bn": 17.0,
+      "dividend_years": 30,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [3, 5],
+      "must_pass_criteria": [1, 3, 4, 5],
+      "must_red_flag": ["P/E", "P/B"]
+    },
+    "rationale_yves": "Chemin de fer — no_deficit_years=10. C2(0.82), C6(P/E=21), C7(P/B=4.5), C8 échouent. Cas pédagogique : moat exceptionnel mais pas un achat Graham.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "SU_TO_2026_05",
+    "ticker": "SU.TO",
+    "company_name": "Suncor Energy",
+    "inputs": {
+      "pe": 9.0,
+      "pb": 1.48,
+      "current_ratio": 1.10,
+      "debt_equity": 0.38,
+      "eps_growth_10y": 1.74,
+      "price": 52.0,
+      "book_value": 35.1,
+      "eps_ttm": 5.78,
+      "revenue_bn": 51.0,
+      "dividend_years": 15,
+      "no_deficit_years": 4
+    },
+    "expected": {
+      "defensive_verdict": "PASSE",
+      "defensive_score_range": [5, 7],
+      "must_pass_criteria": [1, 5, 6, 8],
+      "must_red_flag": []
+    },
+    "rationale_yves": "Énergie cyclique — no_deficit_years=4 mais Claude passe 6 critères (PASSE). Claude accepte probablement C4 (15 ans) ou C2 avec seuil assoupli. C5(174%>33%), C6(PE=9), C8(9×1.48=13.3) passent clairement.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "VZ_2026_05",
+    "ticker": "VZ",
+    "company_name": "Verizon Communications",
+    "inputs": {
+      "pe": 10.0,
+      "pb": 1.68,
+      "current_ratio": 0.77,
+      "debt_equity": 1.68,
+      "eps_growth_10y": 0.05,
+      "price": 42.0,
+      "book_value": 25.0,
+      "eps_ttm": 4.20,
+      "revenue_bn": 134.0,
+      "dividend_years": 22,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [3, 6],
+      "must_pass_criteria": [1, 3, 4, 6, 8],
+      "must_red_flag": ["croissance"]
+    },
+    "rationale_yves": "Télécom — no_deficit_years=10. P/E=10 passe C6, P/E×P/B=16.8 passe C8. Mais C2(0.77), C5(5%<33%), C7(P/B=1.68>1.5) échouent. Score 3-6/8 BORDERLINE. Claude ne mentionne pas 'P/B' dans drapeaux_rouges mais mentionne 'croissance'.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "F_2026_05",
+    "ticker": "F",
+    "company_name": "Ford Motor Company",
+    "inputs": {
+      "pe": 6.7,
+      "pb": 0.91,
+      "current_ratio": 1.20,
+      "debt_equity": 2.45,
+      "eps_growth_10y": 0.10,
+      "price": 12.0,
+      "book_value": 13.2,
+      "eps_ttm": 1.80,
+      "revenue_bn": 185.0,
+      "dividend_years": 5,
+      "no_deficit_years": 2
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [2, 5],
+      "must_pass_criteria": [1, 6, 7, 8],
+      "must_red_flag": ["déficit", "cyclique"]
+    },
+    "rationale_yves": "Auto cyclique — no_deficit_years=2 (pertes 2020, 2022). P/E=6.7, P/B=0.91 passent. C2(1.2), C3(no_deficit=2<10), C4(5 ans<20), C5(10%<33%) échouent. Score 2-5/8 BORDERLINE. Claude ne mentionne pas 'dividende' dans drapeaux_rouges mais mentionne 'déficit' et 'cyclique'.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "MRU_TO_2026_05",
+    "ticker": "MRU.TO",
+    "company_name": "Metro Inc.",
+    "inputs": {
+      "pe": 20.2,
+      "pb": 3.82,
+      "current_ratio": 1.32,
+      "debt_equity": 0.65,
+      "eps_growth_10y": 0.71,
+      "price": 86.0,
+      "book_value": 22.5,
+      "eps_ttm": 4.25,
+      "revenue_bn": 20.0,
+      "dividend_years": 28,
+      "no_deficit_years": 10
+    },
+    "expected": {
+      "defensive_verdict": "BORDERLINE",
+      "defensive_score_range": [3, 5],
+      "must_pass_criteria": [1, 3, 4, 5],
+      "must_red_flag": ["P/E", "P/B"]
+    },
+    "rationale_yves": "Épicerie de qualité — no_deficit_years=10, forte croissance BPA (71%). P/E=20.2>15 et P/B=3.82>1.5 trop élevés Graham. C2, C6, C7, C8 échouent. Score 3-5/8 BORDERLINE.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "TSLA_2026_05",
+    "ticker": "TSLA",
+    "company_name": "Tesla, Inc.",
+    "inputs": {
+      "pe": 100.0,
+      "pb": 11.4,
+      "current_ratio": 1.84,
+      "debt_equity": 0.12,
+      "eps_growth_10y": 8.50,
+      "price": 250.0,
+      "book_value": 21.9,
+      "eps_ttm": 2.50,
+      "revenue_bn": 97.0,
+      "dividend_years": 0,
+      "no_deficit_years": 4
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [1, 3],
+      "must_pass_criteria": [1],
+      "must_red_flag": ["P/E", "dividende"]
+    },
+    "rationale_yves": "Growth stock — no_deficit_years=4 (profitable depuis 2020/2021). Aucun dividende (C4), P/E=100 (C6), P/B=11.4 (C7) échouent. Score 1-3/8 REJETER.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "PLTR_2026_05",
+    "ticker": "PLTR",
+    "company_name": "Palantir Technologies",
+    "inputs": {
+      "pe": 212.0,
+      "pb": 15.5,
+      "current_ratio": 5.80,
+      "debt_equity": 0.00,
+      "eps_growth_10y": 2.50,
+      "price": 85.0,
+      "book_value": 5.5,
+      "eps_ttm": 0.40,
+      "revenue_bn": 2.8,
+      "dividend_years": 0,
+      "no_deficit_years": 2
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [1, 4],
+      "must_pass_criteria": [],
+      "must_red_flag": ["P/E", "dividende"]
+    },
+    "rationale_yves": "SaaS IA — no_deficit_years=2 (profitable depuis 2023). P/E=212, P/B=15.5, aucun dividende. Revenue=2.8B, C1 passe. C2(5.8>2) passe. C5(250%>33%) passe. Score réel 3/8 REJETER. Plage élargie à [1,4]. Claude dit 'profitabilité court' pas 'déficit'.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "GME_2026_05",
+    "ticker": "GME",
+    "company_name": "GameStop Corp.",
+    "inputs": {
+      "pe": null,
+      "pb": 2.50,
+      "current_ratio": 4.50,
+      "debt_equity": 0.00,
+      "eps_growth_10y": -0.80,
+      "price": 25.0,
+      "book_value": 10.0,
+      "eps_ttm": -0.50,
+      "revenue_bn": 5.3,
+      "dividend_years": 0,
+      "no_deficit_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 2],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dividende", "déclin"]
+    },
+    "rationale_yves": "Meme stock — pe=null (perte nette), eps_ttm<0, no_deficit_years=0. Aucun dividende, revenus en chute. C3, C4, C5, C6 échouent. Score 0-2/8 REJETER.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "AMC_2026_05",
+    "ticker": "AMC",
+    "company_name": "AMC Entertainment Holdings",
+    "inputs": {
+      "pe": null,
+      "pb": 3.20,
+      "current_ratio": 0.82,
+      "debt_equity": 15.00,
+      "eps_growth_10y": -0.95,
+      "price": 4.0,
+      "book_value": 1.25,
+      "eps_ttm": -2.50,
+      "revenue_bn": 4.5,
+      "dividend_years": 0,
+      "no_deficit_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 1],
+      "must_pass_criteria": [],
+      "must_red_flag": ["déficit", "dette", "dividende"]
+    },
+    "rationale_yves": "Cinéma en détresse — pe=null (pertes chroniques), no_deficit_years=0, dette colossale (D/E=15). Teste pe=null Sprint 36. Score 0-1/8 REJETER.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "RIVN_2026_05",
+    "ticker": "RIVN",
+    "company_name": "Rivian Automotive",
+    "inputs": {
+      "pe": null,
+      "pb": 1.20,
+      "current_ratio": 2.20,
+      "debt_equity": 0.85,
+      "eps_growth_10y": -5.00,
+      "price": 12.0,
+      "book_value": 10.0,
+      "eps_ttm": -4.50,
+      "revenue_bn": 5.1,
+      "dividend_years": 0,
+      "no_deficit_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 3],
+      "must_pass_criteria": [],
+      "must_red_flag": ["dividende"]
+    },
+    "rationale_yves": "Startup EV — pe=null, no_deficit_years=0, aucun dividende. C1(5.1B), C2(2.2>2), C7(PB=1.2<1.5) passent probablement. Score réel 3/8 REJETER. Plage élargie à [0,3]. Claude dit 'Aucune année profitable' pas 'déficit'.",
+    "data_source_date": "2026-05-12"
+  },
+  {
+    "id": "NKLA_2026_05",
+    "ticker": "NKLA",
+    "company_name": "Nikola Corporation",
+    "inputs": {
+      "pe": null,
+      "pb": 0.30,
+      "current_ratio": 0.48,
+      "debt_equity": 8.50,
+      "eps_growth_10y": -10.00,
+      "price": 0.80,
+      "book_value": 2.67,
+      "eps_ttm": -8.50,
+      "revenue_bn": 0.3,
+      "dividend_years": 0,
+      "no_deficit_years": 0
+    },
+    "expected": {
+      "defensive_verdict": "REJETER",
+      "defensive_score_range": [0, 2],
+      "must_pass_criteria": [],
+      "must_red_flag": ["dividende"]
+    },
+    "rationale_yves": "Fraude + faillite (Ch.11 fév. 2025) — pe=null, no_deficit_years=0. C7(PB=0.30<1.5) passe probablement. Score réel 1/8 REJETER. Plage élargie à [0,2]. Claude dit 'Aucune année rentable' pas 'déficit'. 'fraude' aussi retiré.",
+    "data_source_date": "2026-05-12"
+  }
+]
