@@ -230,6 +230,16 @@ class YahooFinanceExtractor:
             ltd_t1=_val(bal_ltd, 1),
         )
 
+    async def get_price(self, ticker: str) -> float | None:
+        """Retourne le cours actuel depuis Yahoo Finance. None si indisponible — ne lève pas d'exception."""
+        try:
+            info = await self._get_info(ticker)
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
+            return float(price) if price is not None else None
+        except Exception:
+            logger.warning("Impossible d'obtenir le cours actuel pour %s", ticker)
+            return None
+
     async def extract_valuation(self, ticker: str) -> ValuationRatios:
         """
         Retourne ValuationRatios peuplé depuis yfinance.

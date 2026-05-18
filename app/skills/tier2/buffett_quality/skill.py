@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,18 +11,16 @@ from app.rag.service import RagService
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
+from app.utils.tool_schema import build_tool_schema
 from .schemas import BuffettQualityInput, BuffettQualityOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_claude_json(text: str) -> dict[str, Any]:
-    """Parse le JSON depuis la réponse Claude, gère les blocs markdown optionnels."""
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        text = match.group(1).strip()
-    return json.loads(text)
+# Schéma dérivé de Pydantic — confidence_score et champs post-assignés exclus.
+_BUFFETT_TOOL_SCHEMA = build_tool_schema(
+    BuffettQualityOutput,
+    exclude={"confidence_score", "citations", "cost_usd"},
+)
 
 
 class BuffettQualitySkill(SkillBase):
@@ -115,7 +111,7 @@ class BuffettQualitySkill(SkillBase):
             f"(business compréhensible, economics favorables, management fiable, prix attractif) "
             f"et calcule les owner earnings :\n\n"
             f"```json\n{ratios_json}\n```\n\n"
-            "Retourne uniquement le JSON structuré conforme au format de sortie défini."
+            "Retourne l'analyse structurée via l'outil buffett_quality_output."
         )
 
         return "\n".join(parts)
@@ -124,8 +120,8 @@ class BuffettQualitySkill(SkillBase):
         self, input_data: BuffettQualityInput
     ) -> tuple[BuffettQualityOutput, UsageDetail]:
         """
-        Appelle l'API Claude avec le system prompt caché et les données financières.
-        Injecte les citations RAG et le contexte dorsey dans le message utilisateur.
+        Appelle l'API Claude avec Tool Use — le modèle popule buffett_quality_output directement,
+        éliminant les hallucinations de format JSON texte.
         """
         rag_query = (
             f"Buffett quality investing {input_data.ticker} "
@@ -145,15 +141,28 @@ class BuffettQualitySkill(SkillBase):
             system=self.get_system_prompt(),
             messages=[{"role": "user", "content": user_message}],
             max_tokens=4096,
+            tools=[{"name": "buffett_quality_output", "input_schema": _BUFFETT_TOOL_SCHEMA}],
+            tool_choice={"type": "tool", "name": "buffett_quality_output"},
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        raw_text = response.content[0].text
-        data = _parse_claude_json(raw_text)
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use"),
+            None,
+        )
+        if tool_use_block is None:
+            raise ValueError(
+                f"Aucun bloc tool_use dans la réponse Claude "
+                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+            )
+
+        data = dict(tool_use_block.input)
+        data["citations"] = []
+
         cost_usd = calculate_cost(response.usage, self._model)
 
         # confidence_score = fraction des champs BuffettRatios non-None (complétude des données)
-        _ratios_fields = list(input_data.ratios.model_fields.keys())
+        _ratios_fields = list(type(input_data.ratios).model_fields.keys())
         _non_null = sum(1 for f in _ratios_fields if getattr(input_data.ratios, f) is not None)
         data["confidence_score"] = round(_non_null / len(_ratios_fields), 2) if _ratios_fields else 0.0
 

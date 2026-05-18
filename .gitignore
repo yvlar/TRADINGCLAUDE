@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets
+.env
+*.env.local
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Tests et couverture
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vitest/
+frontend/coverage/
+
+# Logs
+*.log
+logs/
+
+# Docker
+*.pid

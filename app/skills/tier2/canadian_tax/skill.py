@@ -1,8 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,33 +11,31 @@ from app.rag.service import RagService
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
+from app.utils.tool_schema import build_tool_schema
 from .schemas import CanadianTaxInput, CanadianTaxOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_claude_json(text: str) -> dict[str, Any]:
-    """Parse le JSON depuis la rÃ©ponse Claude, gÃ¨re les blocs markdown optionnels."""
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        text = match.group(1).strip()
-    return json.loads(text)
+# Schéma dérivé de Pydantic — champs post-assignés exclus.
+_CANADIAN_TAX_TOOL_SCHEMA = build_tool_schema(
+    CanadianTaxOutput,
+    exclude={"citations", "cost_usd"},
+)
 
 
 class CanadianTaxSkill(SkillBase):
     """
-    Skill Tier 2 : optimisation fiscale quÃ©bÃ©coise et canadienne.
-    Recommande le compte enregistrÃ© optimal (CELI, REER, CELIAPP, NON_ENREGISTRE)
-    selon le type d'action, la province, et le verdict de la thÃ¨se.
+    Skill Tier 2 : optimisation fiscale québécoise et canadienne.
+    Recommande le compte enregistré optimal (CELI, REER, CELIAPP, NON_ENREGISTRE)
+    selon le type d'action, la province, et le verdict de la thèse.
     """
 
     skill_id: ClassVar[str] = "canadian_tax_considerations"
     tier: ClassVar[int] = 2
     description: ClassVar[str] = (
-        "Optimise la dÃ©cision de placement selon la fiscalitÃ© canadienne et quÃ©bÃ©coise â€” "
-        "comptes enregistrÃ©s (CELI, REER, CELIAPP), traitement des dividendes Ã©ligibles, "
-        "gains en capital, retenues d'impÃ´t amÃ©ricain, Smith ManÅ“uvre."
+        "Optimise la décision de placement selon la fiscalité canadienne et québécoise — "
+        "comptes enregistrés (CELI, REER, CELIAPP), traitement des dividendes éligibles, "
+        "gains en capital, retenues d'impôt américain, Smith Manœuvre."
     )
 
     def __init__(
@@ -74,8 +70,8 @@ class CanadianTaxSkill(SkillBase):
 
     async def get_citations(self, query: str, k: int = 5) -> list[Citation]:
         """
-        Recherche RAG dans Qdrant pour les passages sur la fiscalitÃ© canadienne.
-        Retourne [] si le RAG n'est pas initialisÃ©.
+        Recherche RAG dans Qdrant pour les passages sur la fiscalité canadienne.
+        Retourne [] si le RAG n'est pas initialisé.
         """
         if self._rag is None:
             return []
@@ -87,24 +83,24 @@ class CanadianTaxSkill(SkillBase):
         citations: list[Citation],
     ) -> str:
         """
-        Construit le message utilisateur en injectant les donnÃ©es fiscales
+        Construit le message utilisateur en injectant les données fiscales
         et les citations RAG avant la demande JSON finale.
         """
         parts: list[str] = []
 
         parts.append(
-            f"## ParamÃ¨tres de placement Ã  optimiser : {input_data.ticker}\n"
+            f"## Paramètres de placement à optimiser : {input_data.ticker}\n"
             f"- Province : {input_data.province}\n"
             f"- Verdict d'investissement : {input_data.verdict_final}\n"
             f"- Taille de position : {input_data.position_size_pct}%\n"
-            f"- Dividende canadien Ã©ligible : {input_data.dividende_canadien}\n"
-            f"- Dividende amÃ©ricain : {input_data.dividende_us}\n"
+            f"- Dividende canadien éligible : {input_data.dividende_canadien}\n"
+            f"- Dividende américain : {input_data.dividende_us}\n"
             f"- Est un REIT : {input_data.est_reit}\n"
             f"- Action de croissance : {input_data.est_action_croissance}\n"
         )
 
         if citations:
-            parts.append("## Contexte de rÃ©fÃ©rence (corpus fiscalitÃ© canadienne)\n")
+            parts.append("## Contexte de référence (corpus fiscalité canadienne)\n")
             for i, cit in enumerate(citations, 1):
                 parts.append(
                     f"**[{i}] {cit.source}** (score : {cit.score:.2f})\n{cit.extrait}\n"
@@ -113,12 +109,12 @@ class CanadianTaxSkill(SkillBase):
 
         input_json = input_data.model_dump_json(indent=2)
         parts.append(
-            f"DÃ©termine la stratÃ©gie fiscale optimale pour le placement de "
+            f"Détermine la stratégie fiscale optimale pour le placement de "
             f"**{input_data.ticker}** dans la province de {input_data.province}, "
-            f"en tenant compte de la fiscalitÃ© canadienne et quÃ©bÃ©coise.\n\n"
-            f"DonnÃ©es complÃ¨tes :\n"
+            f"en tenant compte de la fiscalité canadienne et québécoise.\n\n"
+            f"Données complètes :\n"
             f"```json\n{input_json}\n```\n\n"
-            "Retourne uniquement le JSON structurÃ© conforme au format de sortie dÃ©fini."
+            "Retourne l'analyse structurée via l'outil canadian_tax_output."
         )
 
         return "\n".join(parts)
@@ -127,13 +123,13 @@ class CanadianTaxSkill(SkillBase):
         self, input_data: CanadianTaxInput
     ) -> tuple[CanadianTaxOutput, UsageDetail]:
         """
-        Appelle l'API Claude avec le system prompt cachÃ© et les paramÃ¨tres fiscaux.
-        Retourne (CanadianTaxOutput, UsageDetail).
+        Appelle l'API Claude avec Tool Use — le modèle popule canadian_tax_output directement,
+        éliminant les hallucinations de format JSON texte.
         """
         rag_query = (
-            f"fiscalitÃ© canadienne quÃ©bÃ©coise {input_data.ticker} "
-            f"CELI REER CELIAPP comptes enregistrÃ©s dividendes gains capital "
-            f"retenue impÃ´t amÃ©ricain Smith ManÅ“uvre {input_data.province}"
+            f"fiscalité canadienne québécoise {input_data.ticker} "
+            f"CELI REER CELIAPP comptes enregistrés dividendes gains capital "
+            f"retenue impôt américain Smith Manœuvre {input_data.province}"
         )
         citations = await self.get_citations(rag_query, k=self._top_k)
 
@@ -148,11 +144,24 @@ class CanadianTaxSkill(SkillBase):
             system=self.get_system_prompt(),
             messages=[{"role": "user", "content": user_message}],
             max_tokens=4096,
+            tools=[{"name": "canadian_tax_output", "input_schema": _CANADIAN_TAX_TOOL_SCHEMA}],
+            tool_choice={"type": "tool", "name": "canadian_tax_output"},
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        raw_text = response.content[0].text
-        data = _parse_claude_json(raw_text)
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use"),
+            None,
+        )
+        if tool_use_block is None:
+            raise ValueError(
+                f"Aucun bloc tool_use dans la réponse Claude "
+                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+            )
+
+        data = dict(tool_use_block.input)
+        data["citations"] = []
+
         cost_usd = calculate_cost(response.usage, self._model)
 
         tokens_input = response.usage.input_tokens
@@ -163,7 +172,7 @@ class CanadianTaxSkill(SkillBase):
         cache_hit_ratio = round(tokens_cache_r / total_consumed, 4) if total_consumed else 0.0
 
         logger.info(
-            "execute terminÃ©",
+            "execute terminé",
             extra={
                 "skill_id": self.skill_id,
                 "ticker": input_data.ticker,
@@ -203,4 +212,3 @@ class CanadianTaxSkill(SkillBase):
             )
 
         return output, usage_detail
-

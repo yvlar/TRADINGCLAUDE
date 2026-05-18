@@ -21,6 +21,8 @@ class WatchlistEntry(BaseModel):
     last_intrinsic_value: float | None = None
     last_price_checked: float | None = None
     price_alert_threshold_pct: float = 0.10
+    last_composite_score: float | None = None
+    composite_alert_threshold: float = 15.0
 
 
 class WatchlistCreate(BaseModel):

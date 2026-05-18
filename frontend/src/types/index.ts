@@ -93,6 +93,48 @@ export interface SkillOutput {
   [key: string]: unknown
 }
 
+// ---- Score composite pondéré (Sprint 38) ----
+export interface CompositeScore {
+  score: number
+  label: string
+  skills_inclus: string[]
+  skills_exclus: string[]
+  detail: Record<string, number>
+}
+
+// ---- ESG Simplifié (Sprint 70) ----
+export interface EsgInput {
+  ticker: string
+  sector?: string | null
+  revenue_bn?: number | null
+  roe?: number | null
+  debt_equity?: number | null
+  dividend_years?: number | null
+  eps_growth_10y?: number | null
+}
+
+export interface EsgCritere {
+  dimension: 'E' | 'S' | 'G'
+  nom: string
+  passe: boolean
+  observation: string
+  proxy_utilise: string
+}
+
+export interface EsgOutput {
+  ticker: string
+  esg_score: number
+  e_score: number
+  s_score: number
+  g_score: number
+  criteres: EsgCritere[]
+  verdict: 'ESG_FORT' | 'ESG_MODERE' | 'ESG_FAIBLE'
+  verdict_detail: string
+  limites: string[]
+  citations: unknown[]
+  cost_usd?: number
+}
+
 // ---- AnalyzeResponse ----
 export interface AnalyzeResponse {
   analysis_id: string
@@ -114,8 +156,12 @@ export interface AnalyzeResponse {
   damodaran: SkillOutput | null
   marks: SkillOutput | null
   pabrai: SkillOutput | null
+  esg: SkillOutput | null
   cost_usd: number
   created_at: string
+  inter_skill_conflicts: string[]
+  composite_score: CompositeScore | null
+  depuis_cache_composite?: boolean
 }
 
 // ---- AnalyzeRequest ----
@@ -137,6 +183,17 @@ export interface AnalyzeRequest {
   marks_input?: Record<string, unknown> | null
   pabrai_input?: Record<string, unknown> | null
   fisher_input?: Record<string, unknown> | null
+  esg_input?: EsgInput | null
+}
+
+// ---- Historique composite_score (Sprint 57) ----
+export interface CompositeHistoryPoint {
+  id: string
+  ticker: string
+  score: number
+  label: string  // "FORT" | "MODERE" | "FAIBLE"
+  workflow: string
+  recorded_at: string  // ISO 8601
 }
 
 // ---- Screener ----
@@ -144,6 +201,8 @@ export interface ScreenEntry {
   ticker: string
   defensive_score: number | null
   verdict: string | null
+  composite_score: number | null
+  composite_label: string | null
   workflow_utilise: string
   cost_usd: number
   depuis_cache: boolean
@@ -181,9 +240,34 @@ export interface HistoryEntry {
 }
 
 export interface HistoryResponse {
-  ticker: string
+  ticker: string | null
   entries: HistoryEntry[]
   next_before: string | null
+}
+
+// ---- Performance rétrospective (Sprint 39) ----
+export interface PerformanceEntry {
+  analysis_id: string
+  created_at: string
+  price_at_analysis: number | null
+  price_current: number | null
+  rendement_pct: number | null
+  composite_score: number | null
+  workflow: string
+}
+
+export interface PerformanceResponse {
+  ticker: string
+  entries: PerformanceEntry[]
+}
+
+// ---- Analyses récentes (localStorage Dashboard Sprint 41) ----
+export interface RecentAnalysis {
+  ticker: string
+  composite_score: CompositeScore | null
+  inter_skill_conflicts: string[]
+  workflow: string
+  created_at: string
 }
 
 // ---- WebSocket métriques ----
@@ -207,6 +291,9 @@ export interface WatchlistEntry {
   last_price_checked: number | null
   price_alert_threshold_pct: number
   created_at: string
+  last_composite_score: number | null
+  composite_alert_threshold: number
+  score_alerte_min: number | null
 }
 
 export interface WatchlistCreate {
@@ -241,6 +328,32 @@ export type SSEEvent =
   | { type: 'complete'; data: AnalyzeResponse }
   | { type: 'error'; data: { message: string } }
   | { type: 'cached'; data: AnalyzeResponse }
+
+// ---- Eval Drift (Sprint 61 backend, Sprint 66 frontend) ----
+export interface EvalDriftResult {
+  dataset: string
+  concordance_rate: number  // 0.0 à 1.0
+  threshold: number
+  alert: boolean
+  cases_total: number
+  cases_pass: number
+  recorded_at: string  // ISO 8601
+}
+
+// ---- Admin API Keys (Sprint 67) ----
+export interface ApiKey {
+  id: string
+  name: string
+  role: string        // "admin" | "user"
+  created_at: string  // ISO 8601
+  last_used_at: string | null
+  is_active: boolean
+}
+
+export interface ApiKeyCreate {
+  name: string
+  role?: string  // défaut "user"
+}
 
 // ---- Workflow ----
 export interface WorkflowOption {

@@ -230,17 +230,17 @@ class TestGrahamAnalysisOutput:
     def test_cost_usd_non_nul(self, graham_output_msft):
         assert graham_output_msft.cost_usd > 0.0
 
-    def test_defensive_score_hors_borne_leve_erreur(self):
+    def test_defensive_score_est_computed_field(self):
         from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
-        with pytest.raises(ValidationError):
-            GrahamAnalysisOutput(
-                ticker="X", profil_applique="LES_DEUX", defensive_score=9,
-                enterprising_score=0,
-                criteria_defensif=_make_criteria_defensif(),
-                criteria_entreprenant=_make_criteria_entreprenant(),
-                drapeaux_rouges=[], verdict="REJETER",
-                verdict_detail="Test.", recommandation_prochaine_etape=[],
-            )
+        obj = GrahamAnalysisOutput(
+            ticker="X", profil_applique="LES_DEUX",
+            enterprising_score=0,
+            criteria_defensif=_make_criteria_defensif(),
+            criteria_entreprenant=_make_criteria_entreprenant(),
+            drapeaux_rouges=[], verdict="REJETER",
+            verdict_detail="Test.", recommandation_prochaine_etape=[],
+        )
+        assert obj.defensive_score == 0
 
     def test_model_validator_rejette_7_criteres_defensifs(self):
         from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant

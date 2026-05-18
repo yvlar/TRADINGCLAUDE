@@ -3,7 +3,9 @@ import { useMutation } from '@tanstack/react-query'
 import { AnalyzeForm } from '../components/AnalyzeForm'
 import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
+import { Badge } from '../components/ui/badge'
 import { streamAnalyze, postReport } from '../api/analyze'
+import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
 
 /** Mappe skill_id → champ de AnalyzeResponse. */
@@ -23,6 +25,7 @@ const SKILL_FIELD: Record<string, keyof AnalyzeResponse> = {
   damodaran_narrative: 'damodaran',
   marks_cycles_risk: 'marks',
   pabrai_dhandho: 'pabrai',
+  esg_simplified: 'esg',
 }
 
 function applySkillResult(
@@ -42,6 +45,7 @@ export default function AnalyzePage() {
   const [partialResult, setPartialResult] = useState<Partial<AnalyzeResponse>>({})
   const [activeSkill, setActiveSkill] = useState<string | null>(null)
   const [completedSkills, setCompletedSkills] = useState<string[]>([])
+  const [depuisCache, setDepuisCache] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   const pdfMutation = useMutation({
@@ -65,6 +69,7 @@ export default function AnalyzePage() {
     setCompletedSkills([])
     setActiveSkill(null)
     setStreamError(null)
+    setDepuisCache(false)
     setLastRequest(req)
     setIsStreaming(true)
 
@@ -77,7 +82,10 @@ export default function AnalyzePage() {
           setCompletedSkills((prev) => [...prev, event.data.skill_id])
           setActiveSkill(null)
         } else if (event.type === 'complete' || event.type === 'cached') {
-          setResult(event.data as AnalyzeResponse)
+          const finalResult = event.data as AnalyzeResponse
+          setResult(finalResult)
+          setDepuisCache(finalResult.depuis_cache_composite ?? false)
+          saveRecentAnalysis(finalResult)
           setPartialResult({})
           setCompletedSkills([])
           setActiveSkill(null)
@@ -100,7 +108,14 @@ export default function AnalyzePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold mb-1">Analyse individuelle</h2>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="text-xl font-bold">Analyse individuelle</h2>
+          {depuisCache && (
+            <Badge variant="secondary" data-testid="cache-badge">
+              Score depuis cache (&lt;24h)
+            </Badge>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           Saisissez un ticker et les ratios Graham pour lancer l'analyse multi-skills.
         </p>

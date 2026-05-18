@@ -307,7 +307,11 @@ class TestCanadianTaxSkill:
     ):
         """execute() retourne (CanadianTaxOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=tax_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = tax_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=500,
             output_tokens=350,
@@ -334,7 +338,11 @@ class TestCanadianTaxSkill:
     ):
         """execute() retourne bien un tuple (CanadianTaxOutput, UsageDetail)."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=tax_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = tax_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=500,
             output_tokens=350,

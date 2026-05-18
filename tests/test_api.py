@@ -116,7 +116,7 @@ class TestHealthz:
     @pytest.mark.asyncio
     async def test_version_est_courante(self, async_client):
         r = await async_client.get("/healthz")
-        assert r.json()["version"] == "2.0.0"
+        assert r.json()["version"] == _VERSION
 
     @pytest.mark.asyncio
     async def test_postgres_ok_dans_reponse(self, async_client):
@@ -498,6 +498,6 @@ class TestMetrics:
 
     @pytest.mark.asyncio
     async def test_version_courante(self, async_client):
-        """Version passe à 2.0.0 après Sprint 17."""
+        """Version courante vérifiée dynamiquement."""
         r = await async_client.get("/healthz")
-        assert r.json()["version"] == "2.0.0"
+        assert r.json()["version"] == _VERSION

@@ -21,6 +21,10 @@ class ScreenRequest(BaseModel):
     workflow: str = "value_graham"
     ratios_map: dict[str, GrahamRatios] | None = None
     max_parallel: int = Field(default=5, ge=1, le=10)
+    # Filtres post-analyse Sprint 58 — appliqués en AND, tickers en échec toujours inclus
+    composite_label: str | None = None          # "FORT" | "MODERE" | "FAIBLE"
+    min_composite_score: float | None = None    # exclut score < seuil
+    filter_workflow: str | None = None          # filtre sur workflow_utilise
 
     @model_validator(mode="after")
     def validate_tickers(self) -> ScreenRequest:
@@ -38,6 +42,8 @@ class ScreenEntry(BaseModel):
     ticker: str
     defensive_score: int | None
     verdict: str | None
+    composite_score: float | None = None
+    composite_label: str | None = None
     workflow_utilise: str
     cost_usd: float
     depuis_cache: bool = False

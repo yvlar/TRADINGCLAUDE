@@ -1,7 +1,6 @@
 """Tests du skill buffett_quality — schemas, skill, context enrichment, orchestrateur."""
 from __future__ import annotations
 
-import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -413,7 +412,11 @@ class TestBuffettQualitySkill:
     ):
         """execute() retourne (BuffettQualityOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=buffett_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = buffett_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=400,
@@ -440,7 +443,11 @@ class TestBuffettQualitySkill:
         buffett_output_bns: BuffettQualityOutput,
     ):
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=buffett_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = buffett_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=400,
@@ -465,7 +472,11 @@ class TestBuffettQualitySkill:
     ):
         """execute() transmet le contexte dorsey dans le message utilisateur."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=buffett_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = buffett_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=400,
@@ -505,7 +516,11 @@ class TestBuffettQualitySkill:
             verdict="QUALITE_CORRECTE",
         )
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=json.dumps(output_data))]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = output_data
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=400,
@@ -587,6 +602,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,
@@ -619,6 +635,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="MSFT",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -646,6 +663,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             buffett_ratios=ratios_buffett_bns,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -688,6 +706,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,
@@ -724,6 +743,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             buffett_ratios=ratios_buffett_bns,
         )
         await orchestrator.run_company_analysis(req)
@@ -787,6 +807,7 @@ class TestOrchestratorBuffett:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,

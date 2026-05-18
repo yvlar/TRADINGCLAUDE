@@ -7,6 +7,8 @@ import {
   removeFromWatchlist,
   triggerWatchlistAnalysis,
 } from '../api/watchlist'
+import { downloadTickerPdf } from '../api/analyze'
+import { ApiError } from '../api/client'
 import type { WatchlistCreate } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -17,6 +19,8 @@ export default function WatchlistPage() {
   const [workflow, setWorkflow] = useState('value_graham')
   const [lastJobId, setLastJobId] = useState<string | null>(null)
   const [addError, setAddError] = useState('')
+  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null)
+  const [pdfMessage, setPdfMessage] = useState<string | null>(null)
 
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ['watchlist'],
@@ -44,6 +48,28 @@ export default function WatchlistPage() {
       setLastJobId(data.job_id)
     },
   })
+
+  const handleDownloadPdf = async (ticker: string, id: string) => {
+    setPdfLoadingId(id)
+    setPdfMessage(null)
+    try {
+      const blob = await downloadTickerPdf(ticker)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${ticker}-rapport.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        setPdfMessage(`Aucun rapport disponible pour ${ticker} (pas d'historique).`)
+      } else {
+        setPdfMessage('Erreur lors du téléchargement du rapport PDF.')
+      }
+    } finally {
+      setPdfLoadingId(null)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -98,13 +124,20 @@ export default function WatchlistPage() {
       {entries.length === 0 ? (
         <p className="text-muted-foreground">Aucun ticker en surveillance.</p>
       ) : (
-        <WatchlistTable
-          entries={entries}
-          onDelete={(id) => deleteMutation.mutate(id)}
-          onAnalyze={(id) => analyzeMutation.mutate(id)}
-          deletingId={deleteMutation.isPending ? (deleteMutation.variables ?? null) : null}
-          analyzingId={analyzeMutation.isPending ? (analyzeMutation.variables ?? null) : null}
-        />
+        <>
+          {pdfMessage && (
+            <p className="text-sm text-muted-foreground">{pdfMessage}</p>
+          )}
+          <WatchlistTable
+            entries={entries}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            onAnalyze={(id) => analyzeMutation.mutate(id)}
+            deletingId={deleteMutation.isPending ? (deleteMutation.variables ?? null) : null}
+            analyzingId={analyzeMutation.isPending ? (analyzeMutation.variables ?? null) : null}
+            onDownloadPdf={handleDownloadPdf}
+            pdfLoadingId={pdfLoadingId}
+          />
+        </>
       )}
     </div>
   )

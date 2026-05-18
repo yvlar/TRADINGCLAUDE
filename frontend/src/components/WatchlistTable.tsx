@@ -9,6 +9,8 @@ interface WatchlistTableProps {
   onAnalyze: (id: string) => void
   deletingId?: string | null
   analyzingId?: string | null
+  onDownloadPdf?: (ticker: string, id: string) => void
+  pdfLoadingId?: string | null
 }
 
 function computeAlerte(entry: WatchlistEntry): boolean | null {
@@ -30,6 +32,8 @@ export function WatchlistTable({
   onAnalyze,
   deletingId,
   analyzingId,
+  onDownloadPdf,
+  pdfLoadingId,
 }: WatchlistTableProps) {
   return (
     <Table>
@@ -41,6 +45,7 @@ export function WatchlistTable({
           <TableHead>Valeur intrinsèque</TableHead>
           <TableHead>Prix vérifié</TableHead>
           <TableHead>Alerte</TableHead>
+          <TableHead>Score composite</TableHead>
           <TableHead>Actions</TableHead>
         </TableRow>
       </TableHeader>
@@ -77,6 +82,19 @@ export function WatchlistTable({
                   <Badge variant="success">OK</Badge>
                 )}
               </TableCell>
+              <TableCell data-testid="composite-score-cell">
+                {entry.last_composite_score != null ? (
+                  <span className={
+                    entry.last_composite_score >= 70 ? 'text-green-400 font-semibold' :
+                    entry.last_composite_score >= 45 ? 'text-yellow-400 font-semibold' :
+                    'text-red-400 font-semibold'
+                  }>
+                    {entry.last_composite_score.toFixed(1)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
               <TableCell>
                 <div className="flex gap-2">
                   <Button
@@ -87,6 +105,17 @@ export function WatchlistTable({
                   >
                     {analyzingId === entry.id ? '...' : 'Analyser'}
                   </Button>
+                  {onDownloadPdf && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pdfLoadingId === entry.id}
+                      onClick={() => onDownloadPdf(entry.ticker, entry.id)}
+                      data-testid={`pdf-btn-${entry.ticker}`}
+                    >
+                      {pdfLoadingId === entry.id ? '...' : 'PDF'}
+                    </Button>
+                  )}
                   <Button
                     variant="destructive"
                     size="sm"

@@ -287,7 +287,11 @@ class TestKlarmanMarginSkill:
     ):
         """execute() retourne (KlarmanOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=klarman_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = klarman_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=500,
             output_tokens=300,
@@ -359,6 +363,7 @@ class TestOrchestratorKlarman:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="special_situation",
             klarman_input=klarman_input_bns,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -383,7 +388,7 @@ class TestOrchestratorKlarman:
             earnings_skill=mock_earnings_skill,
             klarman_skill=mock_klarman_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="special_situation")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.klarman is None
@@ -392,7 +397,7 @@ class TestOrchestratorKlarman:
 
     @pytest.mark.asyncio
     async def test_klarman_input_defaut_none(self, ratios_msft):
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="special_situation")
         assert req.klarman_input is None
 
     @pytest.mark.asyncio

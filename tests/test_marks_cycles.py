@@ -235,7 +235,11 @@ class TestMarksCyclesSkill:
     ):
         """execute() retourne (MarksOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=marks_output_neutre.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = marks_output_neutre.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=300,
@@ -311,6 +315,7 @@ class TestOrchestratorMarks:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             marks_input=MarksInput(
                 market_context="Contexte macro Q1 2026",
                 marks_ratios=ratios_neutre,
@@ -338,7 +343,7 @@ class TestOrchestratorMarks:
             earnings_skill=mock_earnings_skill,
             marks_skill=mock_marks_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="compounder_buffett")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.marks is None

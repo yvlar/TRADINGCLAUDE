@@ -17,10 +17,13 @@ from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
 from app.rag.service import RagService
+from app.services.composite_alert import CompositeAlertService
 from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
 from app.services.report import ReportService
+from app.services.screener import ScreenerService
 from app.services.watchlist_service import WatchlistService
+from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
 from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
 from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
@@ -37,6 +40,15 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 _JOB_TTL = 86400  # 24 heures
+
+
+def _score_label(score: float) -> str:
+    """Convertit un composite_score en label textuel."""
+    if score >= 70:
+        return "Fort"
+    if score >= 50:
+        return "Modéré"
+    return "Faible"
 
 
 def _get_redis() -> redis.Redis:
@@ -219,6 +231,7 @@ async def _execute_price_alert_check() -> list[str]:
     db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
     yahoo_extractor = YahooFinanceExtractor()
     service = PriceAlertService()
+    webhook_service = WebhookService()
     try:
         alerted = await service.check_price_alerts(db_pool, yahoo_extractor)
         if alerted:
@@ -249,6 +262,20 @@ async def _execute_price_alert_check() -> list[str]:
                         "Re-analyse déclenchée — ticker=%s, job=%s (alerte prix)",
                         ticker,
                         job_id,
+                    )
+
+                # Notification webhook après re-déclenchement des analyses
+                price_row = await db_pool.fetchrow(
+                    """SELECT last_price_checked, price_alert_threshold_pct
+                       FROM watchlist WHERE ticker = $1""",
+                    ticker,
+                )
+                if price_row:
+                    await webhook_service.send_price_alert(
+                        ticker=ticker,
+                        prix=float(price_row["last_price_checked"] or 0.0),
+                        seuil=float(price_row["price_alert_threshold_pct"] or 0.10),
+                        direction="divergence",
                     )
         return alerted
     finally:
@@ -296,25 +323,38 @@ async def _execute_weekly_watchlist_report() -> None:
         to = os.environ.get("REPORT_EMAIL_TO", "")
         if not to:
             logger.warning("REPORT_EMAIL_TO non configuré — rapport PDF non envoyé")
-            return
-
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        sent = await email_service.send_report(
-            subject=f"Rapport watchlist hebdomadaire — {len(entries)} position(s) — {date_str}",
-            body_text=(
-                f"Bonjour,\n\n"
-                f"Voici le rapport hebdomadaire de votre watchlist : {len(entries)} position(s) analysées.\n\n"
-                f"Date : {date_str}\n"
-                f"Copilote Financier IA"
-            ),
-            pdf_bytes=pdf_bytes,
-            filename=f"watchlist-{date_str}.pdf",
-            to=to,
-        )
-        if sent:
-            logger.info("Rapport watchlist hebdomadaire envoyé — %d position(s)", len(entries))
         else:
-            logger.warning("Rapport watchlist hebdomadaire non envoyé (échec EmailService)")
+            date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            sent = await email_service.send_report(
+                subject=f"Rapport watchlist hebdomadaire — {len(entries)} position(s) — {date_str}",
+                body_text=(
+                    f"Bonjour,\n\n"
+                    f"Voici le rapport hebdomadaire de votre watchlist : {len(entries)} position(s) analysées.\n\n"
+                    f"Date : {date_str}\n"
+                    f"Copilote Financier IA"
+                ),
+                pdf_bytes=pdf_bytes,
+                filename=f"watchlist-{date_str}.pdf",
+                to=to,
+            )
+            if sent:
+                logger.info("Rapport watchlist hebdomadaire envoyé — %d position(s)", len(entries))
+            else:
+                logger.warning("Rapport watchlist hebdomadaire non envoyé (échec EmailService)")
+
+        # Notification webhook résumé hebdomadaire
+        alertes_webhook = [
+            {"ticker": e.ticker, "score": e.last_score}
+            for e in entries
+            if e.score_alerte_min is not None
+            and e.last_score is not None
+            and e.last_score < e.score_alerte_min
+        ]
+        webhook_service = WebhookService()
+        await webhook_service.send_watchlist_summary(
+            nb_positions=len(entries),
+            alertes=alertes_webhook,
+        )
     finally:
         await db_pool.close()
 
@@ -328,3 +368,198 @@ def run_weekly_watchlist_report(self) -> None:
     logger.info("Début rapport hebdomadaire watchlist")
     asyncio.run(_execute_weekly_watchlist_report())
     logger.info("Fin rapport hebdomadaire watchlist")
+
+
+async def _execute_composite_alert_check() -> list[str]:
+    """
+    Verifie les alertes composite_score pour toutes les entrees watchlist avec baseline.
+    Relance l'analyse via l'orchestrateur, compare vs la baseline, envoie un email si derive.
+    Retourne la liste des tickers qui ont declenche une alerte.
+    """
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    try:
+        orchestrator, _ = await _build_orchestrator()
+        watchlist_service = WatchlistService(db_pool)
+
+        email_service: EmailService | None = None
+        email_to = os.environ.get("REPORT_EMAIL_TO")
+        smtp_host = os.environ.get("SMTP_HOST")
+        if email_to and smtp_host:
+            email_service = EmailService()
+
+        alert_service = CompositeAlertService(
+            watchlist_service=watchlist_service,
+            orchestrator=orchestrator,
+            email_service=email_service,
+            email_to=email_to,
+        )
+
+        resultats = await alert_service.check_composite_alerts()
+        alertes = [r.ticker for r in resultats if r.alerte_declenchee]
+
+        # Notifications webhook pour chaque alerte composite déclenchée
+        webhook_service = WebhookService()
+        for r in resultats:
+            if r.alerte_declenchee:
+                await webhook_service.send_composite_alert(
+                    ticker=r.ticker,
+                    score=r.new_score,
+                    label=_score_label(r.new_score),
+                )
+
+        return alertes
+    finally:
+        await db_pool.close()
+
+
+async def _execute_eval_drift_check(dataset: str) -> dict:
+    """Lance EvalDriftService.run_eval() et persist le résultat dans Redis."""
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+    import redis.asyncio as aioredis
+    from app.services.eval_drift_service import EvalDriftService
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=True)
+    try:
+        svc = EvalDriftService(redis_client=redis_client)
+        result = await svc.run_eval(dataset)
+        await svc.record_result(result)
+        return result.model_dump(mode="json")
+    finally:
+        await redis_client.aclose()
+
+
+@celery_app.task(name="run_eval_drift_check", bind=True)
+def run_eval_drift_check(self, dataset: str = "graham") -> dict:
+    """
+    Tâche Celery — exécute le golden dataset et enregistre le résultat dans Redis.
+    Déclenchable manuellement ou en cron pour détecter les régressions de qualité IA.
+    """
+    logger.info("Début eval drift check — dataset=%s", dataset)
+    result = asyncio.run(_execute_eval_drift_check(dataset))
+    logger.info(
+        "Fin eval drift check — dataset=%s concordance=%.1f%% alerte=%s",
+        dataset,
+        result.get("concordance_rate", 0.0) * 100,
+        result.get("alert"),
+    )
+    return result
+
+
+@celery_app.task(name="run_composite_alert_check", bind=True)
+def run_composite_alert_check(self) -> None:
+    """
+    Tache Celery -- verification quotidienne des alertes composite_score watchlist.
+    Planifiee chaque jour a 10h00 UTC via Celery beat.
+    """
+    logger.info("Debut verification quotidienne alertes composite watchlist")
+    alertes = asyncio.run(_execute_composite_alert_check())
+    logger.info(
+        "Fin verification alertes composite -- %d alerte(s) declenchee(s)", len(alertes)
+    )
+
+
+async def _execute_scheduled_screener() -> dict:
+    """Screene tous les tickers watchlist et envoie les opportunités FORT par webhook."""
+    from app.api.endpoints.screen import ScreenRequest
+
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    orch_pool: asyncpg.Pool | None = None
+    try:
+        wl_service = WatchlistService(db_pool)
+        entries = await wl_service.list_entries()
+
+        if not entries:
+            logger.info("Screener planifié ignoré — watchlist vide")
+            return {"nb_tickers_screenes": 0, "nb_opportunites": 0, "tickers_fort": []}
+
+        tickers = [e.ticker for e in entries]
+        logger.info("Screener planifié — %d ticker(s) à analyser", len(tickers))
+
+        orchestrator, orch_pool = await _build_orchestrator()
+        extractor = YahooFinanceExtractor()
+        screener = ScreenerService(orchestrator=orchestrator, extractor=extractor)
+
+        all_screen_entries = []
+        for i in range(0, len(tickers), 20):
+            batch = tickers[i : i + 20]
+            try:
+                req = ScreenRequest(tickers=batch, min_composite_score=70)
+                result = await screener.screen(req)
+                all_screen_entries.extend(result.resultats)
+            except Exception:
+                logger.exception("Erreur screener pour le batch %s", batch)
+
+        fort_entries = [
+            e
+            for e in all_screen_entries
+            if e.erreur is None
+            and (
+                e.composite_label == "FORT"
+                or (e.defensive_score is not None and e.defensive_score >= 5)
+            )
+        ]
+        tickers_fort = [e.ticker for e in fort_entries]
+
+        from types import SimpleNamespace
+
+        # SimpleNamespace évite la validation Pydantic sur des entrées hétérogènes
+        nb_echec = sum(1 for e in all_screen_entries if getattr(e, "erreur", None))
+        screen_result = SimpleNamespace(
+            tickers_analyses=len(all_screen_entries) - nb_echec,
+            tickers_echec=nb_echec,
+            tickers_depuis_cache=sum(1 for e in all_screen_entries if getattr(e, "depuis_cache", False)),
+            cout_total_usd=0.0,
+            resultats=all_screen_entries,
+            workflow="value_graham",
+            duration_ms=0,
+        )
+
+        webhook_service = WebhookService()
+        if tickers_fort:
+            await webhook_service.send_screener_report(
+                nb_tickers_screenes=len(tickers),
+                tickers_fort=tickers_fort,
+            )
+            logger.info(
+                "Screener planifié — %d opportunité(s) FORT notifiée(s) par webhook JSON",
+                len(tickers_fort),
+            )
+
+        # Envoi du rapport PDF en plus du JSON (optionnel — no-op si WEBHOOK_URL absent)
+        await webhook_service.send_screener_pdf_report(screen_result)
+
+        if not tickers_fort:
+            logger.info("Screener planifié — aucune opportunité FORT identifiée")
+
+        return {
+            "nb_tickers_screenes": len(tickers),
+            "nb_opportunites": len(tickers_fort),
+            "tickers_fort": tickers_fort,
+        }
+    finally:
+        await db_pool.close()
+        if orch_pool is not None:
+            await orch_pool.close()
+
+
+@celery_app.task(name="run_scheduled_screener", bind=True)
+def run_scheduled_screener(self) -> dict:
+    """
+    Tâche Celery — screener hebdomadaire de la watchlist complète.
+    Filtre les opportunités FORT (composite_label="FORT" ou defensive_score >= 5)
+    et envoie un rapport via webhook. Planifiée chaque dimanche à 11h00 UTC.
+    """
+    logger.info("Début screener planifié hebdomadaire")
+    result = asyncio.run(_execute_scheduled_screener())
+    logger.info(
+        "Fin screener planifié — %d ticker(s) analysé(s), %d opportunité(s) FORT",
+        result.get("nb_tickers_screenes", 0),
+        result.get("nb_opportunites", 0),
+    )
+    return result

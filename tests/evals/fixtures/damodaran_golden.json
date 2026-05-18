@@ -1,0 +1,332 @@
+[
+  {
+    "id": "damodaran-001",
+    "description": "TSLA -- story stock classique : narrative disruption EV + energie, chiffres valuation exigeants",
+    "input": {
+      "ticker": "TSLA",
+      "narrative_text": "Tesla n'est pas une simple entreprise automobile : c'est une plateforme technologique d'energie et de transport. La vision inclut la conduite autonome (robotaxi), le stockage d'energie (Megapack/Powerwall), et un reseau de superchargeurs mondial. L'avantage technologique IA (FSD, Dojo) cree une barriere que les OEM traditionnels ne peuvent replicer en quelques annees.",
+      "ratios": {
+        "revenue_bn": 97.0,
+        "revenue_growth_5y": 0.38,
+        "net_margin": 0.09,
+        "roic": 0.14,
+        "tam_bn": 10000.0,
+        "market_share_pct": 0.15,
+        "sector": "Automotive/Technology"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE", "NARRATIVE_FAIBLE"],
+      "test_coherence_allowed": ["POSSIBLE", "PLAUSIBLE", "PROBABLE"],
+      "narrative_strength_min": 5
+    }
+  },
+  {
+    "id": "damodaran-002",
+    "description": "NVDA -- narrative IA + data center verifiee par les chiffres, croissance explosive",
+    "input": {
+      "ticker": "NVDA",
+      "narrative_text": "NVIDIA est le pick-and-shovel de la revolution IA. Les GPU H100/H200 sont indispensables pour l'entrainement des LLMs. Le moat repose sur l'ecosysteme CUDA (15 ans de code client), la software stack (cuDNN, TensorRT), et une avance technologique de 2-3 ans. La croissance data center de 200%+ valide la narrative.",
+      "ratios": {
+        "revenue_bn": 60.0,
+        "revenue_growth_5y": 0.65,
+        "net_margin": 0.53,
+        "roic": 0.85,
+        "tam_bn": 1000.0,
+        "market_share_pct": 0.80,
+        "sector": "Semiconductors"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 7
+    }
+  },
+  {
+    "id": "damodaran-003",
+    "description": "AMZN -- narrative plateforme multi-levier : AWS + retail + ads + prime, chiffres confirment",
+    "input": {
+      "ticker": "AMZN",
+      "narrative_text": "Amazon est une collection de business avec des dynamics differents : AWS (cloud dominant, marges 35%+), Marketplace (fees sans inventaire), Advertising (croissance 20%+), Prime (ecosysteme fidelite). La narrative de plateforme de capital allocation superieure est verifiee par le FCF record en 2023.",
+      "ratios": {
+        "revenue_bn": 575.0,
+        "revenue_growth_5y": 0.14,
+        "net_margin": 0.05,
+        "roic": 0.11,
+        "tam_bn": 5000.0,
+        "market_share_pct": 0.40,
+        "sector": "E-commerce/Cloud"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 6
+    }
+  },
+  {
+    "id": "damodaran-004",
+    "description": "META -- narrative metaverse couteuse mais ads business solide, double nature",
+    "input": {
+      "ticker": "META",
+      "narrative_text": "Meta est un paradoxe : le business ads social media (Facebook, Instagram, WhatsApp) genere 130B+ de revenus avec des marges 35%+, pendant que Reality Labs perd 17B/an sur la vision metaverse. La vraie question est si la narrative metaverse justifie le cout, ou si le marche valorise uniquement le business core.",
+      "ratios": {
+        "revenue_bn": 134.0,
+        "revenue_growth_5y": 0.12,
+        "net_margin": 0.29,
+        "roic": 0.23,
+        "tam_bn": 2000.0,
+        "market_share_pct": 0.25,
+        "sector": "Social Media/Technology"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_ACCEPTABLE", "NARRATIVE_FORTE", "NARRATIVE_FAIBLE"],
+      "test_coherence_allowed": ["PLAUSIBLE", "POSSIBLE", "PROBABLE"],
+      "narrative_strength_min": 5
+    }
+  },
+  {
+    "id": "damodaran-005",
+    "description": "SHOP -- narrative democratisation e-commerce, penetration marche elevee vs TAM initial",
+    "input": {
+      "ticker": "SHOP",
+      "narrative_text": "Shopify est la plateforme de commerce pour les entrepreneurs et les marques. Chaque marchand sur Shopify est un client perpetuel : plus son business grandit, plus les fees augmentent (payment processing, apps, capital). La narrative de 'arming the rebels against Amazon' est coherente avec la croissance GMV et la retention marchands.",
+      "ratios": {
+        "revenue_bn": 8.9,
+        "revenue_growth_5y": 0.30,
+        "net_margin": 0.09,
+        "roic": 0.06,
+        "tam_bn": 800.0,
+        "market_share_pct": 0.12,
+        "sector": "E-commerce/SaaS"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PLAUSIBLE", "POSSIBLE", "PROBABLE"],
+      "narrative_strength_min": 5
+    }
+  },
+  {
+    "id": "damodaran-006",
+    "description": "KO -- number stock : chiffres stables, narrative previsible, pas de disruption imminente",
+    "input": {
+      "ticker": "KO",
+      "narrative_text": "Coca-Cola est une machine a FCF : distribution mondiale de 200+ pays, marques iconiques depuis 130 ans, pricing power demontre sur inflation. La narrative est simple et verifiable : volume + prix + mix. Pas de disruption technologique, croissance organique modeste mais previsible.",
+      "ratios": {
+        "revenue_bn": 46.0,
+        "revenue_growth_5y": 0.05,
+        "net_margin": 0.23,
+        "roic": 0.13,
+        "tam_bn": 500.0,
+        "market_share_pct": 0.40,
+        "sector": "Consumer Staples"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 6
+    }
+  },
+  {
+    "id": "damodaran-007",
+    "description": "JNJ -- number stock : portefeuille diversifie, R&D pipeline solide, narrative defensible",
+    "input": {
+      "ticker": "JNJ",
+      "narrative_text": "Johnson & Johnson est un conglomerat sante : pharma innovant (oncologie, immunologie), medtech (DePuy, Abiomed), consumer health (scinde en Kenvue). La narrative de 'sante de A a Z' est coherente avec 60 ans de dividendes en hausse et un pipeline R&D de 80+ molecules en clinique.",
+      "ratios": {
+        "revenue_bn": 85.0,
+        "revenue_growth_5y": 0.04,
+        "net_margin": 0.22,
+        "roic": 0.18,
+        "tam_bn": 2000.0,
+        "market_share_pct": 0.08,
+        "sector": "Healthcare"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 6
+    }
+  },
+  {
+    "id": "damodaran-008",
+    "description": "BNS -- number stock : banque conservatrice, narrative de dividende et stabilite, pas de growth story",
+    "input": {
+      "ticker": "BNS",
+      "narrative_text": "La Banque de Nouvelle-Ecosse se positionne comme la banque canadienne avec la plus grande exposition a l'Amerique Latine (Mexique, Colombie, Perou). La narrative de croissance emergente est sous pression : les problemes de qualite credit en LATAM et la restructuration du portefeuille changent le profil de risque.",
+      "ratios": {
+        "revenue_bn": 32.0,
+        "revenue_growth_5y": 0.04,
+        "net_margin": 0.21,
+        "roic": 0.09,
+        "tam_bn": null,
+        "market_share_pct": 0.14,
+        "sector": "Banking"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_ACCEPTABLE", "NARRATIVE_FORTE", "NARRATIVE_FAIBLE"],
+      "test_coherence_allowed": ["PLAUSIBLE", "POSSIBLE", "PROBABLE"],
+      "narrative_strength_min": 4
+    }
+  },
+  {
+    "id": "damodaran-009",
+    "description": "V -- number stock parfait : narrative simple (reseau paiement), chiffres impeccables",
+    "input": {
+      "ticker": "V",
+      "narrative_text": "Visa est le peage sur l'economie mondiale : chaque transaction payee avec une carte Visa genere une micro-commission. La narrative est simple -- plus le commerce mondial croit, plus Visa gagne. L'acceleration du passage au digital accelere le volume. Pas de risque de credit, pas de bilan lourd.",
+      "ratios": {
+        "revenue_bn": 33.0,
+        "revenue_growth_5y": 0.11,
+        "net_margin": 0.53,
+        "roic": 0.18,
+        "tam_bn": 20000.0,
+        "market_share_pct": 0.45,
+        "sector": "Payment Networks"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 7
+    }
+  },
+  {
+    "id": "damodaran-010",
+    "description": "WM -- number stock infrastructure : narrative previsible, regulation favorable, FCF cible",
+    "input": {
+      "ticker": "WM",
+      "narrative_text": "Waste Management est l'operateur d'infrastructure environnementale -- decharges, recyclage, energie dechets. La narrative est reglementairement protegee : les decharges sont quasi-impossibles a dupliquer. La croissance vient du pricing (inflation + mandats recyclage) et des contrats municipaux long-terme.",
+      "ratios": {
+        "revenue_bn": 20.0,
+        "revenue_growth_5y": 0.07,
+        "net_margin": 0.12,
+        "roic": 0.13,
+        "tam_bn": 100.0,
+        "market_share_pct": 0.30,
+        "sector": "Environmental Services"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PROBABLE", "PLAUSIBLE"],
+      "narrative_strength_min": 6
+    }
+  },
+  {
+    "id": "damodaran-011",
+    "description": "GE -- narrative rupture : de conglomerat industriel a GE Aerospace pure-play post-scissions",
+    "input": {
+      "ticker": "GE",
+      "narrative_text": "General Electric a complete sa transformation : GE Healthcare (GEHC) et GE Vernova (energie) ont ete scindees. GE Aerospace est desormais un pure-play sur les moteurs d'avion (LEAP, GE9X) et les services apres-vente (50%+ des revenus). La narrative de 'simplification pour creer de la valeur' est en cours de validation.",
+      "ratios": {
+        "revenue_bn": 35.0,
+        "revenue_growth_5y": -0.05,
+        "net_margin": 0.09,
+        "roic": 0.10,
+        "tam_bn": 200.0,
+        "market_share_pct": 0.35,
+        "sector": "Aerospace/Defense"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_ACCEPTABLE", "NARRATIVE_FORTE", "NARRATIVE_FAIBLE"],
+      "test_coherence_allowed": ["PLAUSIBLE", "POSSIBLE", "PROBABLE"],
+      "narrative_strength_min": 4
+    }
+  },
+  {
+    "id": "damodaran-012",
+    "description": "IBM -- narrative rupture hybrid cloud + IA : abandon legacy infrastructure, focus consulting",
+    "input": {
+      "ticker": "IBM",
+      "narrative_text": "IBM se repositionne autour du hybrid cloud (RedHat) et de l'IA d'entreprise (Watson/watsonx). La scission d'Kyndryl (infrastructure) libere le bilan. La narrative : IBM devient le 'Red Hat + consulting' pour la migration cloud des grandes entreprises. Les chiffres montrent une stabilisation des revenus mais pas encore de croissance.",
+      "ratios": {
+        "revenue_bn": 62.0,
+        "revenue_growth_5y": 0.01,
+        "net_margin": 0.10,
+        "roic": 0.08,
+        "tam_bn": 1000.0,
+        "market_share_pct": 0.05,
+        "sector": "Technology/Consulting"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_ACCEPTABLE", "NARRATIVE_FAIBLE"],
+      "test_coherence_allowed": ["POSSIBLE", "PLAUSIBLE"],
+      "narrative_strength_min": 3
+    }
+  },
+  {
+    "id": "damodaran-013",
+    "description": "BA -- narrative rupture : Boeing post-737 MAX / 787 : recouvrance de l'execution vs backlog record",
+    "input": {
+      "ticker": "BA",
+      "narrative_text": "Boeing a un carnet de commandes de 520B+ (7 ans de production) et un duopole avec Airbus dans l'aviation commerciale. La narrative de recuperation est claire : livraisons 737 MAX normalisees + 787 Dreamliner reprises. Le risque principal est l'execution industrielle apres les crises de qualite 2019-2024.",
+      "ratios": {
+        "revenue_bn": 78.0,
+        "revenue_growth_5y": 0.02,
+        "net_margin": -0.03,
+        "roic": -0.02,
+        "tam_bn": 4000.0,
+        "market_share_pct": 0.42,
+        "sector": "Aerospace/Defense"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_ACCEPTABLE", "NARRATIVE_FAIBLE", "NARRATIVE_FORTE"],
+      "test_coherence_allowed": ["POSSIBLE", "PLAUSIBLE"],
+      "narrative_strength_min": 3
+    }
+  },
+  {
+    "id": "damodaran-014",
+    "description": "SMCI -- dark horse : serveur IA a forte croissance, narrative data center valide par NVDA partnership",
+    "input": {
+      "ticker": "SMCI",
+      "narrative_text": "Super Micro Computer est le fournisseur de serveurs optimises pour GPU NVIDIA. Sa position unique : assemblage rapide (time-to-market 2-3x plus vite que Dell/HP), liquid cooling proprietaire, et relation privilegiee avec NVIDIA pour les systemes H100/H200. La croissance 2023-2024 de 100%+ valide la narrative infrastructure IA.",
+      "ratios": {
+        "revenue_bn": 15.0,
+        "revenue_growth_5y": 0.45,
+        "net_margin": 0.08,
+        "roic": 0.18,
+        "tam_bn": 200.0,
+        "market_share_pct": 0.10,
+        "sector": "Technology/Servers"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FORTE", "NARRATIVE_ACCEPTABLE"],
+      "test_coherence_allowed": ["PLAUSIBLE", "POSSIBLE", "PROBABLE"],
+      "narrative_strength_min": 5
+    }
+  },
+  {
+    "id": "damodaran-015",
+    "description": "COIN -- narrative incoherente : dependance crypto cyclique sans moat defensible, regulation imprevisible",
+    "input": {
+      "ticker": "COIN",
+      "narrative_text": "Coinbase se positionne comme 'l'infrastructure financiere de l'economie crypto'. La narrative : quand les institutions adopteront massivement le Bitcoin (ETF approuves), Coinbase capture 10%+ du volume institutionnel. Mais les revenus fluctuent de 7B a 3B selon le cycle crypto, et la competition des DEX est existentielle.",
+      "ratios": {
+        "revenue_bn": 6.0,
+        "revenue_growth_5y": 0.20,
+        "net_margin": 0.08,
+        "roic": 0.04,
+        "tam_bn": 300.0,
+        "market_share_pct": 0.10,
+        "sector": "Crypto Exchange"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["NARRATIVE_FAIBLE", "NARRATIVE_ACCEPTABLE", "NARRATIVE_INCOHERENTE"],
+      "test_coherence_allowed": ["POSSIBLE", "PLAUSIBLE"],
+      "narrative_strength_min": 2
+    }
+  }
+]

@@ -336,3 +336,130 @@ async def test_screen_endpoint_trop_de_tickers_422(client):
         json={"tickers": [f"T{i}" for i in range(21)]},
     )
     assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Tests composite_score dans ScreenEntry — Sprint 46
+# ---------------------------------------------------------------------------
+
+def _make_response_avec_composite(
+    ticker: str, score: int, verdict: str, composite_score: float, composite_label: str
+) -> AnalyzeResponse:
+    """AnalyzeResponse avec composite_score rempli."""
+    from app.services.composite_score import CompositeScore
+    cs = CompositeScore(
+        score=composite_score,
+        label=composite_label,
+        skills_inclus=["graham"],
+        skills_exclus=[],
+        detail={"graham": 1.0},
+    )
+    resp = _make_response(ticker, score, verdict)
+    return resp.model_copy(update={"composite_score": cs})
+
+
+async def test_screen_entry_expose_composite_score():
+    """ScreenEntry contient composite_score et composite_label depuis AnalyzeResponse."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(
+        return_value=_make_response_avec_composite("BNS", 6, "PASSE", 72.5, "FORT")
+    )
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(tickers=["BNS"], ratios_map={"BNS": RATIOS_MINI})
+    result = await screener.screen(req)
+
+    entry = result.resultats[0]
+    assert entry.composite_score == 72.5
+    assert entry.composite_label == "FORT"
+
+
+async def test_screen_tri_par_composite_score():
+    """Quand composite_score disponible, le tri l'utilise en priorité."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(
+        side_effect=[
+            _make_response_avec_composite("BNS", 6, "PASSE", 55.0, "MODERE"),
+            _make_response_avec_composite("TD", 4, "BORDERLINE", 80.0, "FORT"),
+            _make_response_avec_composite("RY", 7, "PASSE", 45.0, "MODERE"),
+        ]
+    )
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(
+        tickers=["BNS", "TD", "RY"],
+        ratios_map={"BNS": RATIOS_MINI, "TD": RATIOS_MINI, "RY": RATIOS_MINI},
+    )
+    result = await screener.screen(req)
+
+    # TD a le plus haut composite (80) malgré un defensive_score plus faible
+    assert result.resultats[0].ticker == "TD"
+    assert result.resultats[0].composite_score == 80.0
+
+    scores = [e.composite_score for e in result.resultats if e.erreur is None]
+    assert scores == sorted(scores, reverse=True)
+
+
+async def test_screen_entry_sans_composite_fallback_defensive():
+    """Sans composite_score, le tri utilise defensive_score (comportement hérité)."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(
+        side_effect=[
+            _make_response("BNS", 6, "PASSE"),
+            _make_response("TD", 3, "BORDERLINE"),
+            _make_response("RY", 8, "PASSE"),
+        ]
+    )
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(
+        tickers=["BNS", "TD", "RY"],
+        ratios_map={"BNS": RATIOS_MINI, "TD": RATIOS_MINI, "RY": RATIOS_MINI},
+    )
+    result = await screener.screen(req)
+
+    # composite_score absent → fallback sur defensive_score
+    for entry in result.resultats:
+        assert entry.composite_score is None
+        assert entry.composite_label is None
+
+    assert result.resultats[0].ticker == "RY"  # score=8, le plus élevé
+
+
+async def test_screen_entry_composite_label_valeurs_connues():
+    """composite_label doit etre FORT, MODERE, ou FAIBLE."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(
+        return_value=_make_response_avec_composite("BNS", 5, "PASSE", 68.0, "MODERE")
+    )
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(tickers=["BNS"], ratios_map={"BNS": RATIOS_MINI})
+    result = await screener.screen(req)
+
+    entry = result.resultats[0]
+    assert entry.composite_label in {"FORT", "MODERE", "MODÉRÉ", "FAIBLE"}

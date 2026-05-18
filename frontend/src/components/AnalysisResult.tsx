@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
-import type { AnalyzeResponse, GrahamCriterion, SkillOutput } from '../types'
+import type { AnalyzeResponse, CompositeScore, GrahamCriterion, SkillOutput } from '../types'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -15,6 +15,25 @@ function verdictBadge(verdict: string | undefined) {
   if (v === 'WATCHLIST' || v === 'CONSERVER')
     return <Badge variant="warning">{verdict}</Badge>
   return <Badge variant="danger">{verdict}</Badge>
+}
+
+function CompositeBadge({ cs }: { cs: CompositeScore }) {
+  const color =
+    cs.label === 'FORT'
+      ? 'text-green-400'
+      : cs.label === 'MODÉRÉ'
+      ? 'text-yellow-400'
+      : 'text-red-400'
+  return (
+    <span
+      data-testid="composite-score"
+      className={`font-semibold tabular-nums text-sm ${color}`}
+      title={`Skills inclus : ${cs.skills_inclus.join(', ')}`}
+    >
+      {cs.score.toFixed(1)}/100
+      <span className="ml-1 text-xs text-muted-foreground">({cs.label})</span>
+    </span>
+  )
 }
 
 function ScoreBar({ score, max }: { score: number; max: number }) {
@@ -118,6 +137,7 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
               </span>
             )}
             {g && <span data-testid="graham-verdict">{verdictBadge(g.verdict)}</span>}
+            {result.composite_score && <CompositeBadge cs={result.composite_score} />}
             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
               ${result.cost_usd.toFixed(4)} USD · {result.skills_applied.length} skill(s)
             </span>

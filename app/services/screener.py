@@ -14,8 +14,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT_TICKER_S: float = 30.0
-_TIMEOUT_GLOBAL_S: float = 120.0
+# value_graham = 5 skills × ~30s/skill = ~150s ; compounder_buffett = 10 skills = ~300s
+# On prend la marge haute + retry backoff éventuel
+_TIMEOUT_TICKER_S: float = 300.0
+_TIMEOUT_GLOBAL_S: float = 600.0
 
 
 class ScreenerService:
@@ -68,15 +70,39 @@ class ScreenerService:
             else:
                 entries.append(result)
 
-        # Tri : succès par score desc, échecs en bas, puis alphabétique
-        def _sort_key(e: ScreenEntry) -> tuple[int, int, str]:
+        # Tri : succès par composite_score desc (fallback defensive_score), échecs en bas
+        def _sort_key(e: ScreenEntry) -> tuple[int, float, str]:
             if e.erreur is not None:
-                return (1, 0, e.ticker)
-            if e.defensive_score is None:
-                return (0, 0, e.ticker)
-            return (0, -e.defensive_score, e.ticker)
+                return (1, 0.0, e.ticker)
+            if e.composite_score is not None:
+                return (0, -e.composite_score, e.ticker)
+            if e.defensive_score is not None:
+                return (0, -float(e.defensive_score), e.ticker)
+            return (0, 0.0, e.ticker)
 
         entries.sort(key=_sort_key)
+
+        # Filtrage post-analyse (AND) — les tickers en échec sont toujours inclus
+        has_filter = any(
+            f is not None
+            for f in (request.composite_label, request.min_composite_score, request.filter_workflow)
+        )
+        if has_filter:
+            filtered: list[ScreenEntry] = []
+            for e in entries:
+                if e.erreur is not None:
+                    filtered.append(e)
+                    continue
+                if request.composite_label is not None and e.composite_label != request.composite_label:
+                    continue
+                if request.min_composite_score is not None and (
+                    e.composite_score is None or e.composite_score < request.min_composite_score
+                ):
+                    continue
+                if request.filter_workflow is not None and e.workflow_utilise != request.filter_workflow:
+                    continue
+                filtered.append(e)
+            entries = filtered
 
         tickers_echec = sum(1 for e in entries if e.erreur is not None)
         tickers_depuis_cache = sum(1 for e in entries if e.depuis_cache)
@@ -125,10 +151,13 @@ class ScreenerService:
                 cached = await self._cache.get(ticker, request.workflow, ratios)
                 if cached is not None:
                     logger.debug("Cache hit pour %s/%s", ticker, request.workflow)
+                    cs = cached.composite_score
                     return ScreenEntry(
                         ticker=ticker,
-                        defensive_score=cached.graham.defensive_score,
-                        verdict=cached.graham.verdict,
+                        defensive_score=cached.graham.defensive_score if cached.graham else None,
+                        verdict=cached.graham.verdict if cached.graham else None,
+                        composite_score=cs.score if cs else None,
+                        composite_label=cs.label if cs else None,
                         workflow_utilise=request.workflow,
                         cost_usd=0.0,
                         depuis_cache=True,
@@ -159,10 +188,13 @@ class ScreenerService:
             if self._cache is not None:
                 await self._cache.set(ticker, request.workflow, ratios, response)
 
+            cs = response.composite_score
             return ScreenEntry(
                 ticker=ticker,
-                defensive_score=response.graham.defensive_score,
-                verdict=response.graham.verdict,
+                defensive_score=response.graham.defensive_score if response.graham else None,
+                verdict=response.graham.verdict if response.graham else None,
+                composite_score=cs.score if cs else None,
+                composite_label=cs.label if cs else None,
                 workflow_utilise=request.workflow,
                 cost_usd=response.cost_usd,
                 depuis_cache=False,

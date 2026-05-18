@@ -331,8 +331,15 @@ def mock_rag_service_vide() -> RagService:
 @pytest.fixture
 def skill_avec_mock_client(graham_output_msft: GrahamAnalysisOutput) -> GrahamAnalysisSkill:
     """Skill dont le client Anthropic est entièrement mocké, sans RAG."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score"}
+    )
+
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
     mock_response.usage = SimpleNamespace(
         input_tokens=1000,
         output_tokens=200,
@@ -355,8 +362,15 @@ def skill_avec_mock_client_et_rag(
     mock_rag_service: RagService,
 ) -> GrahamAnalysisSkill:
     """Skill dont le client Anthropic et le RagService sont mockés."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score"}
+    )
+
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
     mock_response.usage = SimpleNamespace(
         input_tokens=1000,
         output_tokens=200,
@@ -438,6 +452,9 @@ async def client(analyze_response_msft: AnalyzeResponse):
     mock_redis_pool.aclose = AsyncMock()
     mock_redis_pool.keys = AsyncMock(return_value=[])
     mock_redis_pool.delete = AsyncMock(return_value=0)
+    mock_redis_pool.lpush = AsyncMock(return_value=1)
+    mock_redis_pool.ltrim = AsyncMock(return_value=True)
+    mock_redis_pool.lrange = AsyncMock(return_value=[])
 
     mock_yahoo = AsyncMock()
     mock_yahoo.extract = AsyncMock(
@@ -527,9 +544,16 @@ async def client(analyze_response_msft: AnalyzeResponse):
 
 @pytest.fixture
 def mock_claude_graham(graham_output_msft: GrahamAnalysisOutput):
-    """Patch anthropic.AsyncAnthropic → messages.create retourne un GrahamAnalysisOutput valide."""
+    """Patch anthropic.AsyncAnthropic → messages.create retourne un GrahamAnalysisOutput via tool_use."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score"}
+    )
+
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
     mock_response.usage = SimpleNamespace(
         input_tokens=100,
         output_tokens=50,

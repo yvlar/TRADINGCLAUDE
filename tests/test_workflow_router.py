@@ -28,10 +28,10 @@ def test_workflow_value_graham_steps():
 
 
 def test_workflow_compounder_buffett_steps():
-    """compounder_buffett : 9 étapes avec tous les skills prévus."""
+    """compounder_buffett : 10 étapes avec tous les skills prévus."""
     router = WorkflowRouter()
     steps = router.route("compounder_buffett")
-    assert len(steps) == 9
+    assert len(steps) == 10
     ids = [s.skill_id for s in steps]
     assert "graham_analysis" in ids
     assert "earnings_quality" in ids
@@ -41,6 +41,7 @@ def test_workflow_compounder_buffett_steps():
     assert "stock_valuation_triangulation" in ids
     assert "investment_thesis_builder" in ids
     assert "munger_mental_models" in ids
+    assert "marks_cycles_risk" in ids
     assert "canadian_tax_considerations" in ids
 
 

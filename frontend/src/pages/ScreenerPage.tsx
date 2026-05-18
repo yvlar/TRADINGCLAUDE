@@ -4,13 +4,15 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { WorkflowSelector } from '../components/WorkflowSelector'
 import { ScreenerTable } from '../components/ScreenerTable'
-import { postScreen } from '../api/analyze'
-import type { ScreenResult } from '../types'
+import { postScreen, exportScreen, downloadScreenerPdf } from '../api/analyze'
+import type { ScreenRequest, ScreenResult } from '../types'
 
 export default function ScreenerPage() {
   const [tickersRaw, setTickersRaw] = useState('BNS, TD, RY')
   const [workflow, setWorkflow] = useState('value_graham')
   const [result, setResult] = useState<ScreenResult | null>(null)
+  const [lastRequest, setLastRequest] = useState<ScreenRequest | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
 
   const screenMutation = useMutation({
     mutationFn: postScreen,
@@ -24,7 +26,42 @@ export default function ScreenerPage() {
       .map((t) => t.trim().toUpperCase())
       .filter(Boolean)
     if (tickers.length === 0) return
-    screenMutation.mutate({ tickers, workflow, max_parallel: 3 })
+    const req: ScreenRequest = { tickers, workflow, max_parallel: 3 }
+    setLastRequest(req)
+    screenMutation.mutate(req)
+  }
+
+  async function handleExport(format: 'csv' | 'xlsx') {
+    if (!lastRequest) return
+    try {
+      const blob = await exportScreen(lastRequest, format)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `screener.${format}`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert(`Erreur export : ${(e as Error).message}`)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!lastRequest) return
+    setPdfLoading(true)
+    try {
+      const blob = await downloadScreenerPdf(lastRequest)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `screener-${lastRequest.workflow}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      alert(`Erreur export PDF : ${(e as Error).message}`)
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   return (
@@ -78,11 +115,40 @@ export default function ScreenerPage() {
       )}
 
       {result && (
-        <ScreenerTable
-          entries={result.resultats}
-          workflow={result.workflow}
-          durationMs={result.duration_ms}
-        />
+        <>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="export-csv"
+              onClick={() => void handleExport('csv')}
+            >
+              Exporter CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="export-xlsx"
+              onClick={() => void handleExport('xlsx')}
+            >
+              Exporter Excel
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="export-pdf"
+              disabled={pdfLoading}
+              onClick={() => void handleExportPdf()}
+            >
+              {pdfLoading ? 'Génération PDF...' : 'Exporter PDF'}
+            </Button>
+          </div>
+          <ScreenerTable
+            entries={result.resultats}
+            workflow={result.workflow}
+            durationMs={result.duration_ms}
+          />
+        </>
       )}
     </div>
   )

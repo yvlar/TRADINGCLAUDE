@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-13 — Sprint 37 complété**
+**Dernière mise à jour : 2026-05-17 — Sprint 73 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,23 +8,50 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 3.1.0 |
+| **Version** | 6.6.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 38 — Scoring composite unifié 🔜 |
-| **Dernier sprint complété** | Sprint 37 — Validation anti-hallucination ✅ |
+| **Sprint actif** | Sprint 74 — à définir |
+| **Dernier sprint complété** | Sprint 73 — Recherche full-text dans l'historique ✅ |
 
 ### Ce qui fonctionne aujourd'hui
+
+#### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 15 skills + cache Redis (circuit court si analyse déjà en cache)
+- `POST /analyze` — 15 skills + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore)
 - `DELETE /cache/{ticker}` — invalidation cache admin
-- `GET /history?ticker=BNS` — historique paginé par cursor
+- `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
 - `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
+- `GET /performance/{ticker}` — rendement rétrospectif par analyse (Sprint 39)
+- `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
+- `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
+- `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
+- `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63)
+- Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
 - RAG Qdrant activé si `OPENAI_API_KEY` présente (collection `investment_knowledge`)
 - Langfuse activé si `LANGFUSE_SECRET_KEY` présente
 - Retry exponentiel sur erreurs 429/529 (`app/utils/retry.py`)
 - Prompt caching activé sur tous les system prompts
+
+#### Frontend React (localhost:5173)
+- **SPA React 18 + TypeScript** — `frontend/` — `npm run dev` → port 5173
+- Proxy Vite → API localhost:8000 (toutes routes `/analyze`, `/screen`, `/watchlist`, etc.)
+- **Page Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill
+- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score
+- **Page History** — historique analyses par ticker, téléchargement PDF
+- **Page Watchlist** — gestion positions surveillées, déclenchement analyses manuelles
+- **Page Dashboard** — métriques live WebSocket (jobs, coûts, cache hit ratio) + section Eval Drift (Sprint 66)
+- **Page Admin** — gestion des clés API (créer/lister/révoquer), gestion erreur 403 (Sprint 67)
+- **Bouton "Télécharger PDF"** dans HistoryPage (par ticker, gestion 404 + loading) (Sprint 68)
+- **Bouton "PDF"** par ticker dans WatchlistPage (data-testid + gestion 404) (Sprint 68)
+- **Badge "Score depuis cache (<24h)"** dans AnalyzePage quand `depuis_cache_composite=True` (Sprint 69)
+- **Skill ESG simplifié** — 15 critères proxy (5E+5S+5G), `POST /analyze` avec `esg_input` (Sprint 70)
+- **Bouton "Exporter PDF"** dans ScreenerPage — `GET /screener-report?tickers=&workflow=` → PDF reportlab + `downloadScreenerPdf()` (Sprint 71)
+- **Rapport PDF screener planifié** — Celery `send_screener_pdf_report()` webhook multipart/form-data (Sprint 71)
+- **Section Comparaison multi-tickers** dans DashboardPage — `TickerComparisonChart` recharts, 2-5 tickers côte à côte, saisie CSV, `Promise.all` parallèle sur `/composite-history/` (Sprint 72)
+- **Recherche full-text HistoryPage** — champ `q` ILIKE cross-ticker (ticker partiel, workflow, verdict) + index GIN pg_trgm + notice résultats cross-ticker (Sprint 73)
+- **Auth** — Bearer token (localStorage), routes protégées
 
 ### Skills opérationnels
 | Skill | Fichier | Statut |
@@ -46,6 +73,7 @@
 | `damodaran_narrative` | `app/skills/tier2/damodaran_narrative/` | ✅ Production |
 | `marks_cycles` | `app/skills/tier2/marks_cycles/` | ✅ Production |
 | `pabrai_dhandho` | `app/skills/tier2/pabrai_dhandho/` | ✅ Production |
+| `esg_simplified` | `app/skills/tier2/esg_simplified/` | ✅ Production |
 
 ---
 
@@ -1623,30 +1651,425 @@ extension du `confidence_score` déterministe aux skills Buffett, Earnings et Do
 
 ---
 
-### Sprint 38 — Scoring composite unifié 🔜
+### Sprint 38 — Scoring composite unifié ✅
 
-**Objectif :** Calculer un score global 0-100 agrégeant les 6 skills principaux avec pondération fixe.
+**Objectif :** Calculer un score global 0-100 agrégeant les 6 skills principaux avec pondération fixe et confidence_score.
 
-#### Livrables prévus
+#### Livrables livrés
 
-| Livrable | Pondération |
-|----------|------------|
-| Graham : `defensive_score / 8` × 20 pts | 20 % |
-| Buffett : `quality_score / 4` × 20 pts | 20 % |
-| Dorsey : `moat_type` (WIDE=20, NARROW=13, NONE=0) × pondération | 15 % |
-| EarningsQuality : `f_score / 9` × 15 pts | 15 % |
-| Valuation : `marge_securite_composite` × 20 pts | 20 % |
-| Marks cycles : pondération sentiment × 10 pts | 10 % |
+| Skill | Pondération | Champ source | Mapping verdict → score brut |
+|-------|------------|-------------|------------------------------|
+| `graham_analysis` | 20 % | `defensive_verdict` | PASSE=1.0, BORDERLINE=0.5, REJETER=0.0 |
+| `buffett_quality` | 20 % | `verdict` | COMPOUNDER=1.0, QUALITE_CORRECTE=0.75, REJETER=0.0 |
+| `stock_valuation` | 20 % | `verdict` | SOUS_EVALUE=1.0, JUSTE_VALEUR=0.5, SUREVALUE=0.0 |
+| `dorsey_moat` | 15 % | `moat_type` | WIDE=1.0, NARROW=0.5, NONE=0.0 |
+| `earnings_quality` | 15 % | `verdict` | AUCUN_SIGNAL=1.0, ATTENTION=0.75, WATCHLIST=0.5, REJETER=0.0 |
+| `marks_cycles` | 10 % | `recommandation_timing` | ACHETER*→1.0, ATTENDRE→0.5, sinon→0.0 |
 
-#### Fichiers prévus
-- `app/services/composite_score.py` — `CompositeScore`, `compute_composite_score(response: AnalyzeResponse)`
-- `app/orchestrator/core.py` — ajouter `composite_score: CompositeScore | None` dans `AnalyzeResponse`
-- `tests/test_composite_score.py` — tests unitaires (calculs, plages, None-safety)
+**Formule :** `Σ(raw_i × poids_i × confidence_i) / Σ(poids_i × confidence_i) × 100`
+
+#### Fichiers créés/modifiés
+- `app/services/composite_score.py` — `CompositeScore` dataclass + `compute_composite_score()` + mappings bi-dialectes (test/schéma réel)
+- `app/orchestrator/core.py` — `composite_score: CompositeScore | None` dans `AnalyzeResponse` + calcul dans `run_company_analysis()` et `stream_company_analysis()`
+- `tests/test_composite_score.py` — 23 tests unitaires (mappings, labels, poids, schémas réels)
 
 #### Critères de succès
-- [ ] Score 0-100 présent dans `AnalyzeResponse` si au moins 2 skills exécutés
-- [ ] Tests unitaires couvrent toutes les combinaisons de skills présents/absents
-- [ ] Aucune régression CI (851+ tests verts)
+- [x] `pytest tests/test_composite_score.py -v` → **23/23 verts**
+- [x] `composite_score` présent dans `AnalyzeResponse` (champ Pydantic + dataclass)
+- [x] Score varie selon les verdicts (ex. score=37.5 pour graham=REJETER + earnings=AUCUN_SIGNAL)
+- [x] Skills absents n'influencent pas le dénominateur
+- [x] `pytest -m "not e2e and not evals"` → **874 tests CI verts** (+23 nouveaux, 25 pré-existants inchangés)
+
+#### Décisions d'architecture
+- **composite_score** : `CompositeScore` Python dataclass (pas Pydantic) — Pydantic v2 sérialise nativement
+- **marks mapping** : `recommandation_timing` (schéma réel) — "ACHETER" check covers both "ACHETER_AGRESSIF" and "ACHETER_PRUDEMMENT"
+- **stock_valuation confidence** : `getattr(..., "confidence_score", 0.0)` — StockValuationOutput n'a pas encore confidence_score → toujours exclu du dénominateur pour l'instant
+
+---
+
+### Sprint 39 — Performance tracking ✅
+
+**Objectif :** Enregistrer le cours au moment de l'analyse et exposer un endpoint `GET /performance/{ticker}` calculant le rendement rétrospectif.
+
+#### Livrables livrés
+- `infra/postgres/migration_sprint39.sql` — colonne `price_at_analysis FLOAT` dans `analysis_history`
+- `app/orchestrator/core.py` — `_persist()` persiste `price_at_analysis` depuis `request.ratios.price`
+- `app/skills/tier1/yahoo_finance.py` — `get_price()` — cours actuel sans lever d'exception
+- `app/api/endpoints/performance.py` — `GET /performance/{ticker}` → `PerformanceResponse` avec `rendement_pct`
+- `tests/test_performance.py` — 19 tests (7 unitaires `_compute_rendement` + 4 `_extract_composite_score` + 8 intégration endpoint)
+
+#### Critères de succès
+- [x] `infra/postgres/migration_sprint39.sql` — `price_at_analysis FLOAT` ajouté (fichier séparé, `init.sql` inchangé)
+- [x] `_persist()` enregistre `price_at_analysis` depuis `request.ratios.price`
+- [x] `GET /performance/{ticker}` retourne `PerformanceResponse` avec `rendement_pct`
+- [x] `rendement_pct = None` si `price_at_analysis` ou `price_current` est absent
+- [x] `pytest tests/test_performance.py -v` → **19/19 verts**
+- [x] `pytest -m "not e2e and not evals"` → **893 tests CI verts** (+19 nouveaux, 25 pré-existants inchangés)
+
+#### Décisions d'architecture
+- **price_at_analysis** : `float | None` — persisté depuis `request.ratios.price` si GrahamRatios fournis, `None` sinon — jamais bloquant
+- **get_price()** : méthode légère sur `YahooFinanceExtractor` — retourne `None` sur toute exception, ne lève jamais d'erreur
+- **composite_score dans PerformanceEntry** : extrait du JSONB `result["composite_score"]["score"]` si présent — `None` pour les analyses antérieures au Sprint 39
+- **Migration** : fichier `migration_sprint39.sql` séparé — `init.sql` inchangé pour les environnements existants
+- **Ticker validation** : `sanitize_ticker()` — HTTP 422 si ticker invalide (même pattern que les autres endpoints)
+
+---
+
+### Sprint 40 — Tests E2E SSE ✅
+
+**Objectif :** Couvrir le endpoint `POST /analyze-stream` avec des tests Playwright — vérifier la progression skill-par-skill, les états d'erreur et l'événement `complete`.
+
+#### Livrables livrés
+- `tests/e2e/test_e2e_stream.py` — 4 tests Playwright E2E streaming SSE
+- `frontend/src/types/index.ts` — `CompositeScore` + `inter_skill_conflicts` ajoutés à `AnalyzeResponse`
+- `frontend/src/components/AnalysisResult.tsx` — `data-testid="composite-score"` + `CompositeBadge` component
+
+#### Critères de succès
+- [x] Test : `streaming-progress` visible dans le DOM (skill_start traités via MutationObserver)
+- [x] Test : `skill-done-*` éléments accumulés progressivement (≥ 2 skill_result events)
+- [x] Test : `complete` event déclenche `result-ticker` + `composite-score`
+- [x] Test : ticker invalide → HTTP 422 → `error-message` visible
+- [x] `pytest -m "not e2e and not evals"` → 914 tests CI verts (pas de régression)
+
+#### Décisions d'architecture Sprint 40
+- **composite_score frontend** : `CompositeScore` interface dans `types/index.ts`, `data-testid="composite-score"` dans `AnalysisResult.tsx` — `CompositeBadge` composant dédié
+- **MutationObserver pattern** : stratégie E2E pour capter les états SSE transitoiress (streaming-progress, skill-done-*) avant que React les démonte — réutilisable pour futurs tests streaming
+- **Ticker invalide E2E** : `ABCDEFGH` (8 chars) → dépasse regex `^[A-Z0-9]{1,6}` → 422 backend → `ApiError` → `setStreamError` → `error-message` DOM
+
+---
+
+### Sprint 41 — Dashboard métriques qualité IA ✅
+
+**Objectif :** Afficher `composite_score` et `inter_skill_conflicts` dans le frontend React — permettre à Yves de visualiser la qualité du signal IA en un coup d'oeil.
+
+#### Livrables livrés
+- `frontend/src/pages/DashboardPage.tsx` — page `/dashboard` étendue (MetricsDashboard + section qualité IA)
+- `frontend/src/components/CompositeScoreHistory.tsx` — historique composite_score par ticker (GET /performance/{ticker})
+- `frontend/src/components/ConflictsList.tsx` — liste des inter_skill_conflicts
+- `frontend/src/lib/recentAnalyses.ts` — localStorage save/load (RECENT_ANALYSES_KEY, max 10 entrées)
+- `frontend/src/pages/AnalyzePage.tsx` — saveRecentAnalysis() au `complete`/`cached` event
+- `frontend/src/api/analyze.ts` — getPerformance(ticker)
+- `frontend/src/types/index.ts` — PerformanceEntry, PerformanceResponse, RecentAnalysis
+
+#### Critères de succès
+- [x] Route `/dashboard` dans `App.tsx` (déjà présente)
+- [x] Navigation vers `/dashboard` depuis la nav principale (déjà présente)
+- [x] `CompositeScoreHistory` affiche score + label pour le dernier ticker analysé
+- [x] `ConflictsList` affiche les conflits si présents (liste vide sinon)
+- [x] Tests Vitest : `ConflictsList` (4), `CompositeScoreHistory` (7), `DashboardPage` (7) — 18 nouveaux
+- [x] `pytest -m "not e2e and not evals"` → 914+ tests CI verts (backend inchangé)
+- [x] `npm run build` frontend sans erreur TypeScript — 68 tests Vitest verts (vs 50 avant)
+
+### Sprint 42 — Tool Use pilote ✅
+
+**Objectif :** Migrer `graham_analysis` et `earnings_quality` de `_parse_claude_json(response.content[0].text)`
+vers **Tool Use** (Anthropic SDK `tools` parameter) — élimine les hallucinations de format JSON texte.
+
+#### Livrables livrés
+- `app/utils/tool_schema.py` — `build_tool_schema()` : schéma dérivé de `model_json_schema()`, filtre computed_fields
+- `app/skills/tier2/graham_analysis/skill.py` — Tool Use via `graham_output` tool, `tool_choice` forcé, `_parse_claude_json` retiré
+- `app/skills/tier2/earnings_quality/skill.py` — Tool Use via `earnings_quality_output` tool, `_parse_claude_json` retiré
+- `tests/test_graham_tool_use.py` — 9 tests unitaires (schéma, extraction, ValueError, tools/tool_choice params)
+- `tests/conftest.py` — 3 fixtures mises à jour (tool_use blocks au lieu de text blocks)
+- `tests/test_skill.py` — nettoyé (`_parse_claude_json` tests retirés, mocks mis à jour)
+- `tests/test_earnings_quality.py` — 5 tests mises à jour (mocks tool_use)
+
+#### Critères de succès
+- [x] `graham_analysis` retourne le résultat via Tool Use
+- [x] `earnings_quality` retourne le résultat via Tool Use
+- [x] `_parse_claude_json` retiré des 2 skills
+- [x] `pytest -m "not e2e and not evals"` → **915 tests CI verts** (914+ atteint)
+- [x] `app/utils/tool_schema.py` — schéma dérivé de Pydantic, jamais écrit manuellement
+
+---
+
+### Sprint 43 — Tool Use complet (13 skills restants) ✅
+
+**Objectif :** Migrer les 13 skills restants vers Tool Use en suivant le pattern établi au Sprint 42.
+Chaque skill reçoit son propre `_SKILL_TOOL_SCHEMA = build_tool_schema(SkillOutput, exclude={computed_fields})`.
+
+**Dépendance dure :** Sprint 42 ≥ 20/20 evals (baseline Tool Use établie).
+
+#### Livrables livrés
+- 13 `skill.py` migrés : `dorsey_moat`, `buffett_quality`, `stock_valuation`, `thesis_builder`, `munger_mental`, `canadian_tax`, `lynch_categories`, `fisher_scuttlebutt`, `klarman_margin`, `greenblatt`, `damodaran_narrative`, `marks_cycles`, `pabrai_dhandho`
+- `tests/test_tool_use_skills.py` — 26 tests (13 × schéma + 13 × ValueError) — 0 appel Claude réel
+- Mocks Tool Use corrigés dans 13 fichiers de tests existants (pattern `tool_use` block)
+- Correction deprecation Pydantic V2.11 : `model_fields` accédé via `type()` plutôt que instance
+
+#### Critères de succès
+- [x] 13 skills migrés vers Tool Use
+- [x] `_parse_claude_json` retiré de tous les skills
+- [x] `pytest -m "not e2e and not evals"` → **942 tests CI verts**
+- [x] `build_tool_schema()` utilisé partout — aucun schéma écrit manuellement
+
+---
+
+### Sprint 44 — Multi-model routing ✅
+
+**Objectif :** Router les skills mécaniques/quantitatifs vers Haiku, conserver Sonnet pour les skills qualitatifs. Réduction de coût ~40-60 % sur les appels aux skills formulaiques.
+
+**Livrables :**
+- `app/api/main.py` : variable `haiku_model` lue depuis `CLAUDE_HAIKU_MODEL` env var
+- `earnings_quality`, `greenblatt`, `lynch_categories` → `haiku_model` (`claude-haiku-4-5-20251001`)
+- Tous les autres skills → `model` (Sonnet, `claude-sonnet-4-6`)
+- `tests/test_model_routing.py` : 9 tests (8 unitaires + 1 intégration lifespan)
+- `.env.example` : ajout `CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001`
+- **951 tests CI verts** (vs 942 au Sprint 43)
+
+**Version :** 3.8.0
+
+### Sprint 45 — Evals earnings_quality ✅
+
+**Objectif :** Golden dataset 20 cas pour `EarningsQualitySkill` + framework de détection de drift post-migration Haiku.
+
+**Livrables :**
+- `tests/evals/fixtures/earnings_golden.json` : 20 cas réels (MSFT, AAPL, JNJ, PG, KO, BNS, TD, JPM, TSLA, AMZN, UBER, LYFT, NFLX, GME, BBBY, AMC, GE, BA, COIN, MRO)
+- `tests/evals/test_earnings_evals.py` : 6 tests `@pytest.mark.evals` (verdict, F-Score, Z-Score, M-Score, drapeaux_rouges, taux concordance global)
+- `tests/test_earnings_golden_schema.py` : 10 tests de validation schema (CI standard)
+- `tests/evals/fixtures/__init__.py` : ajout `load_earnings_golden()`
+- **961 tests CI verts** (vs 951 au Sprint 44)
+
+**Version :** 3.9.0
+
+### Sprint 46 — Screener composite ✅
+
+**Objectif :** Exposer `composite_score` et `composite_label` dans `ScreenEntry`/`ScreenResult`, trier les résultats par `composite_score` décroissant (fallback `defensive_score`).
+
+**Livrables :**
+- `app/api/endpoints/screen.py` : `ScreenEntry` + `composite_score: float | None` + `composite_label: str | None`
+- `app/services/screener.py` : extraction `response.composite_score`, tri composite-first, support cache hit
+- `tests/test_screener.py` : +4 tests composite_score (expose, tri, fallback, label)
+- **965 tests CI verts** (vs 961 au Sprint 45)
+
+**Version :** 4.0.0
+
+### Sprint 47 — Export CSV/Excel ✅
+
+**Objectif :** Endpoint `POST /export/screen` qui lance le screener et retourne un fichier CSV ou Excel téléchargeable.
+
+**Livrables :**
+- `app/services/export.py` : `export_to_csv()` (csv stdlib) + `export_to_excel()` (openpyxl)
+- `app/api/endpoints/export.py` : `POST /export/screen?format=csv|xlsx`
+- `app/api/main.py` : router export enregistré
+- `requirements.txt` : ajout `openpyxl>=3.1.0`
+- `tests/test_export.py` : 13 tests passés (3 Excel skippés si openpyxl absent, activés dans Docker)
+- **978 tests CI verts** (vs 965 au Sprint 46)
+
+**Version :** 4.1.0
+
+### Sprint 48 — Watchlist alertes composite ✅
+
+**Objectif :** Alertes de dérive du score composite sur les entrées watchlist.
+
+#### Livrables
+- `infra/postgres/migration_sprint48.sql` — colonnes `last_composite_score + composite_alert_threshold`
+- `app/models/watchlist.py` — deux nouveaux champs Pydantic
+- `app/services/watchlist_service.py` — `update_composite_score()` + SELECT étendu
+- `app/services/composite_alert.py` — `CompositeAlertService.check_composite_alerts()` + email
+- `tests/test_composite_alert.py` — 13 tests (comparaison, alerte, email, exception isolation)
+- **991 tests CI verts** (vs 978 au Sprint 47)
+
+---
+
+### Sprint 49 — Evals multi-skills ✅
+
+**Objectif :** Golden datasets pour 3 skills qualitatifs critiques + frameworks eval.
+
+#### Livrables
+- `tests/evals/fixtures/dorsey_golden.json` — 15 cas (5 WIDE, 5 NARROW, 3 NONE, 2 institutions)
+- `tests/evals/fixtures/buffett_golden.json` — 15 cas (5 COMPOUNDER, 5 QUALITE_CORRECTE, 3 REJETER, 2 frontier)
+- `tests/evals/fixtures/damodaran_golden.json` — 15 cas (5 story, 5 number, 3 rupture, 2 dark horse)
+- `tests/evals/fixtures/__init__.py` — `load_dorsey_golden()`, `load_buffett_golden()`, `load_damodaran_golden()`
+- `tests/evals/test_dorsey_evals.py` — 5 tests eval (`@pytest.mark.evals`)
+- `tests/evals/test_buffett_evals.py` — 5 tests eval (`@pytest.mark.evals`)
+- `tests/evals/test_damodaran_evals.py` — 5 tests eval (`@pytest.mark.evals`)
+- `tests/test_evals_golden_schema.py` — 25 tests CI standard (validation schema JSON)
+- **1016 tests CI verts** (vs 991 au Sprint 48)
+
+---
+
+### Sprint 50 — Backtesting composite ✅
+
+**Objectif :** Simulation retrospective du signal composite vs benchmark.
+
+#### Livrables
+- `app/models/backtest.py` — `BacktestRequest`, `BacktestResult`, `BucketResult` (Pydantic)
+- `app/services/backtest.py` — `BacktestService.run_backtest()` : classifieur + yfinance + agregation
+- `app/api/endpoints/backtest.py` — `GET /backtest/composite` (max 30 tickers, start_date >= 2023)
+- `app/api/main.py` — inclusion du router backtest
+- `tests/test_backtest.py` — 22 tests (classifieur, modeles, service, endpoint)
+- **1038 tests CI verts** (vs 1016 au Sprint 49)
+
+---
+
+### Sprint 51 — Dashboard evals ✅
+
+**Objectif :** Dashboard de suivi des evals avec historique Redis.
+
+#### Livrables
+- `app/models/evals.py` — `EvalSkillInfo`, `EvalsSummary`, `EvalRunRecord` (Pydantic)
+- `app/services/evals_dashboard.py` — `EvalsDashboardService` : summary + record + history
+- `app/api/endpoints/evals.py` — `GET /evals/summary`, `POST /evals/record`, `GET /evals/history`
+- `app/api/main.py` — inclusion du router evals
+- `tests/conftest.py` — ajout `lpush`, `ltrim`, `lrange` au mock redis_pool
+- `tests/test_evals_dashboard.py` — 15 tests (service + endpoints)
+- **1053 tests CI verts** (vs 1038 au Sprint 50)
+
+---
+
+### Sprint 52 — Alertes Celery schedulées ✅
+
+**Objectif :** Automatiser la surveillance composite_score watchlist via Celery Beat.
+
+#### Livrables
+- `app/workers/tasks.py` — `_execute_composite_alert_check()` + `run_composite_alert_check` task
+- `app/workers/celery_app.py` — entrée `run-composite-alert-check-daily` (10h00 UTC) dans beat_schedule
+- `tests/test_celery_composite_alert.py` — 10 tests (beat schedule + logique execution + email config)
+- **1063 tests CI verts** (vs 1053 au Sprint 51)
+
+---
+
+### Sprint 53 — Rapport PDF watchlist enrichi ✅
+
+**Objectif :** Enrichir le PDF hebdomadaire watchlist avec composite_score, label et alerte composite.
+
+#### Livrables
+- `app/services/report.py` — 3 nouvelles colonnes dans `generate_watchlist_summary_pdf()` : Score composite, Label, Alerte composite
+- `app/services/report.py` — helpers `_composite_label()` et `_composite_alerte()` (testables isolément)
+- `tests/test_report.py` — 3 nouveaux tests Sprint 53 (label, none, alerte)
+- **1066 tests CI verts** (vs 1063 au Sprint 52)
+
+---
+
+### Sprint 54 — Evals screening ✅
+
+#### Livrables
+- `tests/evals/golden_screener_dataset.json` — 10 tickers avec ratios + expected (score_min, verdict_allowed, composite_label_allowed)
+- `tests/evals/fixtures/__init__.py` — `load_screener_golden()` ajoutée
+- `tests/evals/test_screener_evals.py` — 5 tests `@pytest.mark.evals` (mocks configurés depuis le dataset)
+- `tests/test_screener_golden.py` — 12 tests CI standard (structure dataset + logique tri + seuils composite)
+- **1078 tests CI verts** (vs 1066 au Sprint 53)
+
+---
+
+### Sprint 55 — Multi-modèle eval ✅
+
+#### Livrables
+- `tests/evals/fixtures/multi_model_golden.json` — 6 cas (2 par skill Haiku : earnings_quality, greenblatt_magic_formula, lynch_categories)
+- `tests/evals/fixtures/__init__.py` — `load_multi_model_golden()` ajoutée
+- `tests/evals/test_multi_model_evals.py` — 7 tests `@pytest.mark.evals` (schema valide + concordance verdict + taux global)
+- `tests/test_multi_model_golden.py` — 14 tests CI standard (structure, Pydantic, logique contrastante)
+- **1092 tests CI verts** (vs 1078 au Sprint 54)
+
+---
+
+### Sprint 56 — Notifications webhook ✅
+
+#### Livrables
+- `app/services/webhook_service.py` — `WebhookService` avec 3 méthodes async (`send_price_alert`, `send_composite_alert`, `send_watchlist_summary`), httpx, retry 1x, tracking `nb_erreurs` + `derniere_notification`
+- `app/workers/tasks.py` — WebhookService intégré dans `run_price_alert_check`, `run_composite_alert_check`, `run_weekly_watchlist_report` (skip silencieux si `WEBHOOK_URL` absent)
+- `app/api/endpoints/telemetry.py` — `GET /telemetry/webhook` (`WebhookStatus` : url_configuree, derniere_notification, nb_erreurs)
+- `app/api/main.py` — `webhook_service` ajouté à `app.state`
+- `.env.example` — `WEBHOOK_URL` + `WEBHOOK_SECRET` documentés
+- `tests/test_webhook_service.py` — 12 tests CI standard (mocks httpx, retry, payload, secret header)
+- **1104 tests CI verts** (vs 1092 au Sprint 55)
+
+---
+
+### Sprint 57 — Historique composite_score ✅
+
+#### Livrables
+- `infra/postgres/init.sql` — table `composite_score_history` (id UUID, ticker, score, label, workflow, recorded_at) + index `idx_csh_ticker_recorded`
+- `app/services/composite_history_service.py` — `CompositeHistoryService` avec `record()` + `get_history()` async, `CompositeHistoryPoint` Pydantic
+- `app/api/endpoints/composite_history.py` — `GET /composite-history/{ticker}` (limit 1-365, défaut 90), sanitise ticker
+- `app/orchestrator/core.py` — paramètre `composite_history_service` optionnel dans `run_company_analysis` et `stream_company_analysis`, appel `record()` protégé par try/except après `compute_composite_score()`
+- `app/api/endpoints/analyze_stream.py` — passage `composite_history_service` au générateur SSE
+- `app/api/main.py` — `CompositeHistoryService(db_pool)` + `app.state.composite_history_service` + router enregistré
+- `tests/test_composite_history_service.py` — 10 tests CI standard (schéma Pydantic, record(), get_history(), limites, ticker invalide, 3 tests endpoint intégration)
+- **1114 tests CI verts** (vs 1104 au Sprint 56)
+
+---
+
+### Sprint Frontend Catchup — Synchronisation types + bugs + features ✅
+
+#### Livrables
+- `frontend/src/types/index.ts` — ajout `CompositeHistoryPoint`, champs `composite_score`/`composite_label` dans `ScreenEntry`, champs `last_composite_score`/`composite_alert_threshold`/`score_alerte_min` dans `WatchlistEntry`
+- `frontend/src/api/analyze.ts` — ajout `getCompositeHistory()` (GET /composite-history/{ticker}) et `exportScreen()` (POST /export/screen)
+- `frontend/src/components/CompositeScoreHistory.tsx` — correction endpoint (`getPerformance` → `getCompositeHistory`), adaptation affichage à `CompositeHistoryPoint`
+- `frontend/src/pages/HistoryPage.tsx` — soumission vide interdite (return early si ticker vide, suppression fallback 'ALL')
+- `frontend/src/components/ScreenerTable.tsx` — colonne "Composite" (score + label coloré) entre Verdict et Coût
+- `frontend/src/components/WatchlistTable.tsx` — colonne "Score composite" avec badge coloré FORT/MODÉRÉ/FAIBLE
+- `frontend/src/pages/ScreenerPage.tsx` — boutons "Exporter CSV" et "Exporter Excel" après résultat screener
+- `frontend/src/__tests__/CompositeScoreHistory.test.tsx` — réécriture complète pour `getCompositeHistory` (7 tests)
+- `frontend/src/__tests__/ScreenerTable.test.tsx` — mise à jour fixtures + 2 nouveaux tests colonne composite (8 tests)
+- `frontend/src/__tests__/WatchlistTable.test.tsx` — nouveau fichier, 4 tests colonne last_composite_score
+- `frontend/src/__tests__/HistoryPage.test.tsx` — nouveau fichier, 4 tests soumission vide interdite
+- `frontend/src/__tests__/ScreenerPage.test.tsx` — nouveau fichier, 4 tests boutons export CSV/Excel
+- `frontend/src/__tests__/WatchlistPage.test.tsx` — mise à jour makeEntry() avec nouveaux champs WatchlistEntry
+- **83 tests Vitest verts, 0 failing** (vs 1 failing, 67 passing avant)
+- `npm run build` sans erreur TypeScript
+
+---
+
+### Sprint 58 — Screener avancé ✅
+
+---
+
+### Sprint 61 — Eval drift detection ✅
+
+**Objectif :** Détecter automatiquement les régressions de qualité IA après une mise à jour de modèle Claude, sans intervention manuelle.
+
+**Livrables :**
+- `app/services/eval_drift_service.py` — `EvalDriftService` avec `EvalDriftResult` (Pydantic), `run_eval()`, `get_last_result()`, `record_result()`. Clé Redis `eval_drift:{dataset}`, TTL 30 jours, seuil configurable via `EVAL_DRIFT_THRESHOLD` (défaut 0.85)
+- `app/api/endpoints/telemetry.py` — `GET /telemetry/eval-drift?dataset={dataset}` (lecture seule Redis, 503 si service absent, 400 si dataset invalide)
+- `app/workers/tasks.py` — tâche Celery `run_eval_drift_check(dataset="graham")` déclenchable manuellement ou en cron
+- `app/api/main.py` — `EvalDriftService` initialisé dans le lifespan, disponible via `app.state.eval_drift_service`
+- `tests/test_eval_drift_service.py` — 19 tests CI standard (schéma, Redis, run_eval avec mock, endpoint)
+- Datasets supportés : `graham`, `earnings`, `dorsey`, `buffett`, `damodaran`
+- `_check_case()` patchable pour les tests CI (aucun appel Claude réel)
+- **1171 tests CI verts** — version 5.4.0
+
+---
+
+### Sprint 60 — Dashboard composite trends ✅
+
+**Objectif :** Graphique d'évolution du composite_score dans le frontend React, consommant `GET /composite-history/{ticker}` (Sprint 57).
+
+**Livrables :**
+- `frontend/package.json` — recharts 3.8.1 ajouté aux dépendances
+- `frontend/src/components/CompositeScoreChart.tsx` — composant présentationnel recharts : LineChart, axes X/Y (0-100), zones de référence FORT (70) / MODÉRÉ (45), dots colorés par label (vert/orange/rouge), tooltip score+label+date+workflow, états loading/erreur/vide
+- `frontend/src/pages/DashboardPage.tsx` — section "Évolution composite score" : input ticker + bouton "Charger", `useQuery` getCompositeHistory(), `CompositeScoreChart` intégré
+- `frontend/src/__tests__/CompositeScoreChart.test.tsx` — 7 tests Vitest (mock recharts complet, états vide/loading/erreur/données)
+- `tests/test_composite_history_endpoint.py` — 5 nouveaux tests CI endpoint
+- **1152 tests CI verts** — version 5.3.0
+
+---
+
+### Sprint 59 — Export Excel watchlist ✅
+
+**Objectif :** `GET /watchlist/export.xlsx` — fichier Excel téléchargeable avec toutes les positions de la watchlist.
+
+**Livrables :**
+- `app/services/watchlist_service.py` — `get_all_with_composite()` : JOIN LATERAL sur `composite_score_history` pour obtenir le dernier score par ticker
+- `app/api/endpoints/watchlist.py` — `_generate_watchlist_xlsx()` + `GET /watchlist/export.xlsx`
+- Colonnes : Ticker, Nom, Date ajout, Composite Score, Label, Alerte, Notes
+- En-têtes en gras, fond gris clair (#D3D3D3), largeurs de colonnes adaptées
+- `tests/test_export_xlsx.py` — 15 tests CI (10 unitaires + 5 endpoint)
+- **1147 tests CI verts** — version 5.2.0
+
+---
+
+### Sprint 64 — Screener planifié (cron) ✅
+
+**Objectif :** Tâche Celery hebdomadaire qui screene toute la watchlist, filtre les opportunités FORT, et notifie par webhook.
+
+**Livrables :**
+- `app/services/webhook_service.py` — `send_screener_report()` méthode async (payload type="screener", nb_tickers_screenes, nb_opportunites, tickers_fort)
+- `app/workers/tasks.py` — `_execute_scheduled_screener()` + `run_scheduled_screener` tâche Celery. Récupère tous les tickers watchlist, screene par batches de 20, filtre composite_label="FORT" OU defensive_score >= 5, envoie webhook si opportunités trouvées. Tolérant aux erreurs par batch.
+- `app/workers/celery_app.py` — entrée `run-scheduled-screener` (dimanche 11h00 UTC) dans beat_schedule. Total : 5 tâches planifiées.
+- `tests/test_scheduled_screener.py` — 14 tests CI standard (import, watchlist vide, FORT composite, FORT defensive_score, webhook appelé, webhook non appelé, tolérance erreur, ticker erreur ignoré, beat_schedule, WebhookService)
+- `tests/test_celery_composite_alert.py` — test mis à jour : 4 → 5 tâches planifiées
+- **1210 tests CI verts** (vs 1196 au Sprint 63) — version 5.7.0
 
 ---
 
@@ -1660,7 +2083,25 @@ extension du `confidence_score` déterministe aux skills Buffett, Earnings et Do
 
 ---
 
-*Roadmap mise à jour le 2026-05-09 — à mettre à jour après chaque sprint.*
+*Roadmap mise à jour le 2026-05-17 — à mettre à jour après chaque sprint.*
+*Sprint 73 complété : Recherche full-text dans l'historique — GET /history?q= (ticker partiel ILIKE, workflow ILIKE, verdicts JSONB ILIKE) + ticker optionnel + HistoryResponse.ticker nullable + index GIN pg_trgm (ticker + workflow_name) + HistoryPage champ Recherche + notice cross-ticker + 9 tests CI + 5 tests Vitest HistorySearch.test.tsx — 1259 tests CI verts — 133 tests Vitest verts — version 6.6.0*
+*Sprint 72 complété : Comparaison multi-tickers Dashboard — TickerComparisonChart recharts (multi-lignes 2-5 tickers, palette 5 couleurs, ReferenceLine FORT/MODÉRÉ, CustomTooltip) + ComparisonSection DashboardPage (saisie CSV, Promise.all parallèle, validation 2-5 tickers) + 6 tests TickerComparisonChart + 4 tests ComparisonSection — 128 tests Vitest verts — version 6.5.0*
+*Sprint 71 complété : Rapport screener PDF — ScreenerPdfService.generate() reportlab + GET /screener-report + WebhookService.send_screener_pdf_report() multipart + Celery scheduled_screener + downloadScreenerPdf() + bouton "Exporter PDF" ScreenerPage (data-testid="export-pdf") + 13 tests CI + 6 tests Vitest — 1250 tests CI verts — 118 tests Vitest verts — version 6.4.0*
+*Sprint 70 complété : Notation ESG simplifiée — EsgSimplifiedSkill (15 critères 5E+5S+5G) + EsgInput/EsgOutput/EsgCritere schemas Pydantic + Tool Use forcé + prompt >1024 tokens + esg dans AnalyzeRequest/Response — 17 tests CI verts — 1236 tests verts — version 6.3.0*
+*Sprint 69 complété : Badge "depuis cache" dans AnalyzePage — état depuisCache + Badge shadcn/ui "Score depuis cache (<24h)" + reset au lancement d'une nouvelle analyse + 5 tests Vitest CacheIndicator.test.tsx — 112 tests Vitest verts — version 6.2.0*
+*Sprint 68 complété : Lien PDF dans l'interface — downloadTickerPdf() api/analyze.ts + bouton "Télécharger PDF" HistoryPage (loading + gestion 404) + bouton "PDF" par ticker WatchlistTable (data-testid + gestion 404) + 6 tests PdfDownload.test.tsx verts — 107 tests Vitest verts — version 6.1.0*
+*Sprint 67 complété : Page admin frontend — ApiKey/ApiKeyCreate interfaces TS + api/admin.ts (listApiKeys/createApiKey/revokeApiKey) + AdminPage.tsx (création + liste + révocation + gestion 403) + route /admin App.tsx + 6 tests Vitest AdminPage.test.tsx — 101 tests Vitest (100 verts) — version 6.0.0*
+*Sprint 66 complété : Dashboard eval drift frontend — EvalDriftResult interface TS + fetchEvalDrift() api/analyze.ts + EvalDriftSection DashboardPage (progress bar + badges OK/DRIFT) + 5 tests Vitest EvalDriftSection.test.tsx — 95 tests Vitest verts — version 5.9.0*
+*Sprint 65 complété : Cache composite_score automatique — CompositeHistoryService.get_recent() + circuit court Étape 0b dans run_company_analysis()/stream_company_analysis() + AnalyzeResponse.depuis_cache_composite + types TS synchronisés + 10 tests CI — 1220 tests CI verts — version 5.8.0*
+*Sprint 64 complété : Screener planifié (cron) — run_scheduled_screener Celery dimanche 11h00 UTC + WebhookService.send_screener_report() + filtrage FORT (composite_label OU defensive_score >= 5) + 14 tests CI — 1210 tests CI verts — version 5.7.0*
+*Sprint 63 complété : Rapport PDF par ticker — PdfReportService.generate_ticker_report() 3 pages (score actuel, historique, skills) + GET /ticker-report/{ticker}?days=90 + 13 tests CI — 1196 tests CI verts — version 5.6.0*
+*Sprint 62 complété : API publique multi-utilisateurs — table api_keys PostgreSQL + ApiKeyService (validate/create/list/revoke/record_usage) + BearerTokenMiddleware fallback rétrocompatible + POST/GET/DELETE /admin/keys + 12 tests CI — 1183 tests CI verts — version 5.5.0*
+*Sprint 61 complété : Eval drift detection — EvalDriftService + EvalDriftResult + GET /telemetry/eval-drift + run_eval_drift_check Celery + 19 tests CI — 1171 tests CI verts — version 5.4.0*
+*Sprint 60 complété : Dashboard composite trends — recharts LineChart + CompositeScoreChart.tsx + DashboardPage section Évolution + 7 tests Vitest + 5 tests CI endpoint — 1152 tests CI verts — version 5.3.0*
+*Sprint 59 complété : Export Excel watchlist — GET /watchlist/export.xlsx + get_all_with_composite() JOIN LATERAL + _generate_watchlist_xlsx() + 15 tests CI — 1147 tests CI verts — version 5.2.0*
+*Sprint 58 complété : Screener avancé — 3 filtres POST /screen (composite_label, min_composite_score, filter_workflow) + logique AND + tickers en échec toujours inclus + 15 tests CI — 1129 tests CI verts — version 5.1.0*
+*Sprint Frontend Catchup complété : Synchronisation types TS + 5 bugs corrigés + 3 features ajoutées + 5 nouveaux fichiers de tests — 83 tests Vitest verts, 0 failing — build propre — 2026-05-14*
+*Sprint 57 complété : Historique composite_score — table composite_score_history + CompositeHistoryService record()/get_history() + GET /composite-history/{ticker} + 10 tests CI, 1114 tests CI verts — version 5.0.0*
 *Utiliser `prompt-mise-a-jour-roadmap.md` pour guider Claude lors des mises à jour.*
 *Sprint 24 complété : Alertes prix — PriceAlertService + run_price_alert_check + GET /price-status + 7 tests verts — version 2.4.0*
 *Sprint 25 complété : Export hebdomadaire automatique — EmailService + generate_watchlist_summary_pdf + run_weekly_watchlist_report + 7 tests verts — version 2.5.0*
@@ -1676,3 +2117,8 @@ extension du `confidence_score` déterministe aux skills Buffett, Earnings et Do
 *Sprint 35 complété : SSE Streaming — POST /analyze-stream + stream_company_analysis() + StreamingProgress React + streamAnalyze() fetch/ReadableStream + 8 tests backend + 5 tests frontend — 50 tests Vitest verts — version 3.0.0*
 *Sprint 36 complété : Eval framework qualité IA + Sanitisation ticker — defensive_verdict computed_field + defensive_score computed_field + pe nullable + sanitize_ticker() intégré dans 3 endpoints + EvalRunner + graham_golden.json 20 cas + test_graham_evals.py **20/20 PASS** — 817 tests CI verts*
 *Sprint 37 complété : Validation anti-hallucination — @model_validator GrahamRatios (pe<0, pb<0, eps_growth>5, triangle pe/price/eps_ttm) + confidence_score sur 4 skills (Graham @computed_field, Buffett/Dorsey champ régulier, Earnings @computed_field) + _detect_inter_skill_conflicts() + inter_skill_conflicts dans AnalyzeResponse — 27 nouveaux tests — 851 tests CI verts — version 3.1.0*
+*Sprint 38 complété : Scoring composite unifié — CompositeScore dataclass + compute_composite_score() 6 skills pondérés (verdict × poids × confidence) + composite_score dans AnalyzeResponse + run_company_analysis() + stream_company_analysis() — 23 nouveaux tests (+ 8 schémas réels) — 874 tests CI verts — version 3.2.0*
+*Sprint 39 complété : Performance tracking — migration_sprint39.sql (price_at_analysis FLOAT) + _persist() + get_price() YahooFinanceExtractor + GET /performance/{ticker} (PerformanceResponse, rendement_pct, composite_score si disponible) + 19 tests (7 unitaires + 4 extracteur + 8 intégration) — 893 tests CI verts — version 3.3.0*
+*Sprint 40 complété : Tests E2E SSE — test_e2e_stream.py (4 tests Playwright : skill_start MutationObserver, progression skill-done-*, complete+composite_score, ticker invalide 422) + CompositeScore dans types/index.ts + data-testid="composite-score" dans AnalysisResult.tsx — 914 tests CI verts — version 3.4.0*
+*Sprint 41 complété : Dashboard métriques qualité IA — DashboardPage étendue + CompositeScoreHistory (GET /performance/{ticker}) + ConflictsList + lib/recentAnalyses.ts (localStorage) + saveRecentAnalysis() dans AnalyzePage + getPerformance() API + PerformanceEntry/RecentAnalysis types — 68 tests Vitest verts (+18 nouveaux) — version 3.5.0*
+*Sprint 42 complété : Tool Use pilote — graham_analysis + earnings_quality migrés vers Anthropic Tool Use (tool_choice forcé) + build_tool_schema() dérivé de Pydantic + _parse_claude_json retiré des 2 skills + 9 nouveaux tests unitaires — 915 tests CI verts — version 3.6.0*

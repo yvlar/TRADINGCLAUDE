@@ -18,6 +18,9 @@ const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => (
   last_price_checked: null,
   price_alert_threshold_pct: 0.10,
   created_at: '2026-01-01T00:00:00Z',
+  last_composite_score: null,
+  composite_alert_threshold: 15.0,
+  score_alerte_min: null,
   ...overrides,
 })
 

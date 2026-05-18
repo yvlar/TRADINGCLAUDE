@@ -6,6 +6,7 @@ import ScreenerPage from './pages/ScreenerPage'
 import HistoryPage from './pages/HistoryPage'
 import DashboardPage from './pages/DashboardPage'
 import WatchlistPage from './pages/WatchlistPage'
+import AdminPage from './pages/AdminPage'
 import LoginPage from './pages/LoginPage'
 import { Button } from './components/ui/button'
 
@@ -40,6 +41,7 @@ function AppShell() {
             <NavItem to="/historique" label="Historique" />
             <NavItem to="/dashboard" label="Dashboard" />
             <NavItem to="/watchlist" label="Watchlist" />
+            <NavItem to="/admin" label="Admin" />
           </nav>
         )}
         {isAuthenticated && (
@@ -88,6 +90,14 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <WatchlistPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminPage />
               </ProtectedRoute>
             }
           />

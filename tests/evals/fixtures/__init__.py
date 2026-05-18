@@ -13,3 +13,51 @@ def load_graham_golden() -> list[dict]:
     if not path.exists():
         return []
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_earnings_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/earnings_golden.json."""
+    path = _FIXTURES_DIR / "earnings_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_dorsey_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/dorsey_golden.json."""
+    path = _FIXTURES_DIR / "dorsey_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_buffett_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/buffett_golden.json."""
+    path = _FIXTURES_DIR / "buffett_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_damodaran_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/damodaran_golden.json."""
+    path = _FIXTURES_DIR / "damodaran_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_screener_golden() -> list[dict]:
+    """Charge tests/evals/golden_screener_dataset.json."""
+    path = _FIXTURES_DIR.parent / "golden_screener_dataset.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_multi_model_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/multi_model_golden.json."""
+    path = _FIXTURES_DIR / "multi_model_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))

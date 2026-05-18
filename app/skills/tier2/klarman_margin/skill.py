@@ -1,8 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,24 +11,22 @@ from app.rag.service import RagService
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
+from app.utils.tool_schema import build_tool_schema
 from .schemas import KlarmanInput, KlarmanOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_claude_json(text: str) -> dict[str, Any]:
-    """Parse le JSON depuis la rÃ©ponse Claude, gÃ¨re les blocs markdown optionnels."""
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        text = match.group(1).strip()
-    return json.loads(text)
+# Schéma dérivé de Pydantic — champs post-assignés exclus.
+_KLARMAN_TOOL_SCHEMA = build_tool_schema(
+    KlarmanOutput,
+    exclude={"citations", "cost_usd"},
+)
 
 
 class KlarmanMarginSkill(SkillBase):
     """
-    Skill Tier 2 : marge de sÃ©curitÃ© et prÃ©servation du capital (Klarman / Baupost).
-    Applique Margin of Safety (Klarman, 1991) â€” classification situation, scoring marge,
+    Skill Tier 2 : marge de sécurité et préservation du capital (Klarman / Baupost).
+    Applique Margin of Safety (Klarman, 1991) — classification situation, scoring marge,
     preservation du capital, discount to intrinsic.
     Verdict OPPORTUNITE_FORTE / OPPORTUNITE_MODEREE / ATTENDRE / PASSER.
     """
@@ -38,8 +34,8 @@ class KlarmanMarginSkill(SkillBase):
     skill_id: ClassVar[str] = "klarman_margin"
     tier: ClassVar[int] = 2
     description: ClassVar[str] = (
-        "Applique le cadre de Seth Klarman (Baupost Group, +20% CAGR sur 35 ans) â€” "
-        "marge de sÃ©curitÃ© absolue, prÃ©servation du capital, situations spÃ©ciales, distressed. "
+        "Applique le cadre de Seth Klarman (Baupost Group, +20% CAGR sur 35 ans) — "
+        "marge de sécurité absolue, préservation du capital, situations spéciales, distressed. "
         "Verdict OPPORTUNITE_FORTE / OPPORTUNITE_MODEREE / ATTENDRE / PASSER."
     )
 
@@ -74,7 +70,7 @@ class KlarmanMarginSkill(SkillBase):
         ]
 
     async def get_citations(self, query: str, k: int = 5) -> list[Citation]:
-        """Recherche RAG dans Qdrant. Retourne [] si le RAG n'est pas initialisÃ©."""
+        """Recherche RAG dans Qdrant. Retourne [] si le RAG n'est pas initialisé."""
         if self._rag is None:
             return []
         return await self._rag.search(query, k=k)
@@ -89,7 +85,7 @@ class KlarmanMarginSkill(SkillBase):
         r = input_data.klarman_ratios
 
         parts.append(
-            f"## Analyse Klarman â€” {input_data.ticker}\n\n"
+            f"## Analyse Klarman — {input_data.ticker}\n\n"
             f"**Type de situation (indice)** : {input_data.situation_type}\n\n"
             f"### Ratios financiers\n"
             f"- Prix actuel : {r.price}\n"
@@ -97,7 +93,7 @@ class KlarmanMarginSkill(SkillBase):
             f"- Valeur de liquidation : {r.liquidation_value}\n"
             f"- Dette/Capitaux propres : {r.debt_equity}\n"
             f"- Revenus (milliards) : {r.revenue_bn}\n"
-            f"- Catalyseur identifiÃ© : {r.catalyst}\n"
+            f"- Catalyseur identifié : {r.catalyst}\n"
         )
 
         if r.nav_per_share is not None and r.nav_per_share > 0:
@@ -108,17 +104,17 @@ class KlarmanMarginSkill(SkillBase):
             parts.append(f"\n**Discount vs liquidation** : {discount:.1%}\n")
 
         if citations:
-            parts.append("\n## Contexte de rÃ©fÃ©rence (corpus Klarman marge de sÃ©curitÃ©)\n")
+            parts.append("\n## Contexte de référence (corpus Klarman marge de sécurité)\n")
             for i, cit in enumerate(citations, 1):
                 parts.append(f"**[{i}] {cit.source}** (score : {cit.score:.2f})\n{cit.extrait}\n")
             parts.append("---\n")
 
         input_json = input_data.model_dump_json(indent=2)
         parts.append(
-            f"\nQualifie le type de situation, score la marge de sÃ©curitÃ© et la prÃ©servation du capital "
+            f"\nQualifie le type de situation, score la marge de sécurité et la préservation du capital "
             f"pour **{input_data.ticker}** selon le cadre Klarman.\n\n"
-            f"DonnÃ©es complÃ¨tes :\n```json\n{input_json}\n```\n\n"
-            "Retourne uniquement le JSON structurÃ© conforme au format de sortie dÃ©fini."
+            f"Données complètes :\n```json\n{input_json}\n```\n\n"
+            "Retourne l'analyse structurée via l'outil klarman_output."
         )
 
         return "\n".join(parts)
@@ -127,11 +123,12 @@ class KlarmanMarginSkill(SkillBase):
         self, input_data: KlarmanInput
     ) -> tuple[KlarmanOutput, UsageDetail]:
         """
-        Appelle l'API Claude avec prompt caching et retourne (KlarmanOutput, UsageDetail).
+        Appelle l'API Claude avec Tool Use — le modèle popule klarman_output directement,
+        éliminant les hallucinations de format JSON texte.
         """
         rag_query = (
-            f"Klarman marge sÃ©curitÃ© {input_data.ticker} "
-            f"Baupost preservation capital distressed situations spÃ©ciales "
+            f"Klarman marge sécurité {input_data.ticker} "
+            f"Baupost preservation capital distressed situations spéciales "
             f"absolute return discount intrinsic value"
         )
         citations = await self.get_citations(rag_query, k=self._top_k)
@@ -147,11 +144,24 @@ class KlarmanMarginSkill(SkillBase):
             system=self.get_system_prompt(),
             messages=[{"role": "user", "content": user_message}],
             max_tokens=4096,
+            tools=[{"name": "klarman_output", "input_schema": _KLARMAN_TOOL_SCHEMA}],
+            tool_choice={"type": "tool", "name": "klarman_output"},
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        raw_text = response.content[0].text
-        data = _parse_claude_json(raw_text)
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use"),
+            None,
+        )
+        if tool_use_block is None:
+            raise ValueError(
+                f"Aucun bloc tool_use dans la réponse Claude "
+                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+            )
+
+        data = dict(tool_use_block.input)
+        data["citations"] = []
+
         cost_usd = calculate_cost(response.usage, self._model)
 
         tokens_input = response.usage.input_tokens
@@ -162,7 +172,7 @@ class KlarmanMarginSkill(SkillBase):
         cache_hit_ratio = round(tokens_cache_r / total_consumed, 4) if total_consumed else 0.0
 
         logger.info(
-            "execute terminÃ©",
+            "execute terminé",
             extra={
                 "skill_id": self.skill_id,
                 "ticker": input_data.ticker,
@@ -202,4 +212,3 @@ class KlarmanMarginSkill(SkillBase):
             )
 
         return output, usage_detail
-

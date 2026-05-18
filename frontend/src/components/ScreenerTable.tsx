@@ -4,6 +4,12 @@ import { Badge } from './ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import type { ScreenEntry } from '../types'
 
+function compositeColor(label: string | null): string {
+  if (label === 'FORT') return 'text-green-400'
+  if (label === 'MODÉRÉ' || label === 'MODERE') return 'text-yellow-400'
+  return 'text-red-400'
+}
+
 function verdictVariant(verdict: string | null): 'success' | 'warning' | 'danger' | 'outline' {
   if (!verdict) return 'outline'
   const v = verdict.toUpperCase()
@@ -83,6 +89,7 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
                 Score défensif <SortIcon k="score" />
               </TableHead>
               <TableHead>Verdict</TableHead>
+              <TableHead>Composite</TableHead>
               <TableHead
                 className="cursor-pointer select-none"
                 onClick={() => toggleSort('cost')}
@@ -107,6 +114,14 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}
+                </TableCell>
+                <TableCell data-testid="composite-cell">
+                  {entry.composite_score != null ? (
+                    <span className={compositeColor(entry.composite_label ?? '')}>
+                      {entry.composite_score.toFixed(1)}
+                      <span className="ml-1 text-xs text-muted-foreground">({entry.composite_label})</span>
+                    </span>
+                  ) : <span className="text-muted-foreground">—</span>}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground tabular-nums">
                   ${entry.cost_usd.toFixed(4)}

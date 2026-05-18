@@ -65,11 +65,13 @@ async def test_telemetry_summary_smoke(client) -> None:
 
 def test_locustfile_importable() -> None:
     """Le module locustfile s'importe sans erreur."""
+    pytest.importorskip("locust")
     from tests.load.locustfile import AnalyzeUser  # noqa: F401
 
 
 def test_analyze_user_taches_definies() -> None:
     """AnalyzeUser possède la tâche analyze_bns décorée avec @task."""
+    pytest.importorskip("locust")
     from tests.load.locustfile import AnalyzeUser
 
     assert hasattr(AnalyzeUser, "analyze_bns")
@@ -79,6 +81,7 @@ def test_analyze_user_taches_definies() -> None:
 
 def test_screen_user_taches_definies() -> None:
     """ScreenUser possède la tâche screen_banks décorée avec @task."""
+    pytest.importorskip("locust")
     from tests.load.locustfile import ScreenUser
 
     assert hasattr(ScreenUser, "screen_banks")

@@ -247,7 +247,11 @@ class TestGreenblattSkill:
     ):
         """execute() retourne (GreenblattOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=greenblatt_output_top.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = greenblatt_output_top.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=300,
@@ -320,6 +324,7 @@ class TestOrchestratorGreenblatt:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="special_situation",
             greenblatt_input=GreenblattInput(
                 ticker="BNS", greenblatt_ratios=ratios_top_decile
             ),
@@ -346,7 +351,7 @@ class TestOrchestratorGreenblatt:
             earnings_skill=mock_earnings_skill,
             greenblatt_skill=mock_greenblatt_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="special_situation")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.greenblatt is None

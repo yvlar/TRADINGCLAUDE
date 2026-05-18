@@ -338,7 +338,11 @@ class TestFisherScuttlebuttSkill:
     ):
         """execute() retourne (FisherOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=fisher_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = fisher_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=600,
@@ -410,6 +414,7 @@ class TestOrchestratorFisher:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             fisher_input=fisher_input_bns,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -434,7 +439,7 @@ class TestOrchestratorFisher:
             earnings_skill=mock_earnings_skill,
             fisher_skill=mock_fisher_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="compounder_buffett")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.fisher is None
@@ -443,7 +448,7 @@ class TestOrchestratorFisher:
 
     @pytest.mark.asyncio
     async def test_fisher_input_defaut_none(self, ratios_msft):
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="compounder_buffett")
         assert req.fisher_input is None
 
     @pytest.mark.asyncio

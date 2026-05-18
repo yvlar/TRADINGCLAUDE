@@ -7,6 +7,25 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
+
+def _earnings_tool_use_response(output: "EarningsQualityOutput", **usage_overrides) -> MagicMock:
+    """Construit une réponse Anthropic simulée avec bloc tool_use pour earnings_quality."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = output.model_dump(exclude={"confidence_score"})
+    mock_response = MagicMock()
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
+    defaults = dict(
+        input_tokens=800,
+        output_tokens=600,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=1500,
+    )
+    defaults.update(usage_overrides)
+    mock_response.usage = SimpleNamespace(**defaults)
+    return mock_response
+
 from app.skills.base import UsageDetail
 from app.skills.tier2.earnings_quality.schemas import (
     CScoreDetail,
@@ -118,11 +137,8 @@ class TestEarningsQualitySkill:
         earnings_output_msft: EarningsQualityOutput,
     ):
         """execute() retourne (EarningsQualityOutput, UsageDetail)."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=earnings_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800,
-            output_tokens=600,
+        mock_response = _earnings_tool_use_response(
+            earnings_output_msft,
             cache_read_input_tokens=1200,
             cache_creation_input_tokens=0,
         )
@@ -145,17 +161,9 @@ class TestEarningsQualitySkill:
         earnings_output_msft: EarningsQualityOutput,
     ):
         """EarningsQualitySkill(rag_service=None) doit fonctionner."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=earnings_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800,
-            output_tokens=600,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=1500,
-        )
         mock_client = MagicMock()
         mock_client.messages = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _earnings_tool_use_response(earnings_output_msft)
 
         skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6", rag_service=None)
         inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
@@ -171,17 +179,9 @@ class TestEarningsQualitySkill:
         earnings_output_msft: EarningsQualityOutput,
     ):
         """Si graham_context fourni, le message utilisateur le mentionne."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=earnings_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800,
-            output_tokens=600,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=1500,
-        )
         mock_client = MagicMock()
         mock_client.messages = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _earnings_tool_use_response(earnings_output_msft)
 
         skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
         ctx = GrahamContext(
@@ -207,17 +207,9 @@ class TestEarningsQualitySkill:
         earnings_output_msft: EarningsQualityOutput,
     ):
         """Sans graham_context, le message ne contient pas de section Contexte Graham."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=earnings_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800,
-            output_tokens=600,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=1500,
-        )
         mock_client = MagicMock()
         mock_client.messages = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _earnings_tool_use_response(earnings_output_msft)
 
         skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
         inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
@@ -233,18 +225,10 @@ class TestEarningsQualitySkill:
         ratios_earnings_msft: EarningsQualityRatios,
         earnings_output_msft: EarningsQualityOutput,
     ):
-        """execute() injecte cost_usd dans l'output même si Claude retourne 0.0."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=earnings_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800,
-            output_tokens=600,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=1500,
-        )
+        """execute() injecte cost_usd dans l'output même si le bloc tool_use retourne 0.0."""
         mock_client = MagicMock()
         mock_client.messages = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _earnings_tool_use_response(earnings_output_msft)
 
         skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
         inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)

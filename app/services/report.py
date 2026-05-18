@@ -395,6 +395,24 @@ def _section_generique(story: list, styles: dict, titre: str, obj) -> None:
         story.append(Paragraph(verdict_detail, styles["corps"]))
 
 
+def _composite_label(score: float | None) -> str:
+    """Retourne FORT/MODERE/FAIBLE selon le score composite 0-100, ou '—' si absent."""
+    if score is None:
+        return "—"
+    if score >= 70:
+        return "FORT"
+    if score >= 45:
+        return "MODERE"
+    return "FAIBLE"
+
+
+def _composite_alerte(score: float | None, threshold: float) -> str:
+    """Retourne OUI si score < threshold (alerte active), NON sinon, '—' si score absent."""
+    if score is None:
+        return "—"
+    return "OUI" if score < threshold else "NON"
+
+
 class ReportService:
     def __init__(self, output_dir: str = "reports") -> None:
         self._output_dir = Path(output_dir)
@@ -519,7 +537,11 @@ class ReportService:
         story.append(Paragraph("Récapitulatif des positions", styles["titre_section"]))
         _hr(story)
 
-        header = [["Ticker", "Score Graham", "Verdict", "Valeur intrinsèque", "Prix vérifié", "Alerte prix"]]
+        header = [[
+            "Ticker", "Score Graham", "Verdict", "Valeur intrinsèque",
+            "Prix vérifié", "Alerte prix",
+            "Score composite", "Label", "Alerte composite",
+        ]]
         rows = []
         for entry in entries:
             score_str = f"{entry.last_score}/8" if entry.last_score is not None else "—"
@@ -542,10 +564,25 @@ class ReportService:
                     signe = "+" if ecart > 0 else ""
                     alerte_str = f"Oui ({signe}{ecart:.0%})"
 
-            rows.append([entry.ticker, score_str, verdict_str, intrinsic_str, price_str, alerte_str])
+            # Colonnes composite_score
+            composite_str = (
+                f"{entry.last_composite_score:.1f}" if entry.last_composite_score is not None else "—"
+            )
+            label_str = _composite_label(entry.last_composite_score)
+            alerte_composite_str = _composite_alerte(
+                entry.last_composite_score, entry.composite_alert_threshold
+            )
+
+            rows.append([
+                entry.ticker, score_str, verdict_str, intrinsic_str, price_str, alerte_str,
+                composite_str, label_str, alerte_composite_str,
+            ])
 
         table_data = header + rows
-        col_widths = [2.5 * cm, 2.5 * cm, 3.5 * cm, 3.5 * cm, 3 * cm, 2.5 * cm]
+        col_widths = [
+            1.5 * cm, 1.8 * cm, 2.5 * cm, 2.5 * cm, 2.0 * cm, 1.8 * cm,
+            2.0 * cm, 1.8 * cm, 1.6 * cm,
+        ]
         t = Table(table_data, colWidths=col_widths, repeatRows=1)
         t.setStyle(
             TableStyle(
@@ -553,12 +590,12 @@ class ReportService:
                     ("BACKGROUND", (0, 0), (-1, 0), _BLEU_TITRE),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("GRID", (0, 0), (-1, -1), 0.25, _GRIS),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _FOND_GRIS]),
                 ]
             )

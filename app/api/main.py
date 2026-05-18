@@ -14,7 +14,15 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.endpoints.admin import router as admin_router
+from app.api.endpoints.screener_report import router as screener_report_router
+from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.analyze_stream import router as analyze_stream_router
+from app.api.endpoints.composite_history import router as composite_history_router
+from app.api.endpoints.backtest import router as backtest_router
+from app.api.endpoints.evals import router as evals_router
+from app.api.endpoints.export import router as export_router
+from app.api.endpoints.performance import router as performance_router
 from app.api.endpoints.extract import router as extract_router
 from app.api.endpoints.jobs import router as jobs_router
 from app.api.endpoints.report import router as report_router
@@ -54,10 +62,17 @@ from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
 from app.skills.tier2.munger_mental.skill import MungerMentalSkill
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
+from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
 from app.services.analysis_cache import AnalysisCacheService
+from app.services.pdf_report_service import PdfReportService
+from app.services.screener_pdf_service import ScreenerPdfService
+from app.services.api_key_service import ApiKeyService
+from app.services.composite_history_service import CompositeHistoryService
+from app.services.eval_drift_service import EvalDriftService
 from app.services.observability import ObservabilityService
 from app.services.screener import ScreenerService
 from app.services.watchlist_service import WatchlistService
+from app.services.webhook_service import WebhookService
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
 
 configure_logging()
@@ -100,6 +115,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialisation et fermeture des ressources partagées."""
     api_key = _get_env("ANTHROPIC_API_KEY")
     model = _get_env("CLAUDE_MODEL", "claude-sonnet-4-6")
+    # Haiku pour skills mécaniques/quantitatifs — réduction coût ~60 % sur ces appels
+    haiku_model = _get_env("CLAUDE_HAIKU_MODEL", "claude-haiku-4-5-20251001")
     db_url = _get_env("DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote")
     qdrant_url = _get_env("QDRANT_URL", "http://qdrant:6333")
     qdrant_coll = _get_env("QDRANT_COLLECTION", "investment_knowledge")
@@ -152,7 +169,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     earnings_skill = EarningsQualitySkill(
         client=anthropic_client,
-        model=model,
+        model=haiku_model,  # skill mécanique — M-Score/Z-Score/F-Score formulaiques
         config=skill_config,
         rag_service=rag_service,
         top_k=top_k,
@@ -201,7 +218,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     lynch_skill = LynchCategoriesSkill(
         client=anthropic_client,
-        model=model,
+        model=haiku_model,  # skill mécanique — PEG ratio + catégorie Lynch formulaiques
         config=skill_config,
         rag_service=rag_service,
         top_k=top_k,
@@ -222,7 +239,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     greenblatt_skill = GreenblattSkill(
         client=anthropic_client,
-        model=model,
+        model=haiku_model,  # skill mécanique — ROC + Earnings Yield formulaiques
         config=skill_config,
         rag_service=rag_service,
         top_k=top_k,
@@ -248,6 +265,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         rag_service=rag_service,
         top_k=top_k,
     )
+    esg_skill = EsgSimplifiedSkill(
+        client=anthropic_client,
+        model=model,
+        config=skill_config,
+        rag_service=rag_service,
+        top_k=top_k,
+    )
     orchestrator = Orchestrator(
         db_pool=db_pool,
         graham_skill=graham_skill,
@@ -265,6 +289,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         damodaran_skill=damodaran_skill,
         marks_skill=marks_skill,
         pabrai_skill=pabrai_skill,
+        esg_skill=esg_skill,
     )
 
     yahoo_extractor = YahooFinanceExtractor()
@@ -288,6 +313,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     watchlist_service = WatchlistService(db_pool=db_pool)
+    webhook_service = WebhookService()
+    composite_history_service = CompositeHistoryService(db_pool=db_pool)
+    eval_drift_service = EvalDriftService(redis_client=redis_pool)
+    api_key_service = ApiKeyService(db_pool=db_pool)
+    pdf_report_service = PdfReportService()
+    screener_pdf_service = ScreenerPdfService()
 
     app.state.orchestrator = orchestrator
     app.state.db_pool = db_pool
@@ -299,6 +330,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.screener = screener
     app.state.observability = obs_service
     app.state.watchlist_service = watchlist_service
+    app.state.webhook_service = webhook_service
+    app.state.composite_history_service = composite_history_service
+    app.state.eval_drift_service = eval_drift_service
+    app.state.api_key_service = api_key_service
+    app.state.pdf_report_service = pdf_report_service
+    app.state.screener_pdf_service = screener_pdf_service
 
     logger.info("Copilote financier démarré — version %s", _VERSION)
     yield
@@ -320,8 +357,16 @@ app = FastAPI(
 _api_key_env = os.environ.get("API_KEY", "")
 _redis_url_env = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
+app.include_router(admin_router)
+app.include_router(screener_report_router)
+app.include_router(ticker_report_router)
 app.include_router(analyze_stream_router)
+app.include_router(composite_history_router)
+app.include_router(backtest_router)
+app.include_router(evals_router)
+app.include_router(export_router)
 app.include_router(extract_router)
+app.include_router(performance_router)
 app.include_router(jobs_router)
 app.include_router(report_router)
 app.include_router(screen_router)
@@ -403,9 +448,11 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     orchestrator: Orchestrator = request.app.state.orchestrator
     cache = getattr(request.app.state, "analysis_cache", None)
     observability = getattr(request.app.state, "observability", None)
+    composite_history_service = getattr(request.app.state, "composite_history_service", None)
     try:
         return await orchestrator.run_company_analysis(
-            body, cache=cache, observability=observability
+            body, cache=cache, observability=observability,
+            composite_history_service=composite_history_service,
         )
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse de %s", body.ticker)
@@ -415,18 +462,24 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
 @app.get(
     "/history",
     response_model=HistoryResponse,
-    summary="Historique des analyses par ticker",
+    summary="Historique des analyses par ticker ou recherche full-text",
 )
 async def history(
     request: Request,
-    ticker: str,
+    ticker: str | None = None,
+    q: str | None = None,
     limit: int = 10,
     before: str | None = None,
 ) -> HistoryResponse:
     """
-    Retourne les analyses passées pour un ticker (max 50 par page).
-    `before` : cursor ISO 8601 (valeur de `next_before` de la page précédente).
+    Retourne les analyses passées (max 50 par page).
+    - `ticker` : filtre exact sur le ticker (ex. BNS).
+    - `q`      : recherche ILIKE sur ticker partiel, workflow et verdicts.
+    Au moins un des deux paramètres est obligatoire.
+    `before` : cursor ISO 8601 pour la pagination (valeur de `next_before`).
     """
+    if not ticker and not q:
+        raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
     if limit < 1 or limit > 50:
         raise HTTPException(status_code=422, detail="limit doit être entre 1 et 50")
 
@@ -438,7 +491,7 @@ async def history(
             raise HTTPException(status_code=422, detail="before : format ISO 8601 requis")
 
     orchestrator: Orchestrator = request.app.state.orchestrator
-    return await orchestrator.get_history(ticker=ticker, limit=limit, before=before_dt)
+    return await orchestrator.get_history(ticker=ticker, q=q, limit=limit, before=before_dt)
 
 
 @app.get(

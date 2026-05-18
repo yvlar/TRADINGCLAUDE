@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,18 +11,16 @@ from app.rag.service import RagService
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
+from app.utils.tool_schema import build_tool_schema
 from .schemas import GrahamAnalysisInput, GrahamAnalysisOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_claude_json(text: str) -> dict[str, Any]:
-    """Parse le JSON depuis la réponse Claude, gère les blocs markdown optionnels."""
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        text = match.group(1).strip()
-    return json.loads(text)
+# Schéma dérivé de Pydantic — computed_fields et champs post-assignés exclus.
+_GRAHAM_TOOL_SCHEMA = build_tool_schema(
+    GrahamAnalysisOutput,
+    exclude={"defensive_score", "defensive_verdict", "confidence_score", "citations", "cost_usd"},
+)
 
 
 class GrahamAnalysisSkill(SkillBase):
@@ -101,7 +97,7 @@ class GrahamAnalysisSkill(SkillBase):
             f"Analyse les ratios financiers de **{input_data.ticker}** :\n\n"
             f"```json\n{ratios_json}\n```\n\n"
             "Applique les 8 critères défensifs et les 5 critères entrepreneuriaux de Graham. "
-            "Retourne uniquement le JSON structuré conforme au format de sortie défini."
+            "Retourne l'analyse structurée via l'outil graham_output."
         )
 
         return "\n".join(parts)
@@ -110,8 +106,8 @@ class GrahamAnalysisSkill(SkillBase):
         self, input_data: GrahamAnalysisInput
     ) -> tuple[GrahamAnalysisOutput, UsageDetail]:
         """
-        Appelle l'API Claude avec le system prompt caché et les ratios en message utilisateur.
-        Injecte les citations RAG dans le message et dans l'output.
+        Appelle l'API Claude avec Tool Use — le modèle popule graham_output directement,
+        éliminant les hallucinations de format JSON texte.
         """
         rag_query = (
             f"Graham screening criteria {input_data.ticker} "
@@ -131,18 +127,24 @@ class GrahamAnalysisSkill(SkillBase):
             system=self.get_system_prompt(),
             messages=[{"role": "user", "content": user_message}],
             max_tokens=4096,
+            tools=[{"name": "graham_output", "input_schema": _GRAHAM_TOOL_SCHEMA}],
+            tool_choice={"type": "tool", "name": "graham_output"},
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        raw_text = response.content[0].text if response.content else ""
-        logger.warning(
-            "Claude raw response — stop_reason=%s content_blocks=%d raw_text_len=%d raw_text=%r",
-            response.stop_reason,
-            len(response.content),
-            len(raw_text),
-            raw_text[:500],
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use"),
+            None,
         )
-        data = _parse_claude_json(raw_text)
+        if tool_use_block is None:
+            raise ValueError(
+                f"Aucun bloc tool_use dans la réponse Claude "
+                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+            )
+
+        data = dict(tool_use_block.input)
+        data["citations"] = []
+
         cost_usd = calculate_cost(response.usage, self._model)
 
         tokens_input = response.usage.input_tokens

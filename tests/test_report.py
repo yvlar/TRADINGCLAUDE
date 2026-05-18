@@ -192,3 +192,80 @@ async def test_get_report_analysis_inconnu_404(client) -> None:
     response = await client.get(f"/report/{fake_id}")
 
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Tests Sprint 53 — generate_watchlist_summary_pdf() avec composite_score
+# ---------------------------------------------------------------------------
+
+
+def _make_watchlist_entry(**kwargs):
+    """Crée une WatchlistEntry minimale pour les tests PDF watchlist."""
+    from datetime import datetime, timezone
+
+    from app.models.watchlist import WatchlistEntry
+
+    defaults = {
+        "id": str(uuid.uuid4()),
+        "ticker": "BNS",
+        "created_at": datetime.now(timezone.utc),
+        "last_composite_score": None,
+        "composite_alert_threshold": 15.0,
+        "last_score": None,
+        "last_verdict": None,
+        "last_intrinsic_value": None,
+        "last_price_checked": None,
+        "price_alert_threshold_pct": 0.10,
+    }
+    defaults.update(kwargs)
+    return WatchlistEntry(**defaults)
+
+
+def test_pdf_contient_composite_score():
+    """PDF watchlist valide + _composite_label retourne FORT pour score >= 70."""
+    from app.services.report import _composite_label
+
+    service = ReportService(output_dir="/tmp/reports_test")
+    entry = _make_watchlist_entry(ticker="RY", last_composite_score=75.0)
+
+    pdf_bytes = service.generate_watchlist_summary_pdf([entry])
+
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes[:4] == b"%PDF"
+    assert _composite_label(75.0) == "FORT"
+    assert _composite_label(55.0) == "MODERE"
+    assert _composite_label(30.0) == "FAIBLE"
+    assert _composite_label(None) == "—"
+
+
+def test_pdf_gere_composite_score_none():
+    """Le PDF watchlist se génère sans erreur quand last_composite_score est None."""
+    service = ReportService(output_dir="/tmp/reports_test")
+    entry = _make_watchlist_entry(ticker="TD", last_composite_score=None)
+
+    pdf_bytes = service.generate_watchlist_summary_pdf([entry])
+
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes[:4] == b"%PDF"
+    assert len(pdf_bytes) > 0
+
+
+def test_pdf_alerte_active_marquee():
+    """_composite_alerte retourne OUI quand score < threshold, NON sinon."""
+    from app.services.report import _composite_alerte
+
+    service = ReportService(output_dir="/tmp/reports_test")
+    entry = _make_watchlist_entry(
+        ticker="XIU",
+        last_composite_score=10.0,
+        composite_alert_threshold=15.0,
+    )
+
+    pdf_bytes = service.generate_watchlist_summary_pdf([entry])
+
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes[:4] == b"%PDF"
+    # Vérification de la logique d'alerte
+    assert _composite_alerte(10.0, 15.0) == "OUI"   # score < threshold → alerte
+    assert _composite_alerte(20.0, 15.0) == "NON"   # score >= threshold → pas d'alerte
+    assert _composite_alerte(None, 15.0) == "—"      # score absent → neutre

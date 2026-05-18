@@ -20,11 +20,13 @@ async def _sse_generator(
     orchestrator: Orchestrator,
     cache,
     observability,
+    composite_history_service=None,
 ) -> AsyncGenerator[str, None]:
     """Convertit les events de stream_company_analysis au format SSE texte."""
     try:
         async for event in orchestrator.stream_company_analysis(
-            body, cache=cache, observability=observability
+            body, cache=cache, observability=observability,
+            composite_history_service=composite_history_service,
         ):
             event_type = event["event"]
             data = json.dumps(event["data"], ensure_ascii=False, default=str)
@@ -49,8 +51,9 @@ async def analyze_stream(request: Request, body: AnalyzeRequest) -> StreamingRes
     orchestrator: Orchestrator = request.app.state.orchestrator
     cache = getattr(request.app.state, "analysis_cache", None)
     observability = getattr(request.app.state, "observability", None)
+    composite_history_service = getattr(request.app.state, "composite_history_service", None)
     return StreamingResponse(
-        _sse_generator(body, orchestrator, cache, observability),
+        _sse_generator(body, orchestrator, cache, observability, composite_history_service),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

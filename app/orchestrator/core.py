@@ -11,11 +11,13 @@ from typing import TYPE_CHECKING
 import asyncpg
 from pydantic import BaseModel, Field, field_validator
 
+from app.services.composite_score import CompositeScore, compute_composite_score
 from app.skills.base import UsageDetail
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 if TYPE_CHECKING:
     from app.services.analysis_cache import AnalysisCacheService
+    from app.services.composite_history_service import CompositeHistoryService
     from app.services.observability import ObservabilityService
 
 from app.orchestrator.router import WorkflowRouter
@@ -84,6 +86,11 @@ from app.skills.tier2.pabrai_dhandho.schemas import (
     PabraiRatios,
 )
 from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
+from app.skills.tier2.esg_simplified.schemas import (
+    EsgInput,
+    EsgOutput,
+)
+from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
 from app.skills.tier2.klarman_margin.schemas import (
     KlarmanInput,
     KlarmanOutput,
@@ -198,6 +205,7 @@ class AnalyzeRequest(BaseModel):
     damodaran_input: DamodararInput | None = None
     marks_input: MarksInput | None = None
     pabrai_input: PabraiInput | None = None
+    esg_input: EsgInput | None = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -222,11 +230,20 @@ class AnalyzeResponse(BaseModel):
     damodaran: DamodararOutput | None = None
     marks: MarksOutput | None = None
     pabrai: PabraiOutput | None = None
+    esg: EsgOutput | None = None
     cost_usd: float
     created_at: str
     inter_skill_conflicts: list[str] = Field(
         default_factory=list,
         description="Contradictions détectées entre verdicts de skills — calculé de façon déterministe.",
+    )
+    composite_score: CompositeScore | None = Field(
+        default=None,
+        description="Score composite pondéré 0-100 — calculé de façon déterministe depuis les verdicts des skills.",
+    )
+    depuis_cache_composite: bool = Field(
+        default=False,
+        description="True si composite_score retourné depuis composite_score_history (< 24h) sans appel Claude.",
     )
 
 
@@ -243,7 +260,7 @@ class HistoryEntry(BaseModel):
 
 
 class HistoryResponse(BaseModel):
-    ticker: str
+    ticker: str | None
     entries: list[HistoryEntry]
     next_before: str | None
 
@@ -290,6 +307,7 @@ class Orchestrator:
         damodaran_skill: DamodararNarrativeSkill | None = None,
         marks_skill: MarksCyclesSkill | None = None,
         pabrai_skill: PabraiDhandhoSkill | None = None,
+        esg_skill: EsgSimplifiedSkill | None = None,
     ) -> None:
         self._db = db_pool
         self._graham = graham_skill
@@ -307,12 +325,14 @@ class Orchestrator:
         self._damodaran = damodaran_skill
         self._marks = marks_skill
         self._pabrai = pabrai_skill
+        self._esg = esg_skill
 
     async def run_company_analysis(
         self,
         request: AnalyzeRequest,
         cache: AnalysisCacheService | None = None,
         observability: ObservabilityService | None = None,
+        composite_history_service: "CompositeHistoryService | None" = None,
     ) -> AnalyzeResponse:
         """
         Exécute le workflow company_analysis.
@@ -327,6 +347,37 @@ class Orchestrator:
                     "Cache hit pour %s/%s — 0 appel Claude", request.ticker, request.workflow
                 )
                 return cached.model_copy(update={"cost_usd": 0.0})
+
+        # --- Étape 0b : Cache composite_score (circuit court DB) ---
+        if composite_history_service is not None:
+            try:
+                recent = await composite_history_service.get_recent(request.ticker)
+            except Exception:
+                logger.warning(
+                    "Échec vérification cache composite pour %s", request.ticker, exc_info=True
+                )
+                recent = None
+            if recent is not None:
+                logger.debug(
+                    "Cache composite hit pour %s — score=%.1f label=%s (depuis_cache_composite=True)",
+                    request.ticker, recent.score, recent.label,
+                )
+                return AnalyzeResponse(
+                    analysis_id="cached_composite",
+                    ticker=request.ticker,
+                    workflow=request.workflow,
+                    skills_applied=[],
+                    cost_usd=0.0,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    composite_score=CompositeScore(
+                        score=recent.score,
+                        label=recent.label,
+                        skills_inclus=[],
+                        skills_exclus=[],
+                        detail={},
+                    ),
+                    depuis_cache_composite=True,
+                )
 
         # Résolution du workflow → ensemble des skills autorisés
         try:
@@ -763,17 +814,61 @@ class Orchestrator:
             total_cost += pabrai_usage.cost_usd
             all_usages.append(pabrai_usage)
 
+        # --- Étape 16 : esg_simplified (si esg_input fourni) ---
+        esg_output: EsgOutput | None = None
+
+        if request.esg_input is not None and self._esg is not None:
+            _t = time.monotonic()
+            esg_output, esg_usage = await self._esg.execute(request.esg_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="esg_simplified", ticker=request.ticker,
+                    cost_usd=esg_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=esg_usage.tokens_input, tokens_output=esg_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("esg_simplified")
+            total_cost += esg_usage.cost_usd
+            all_usages.append(esg_usage)
+
         analysis_id = await self._persist(
             request, graham_output, earnings_output, dorsey_output, buffett_output,
             valuation_output, thesis_output, munger_output, tax_output,
             lynch_output, fisher_output, klarman_output,
             greenblatt_output, damodaran_output, marks_output, pabrai_output,
-            all_usages
+            all_usages, esg_output=esg_output,
         )
 
         inter_skill_conflicts = _detect_inter_skill_conflicts(
             graham_output, buffett_output, earnings_output, dorsey_output
         )
+
+        composite = compute_composite_score(
+            graham_verdict=graham_output.defensive_verdict if graham_output else None,
+            graham_confidence=graham_output.confidence_score if graham_output else 0.0,
+            buffett_verdict=buffett_output.verdict if buffett_output else None,
+            buffett_confidence=buffett_output.confidence_score if buffett_output else 0.0,
+            valuation_verdict=valuation_output.verdict if valuation_output else None,
+            valuation_confidence=getattr(valuation_output, "confidence_score", 0.0) if valuation_output else 0.0,
+            moat_type=dorsey_output.moat_type if dorsey_output else None,
+            moat_confidence=dorsey_output.confidence_score if dorsey_output else 0.0,
+            earnings_verdict=earnings_output.verdict if earnings_output else None,
+            earnings_confidence=earnings_output.confidence_score if earnings_output else 0.0,
+            marks_signal=marks_output.recommandation_timing if marks_output else None,
+            marks_confidence=1.0,
+        )
+
+        if composite is not None and composite_history_service is not None:
+            try:
+                await composite_history_service.record(
+                    ticker=request.ticker,
+                    score=composite.score,
+                    label=composite.label,
+                    workflow=request.workflow,
+                )
+            except Exception:
+                logger.warning("Échec enregistrement composite_score_history pour %s", request.ticker, exc_info=True)
 
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
@@ -795,9 +890,11 @@ class Orchestrator:
             damodaran=damodaran_output,
             marks=marks_output,
             pabrai=pabrai_output,
+            esg=esg_output,
             cost_usd=total_cost,
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
+            composite_score=composite,
         )
 
         # --- Étape finale : mise en cache pour les prochains appels ---
@@ -811,6 +908,7 @@ class Orchestrator:
         request: AnalyzeRequest,
         cache: AnalysisCacheService | None = None,
         observability: ObservabilityService | None = None,
+        composite_history_service: "CompositeHistoryService | None" = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Version streaming de run_company_analysis.
@@ -831,6 +929,39 @@ class Orchestrator:
                     "Cache hit (stream) pour %s/%s", request.ticker, request.workflow
                 )
                 yield {"event": "cached", "data": cached.model_copy(update={"cost_usd": 0.0}).model_dump()}
+                return
+
+        # --- Étape 0b : Cache composite_score (circuit court DB) ---
+        if composite_history_service is not None:
+            try:
+                recent = await composite_history_service.get_recent(request.ticker)
+            except Exception:
+                logger.warning(
+                    "Échec vérification cache composite (stream) pour %s", request.ticker, exc_info=True
+                )
+                recent = None
+            if recent is not None:
+                logger.debug(
+                    "Cache composite hit (stream) pour %s — score=%.1f label=%s",
+                    request.ticker, recent.score, recent.label,
+                )
+                cached_response = AnalyzeResponse(
+                    analysis_id="cached_composite",
+                    ticker=request.ticker,
+                    workflow=request.workflow,
+                    skills_applied=[],
+                    cost_usd=0.0,
+                    created_at=datetime.now(timezone.utc).isoformat(),
+                    composite_score=CompositeScore(
+                        score=recent.score,
+                        label=recent.label,
+                        skills_inclus=[],
+                        skills_exclus=[],
+                        detail={},
+                    ),
+                    depuis_cache_composite=True,
+                )
+                yield {"event": "cached", "data": cached_response.model_dump()}
                 return
 
         try:
@@ -1240,17 +1371,61 @@ class Orchestrator:
             all_usages.append(pabrai_usage)
             yield {"event": "skill_result", "data": {"skill_id": "pabrai_dhandho", "result": pabrai_output.model_dump()}}
 
+        esg_output: EsgOutput | None = None
+        if request.esg_input is not None and self._esg is not None:
+            yield {"event": "skill_start", "data": {"skill_id": "esg_simplified"}}
+            _t = time.monotonic()
+            esg_output, esg_usage = await self._esg.execute(request.esg_input)
+            _elapsed_ms = int((time.monotonic() - _t) * 1000)
+            if observability:
+                asyncio.create_task(observability.record_skill_execution(SkillTrace(
+                    skill_id="esg_simplified", ticker=request.ticker,
+                    cost_usd=esg_usage.cost_usd, latency_ms=_elapsed_ms, cache_hit=False,
+                    tokens_input=esg_usage.tokens_input, tokens_output=esg_usage.tokens_output,
+                    created_at=datetime.now(timezone.utc),
+                )))
+            skills_applied.append("esg_simplified")
+            total_cost += esg_usage.cost_usd
+            all_usages.append(esg_usage)
+            yield {"event": "skill_result", "data": {"skill_id": "esg_simplified", "result": esg_output.model_dump()}}
+
         analysis_id = await self._persist(
             request, graham_output, earnings_output, dorsey_output, buffett_output,
             valuation_output, thesis_output, munger_output, tax_output,
             lynch_output, fisher_output, klarman_output,
             greenblatt_output, damodaran_output, marks_output, pabrai_output,
-            all_usages,
+            all_usages, esg_output=esg_output,
         )
 
         inter_skill_conflicts = _detect_inter_skill_conflicts(
             graham_output, buffett_output, earnings_output, dorsey_output
         )
+
+        composite = compute_composite_score(
+            graham_verdict=graham_output.defensive_verdict if graham_output else None,
+            graham_confidence=graham_output.confidence_score if graham_output else 0.0,
+            buffett_verdict=buffett_output.verdict if buffett_output else None,
+            buffett_confidence=buffett_output.confidence_score if buffett_output else 0.0,
+            valuation_verdict=valuation_output.verdict if valuation_output else None,
+            valuation_confidence=getattr(valuation_output, "confidence_score", 0.0) if valuation_output else 0.0,
+            moat_type=dorsey_output.moat_type if dorsey_output else None,
+            moat_confidence=dorsey_output.confidence_score if dorsey_output else 0.0,
+            earnings_verdict=earnings_output.verdict if earnings_output else None,
+            earnings_confidence=earnings_output.confidence_score if earnings_output else 0.0,
+            marks_signal=marks_output.recommandation_timing if marks_output else None,
+            marks_confidence=1.0,
+        )
+
+        if composite is not None and composite_history_service is not None:
+            try:
+                await composite_history_service.record(
+                    ticker=request.ticker,
+                    score=composite.score,
+                    label=composite.label,
+                    workflow=request.workflow,
+                )
+            except Exception:
+                logger.warning("Échec enregistrement composite_score_history (stream) pour %s", request.ticker, exc_info=True)
 
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
@@ -1272,9 +1447,11 @@ class Orchestrator:
             damodaran=damodaran_output,
             marks=marks_output,
             pabrai=pabrai_output,
+            esg=esg_output,
             cost_usd=total_cost,
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
+            composite_score=composite,
         )
 
         if cache is not None:
@@ -1301,6 +1478,7 @@ class Orchestrator:
         marks_output: MarksOutput | None,
         pabrai_output: PabraiOutput | None,
         usages: list[UsageDetail],
+        esg_output: EsgOutput | None = None,
     ) -> str:
         """Insère l'analyse agrégée dans analysis_history et retourne l'UUID généré."""
         skills_list: list[str] = []
@@ -1334,6 +1512,8 @@ class Orchestrator:
             skills_list.append("marks_cycles_risk")
         if pabrai_output:
             skills_list.append("pabrai_dhandho")
+        if esg_output:
+            skills_list.append("esg_simplified")
         skills_used = _json.dumps(skills_list)
 
         input_data = _json.dumps(request.ratios.model_dump() if request.ratios is not None else {})
@@ -1369,6 +1549,8 @@ class Orchestrator:
             result_dict["marks_cycles_risk"] = marks_output.model_dump()
         if pabrai_output:
             result_dict["pabrai_dhandho"] = pabrai_output.model_dump()
+        if esg_output:
+            result_dict["esg_simplified"] = esg_output.model_dump()
         result = _json.dumps(result_dict)
 
         total_cost = sum(u.cost_usd for u in usages)
@@ -1377,14 +1559,16 @@ class Orchestrator:
         total_tokens_cache_r = sum(u.tokens_cache_read for u in usages)
         total_tokens_cache_c = sum(u.tokens_cache_creation for u in usages)
 
+        price_at_analysis: float | None = request.ratios.price if request.ratios is not None else None
+
         row = await self._db.fetchrow(
             """
             INSERT INTO analysis_history (
                 ticker, workflow_name, skills_used, input_data, result,
                 cost_usd, tokens_input, tokens_output,
-                tokens_cache_read, tokens_cache_creation
+                tokens_cache_read, tokens_cache_creation, price_at_analysis
             )
-            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11)
             RETURNING id
             """,
             request.ticker,
@@ -1397,6 +1581,7 @@ class Orchestrator:
             total_tokens_output,
             total_tokens_cache_r,
             total_tokens_cache_c,
+            price_at_analysis,
         )
 
         return str(row["id"])
@@ -1468,24 +1653,34 @@ class Orchestrator:
 
     async def get_history(
         self,
-        ticker: str,
+        ticker: str | None = None,
+        q: str | None = None,
         limit: int = 10,
         before: datetime | None = None,
     ) -> HistoryResponse:
         """
-        Retourne les analyses passées pour un ticker, triées par date décroissante.
+        Retourne les analyses passées, triées par date décroissante.
+        ticker : filtre exact (obligatoire si q absent).
+        q      : filtre full-text ILIKE sur ticker, workflow et verdicts JSONB.
         Utilise un cursor sur created_at pour la pagination stable.
         """
         rows = await self._db.fetch(
             """
             SELECT id, ticker, workflow_name, skills_used, cost_usd, result, created_at
             FROM analysis_history
-            WHERE ticker = $1
-              AND ($2::timestamptz IS NULL OR created_at < $2)
+            WHERE ($1::text IS NULL OR ticker = $1)
+              AND ($2::text IS NULL OR (
+                    ticker        ILIKE '%' || $2 || '%'
+                 OR workflow_name ILIKE '%' || $2 || '%'
+                 OR (result->>'graham')          ILIKE '%' || $2 || '%'
+                 OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+              ))
+              AND ($3::timestamptz IS NULL OR created_at < $3)
             ORDER BY created_at DESC
-            LIMIT $3
+            LIMIT $4
             """,
             ticker,
+            q,
             before,
             limit + 1,
         )

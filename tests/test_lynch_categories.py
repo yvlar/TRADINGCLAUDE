@@ -314,7 +314,11 @@ class TestLynchCategoriesSkill:
     ):
         """execute() retourne (LynchOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=lynch_output_stalwart.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = lynch_output_stalwart.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=300,
@@ -387,6 +391,7 @@ class TestOrchestratorLynch:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="fast_grower_lynch",
             lynch_ratios=ratios_stalwart,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -411,7 +416,7 @@ class TestOrchestratorLynch:
             earnings_skill=mock_earnings_skill,
             lynch_skill=mock_lynch_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="fast_grower_lynch")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.lynch is None
@@ -421,7 +426,7 @@ class TestOrchestratorLynch:
     @pytest.mark.asyncio
     async def test_lynch_ratios_defaut_none(self, ratios_msft):
         """lynch_ratios est None par défaut dans AnalyzeRequest."""
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="fast_grower_lynch")
         assert req.lynch_ratios is None
 
     @pytest.mark.asyncio

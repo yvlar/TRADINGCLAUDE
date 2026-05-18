@@ -1,0 +1,180 @@
+[
+  {
+    "id": "MM-01",
+    "skill": "earnings_quality",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "BNS",
+    "description": "BNS FY2023 -- banque canadienne, qualite comptable solide, institution financiere",
+    "input": {
+      "ticker": "BNS",
+      "ratios": {
+        "sales_t": 32100,
+        "sales_t1": 27900,
+        "cogs_t": 18200,
+        "cogs_t1": 14500,
+        "net_income_t": 7400,
+        "cfo_t": 9200,
+        "ebit_t": 9800,
+        "receivables_t": 44000,
+        "receivables_t1": 41000,
+        "current_assets_t": 195000,
+        "current_liabilities_t": 175000,
+        "total_assets_t": 1340000,
+        "total_assets_t1": 1265000,
+        "ltd_t": 31000,
+        "retained_earnings_t": 48000,
+        "total_liabilities_t": 1195000,
+        "market_cap_t": 82000,
+        "book_equity_t": 95000,
+        "sga_t": 4800,
+        "sga_t1": 4500,
+        "depreciation_t": 1200,
+        "depreciation_t1": 1100,
+        "ppe_net_t": 7000,
+        "ppe_net_t1": 6800,
+        "shares_issued_net": false
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
+      "f_score_min": 4,
+      "is_financial_expected": true
+    }
+  },
+  {
+    "id": "MM-02",
+    "skill": "earnings_quality",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "HITI",
+    "description": "High Tide Inc FY2023 -- cannabis retailer, pertes nettes, signaux de stress financier",
+    "input": {
+      "ticker": "HITI",
+      "ratios": {
+        "sales_t": 520,
+        "sales_t1": 450,
+        "cogs_t": 380,
+        "cogs_t1": 320,
+        "net_income_t": -45,
+        "cfo_t": 15,
+        "ebit_t": -30,
+        "receivables_t": 12,
+        "receivables_t1": 8,
+        "current_assets_t": 80,
+        "current_liabilities_t": 95,
+        "total_assets_t": 320,
+        "total_assets_t1": 290,
+        "ltd_t": 120,
+        "retained_earnings_t": -60,
+        "total_liabilities_t": 250,
+        "market_cap_t": 200,
+        "book_equity_t": 70,
+        "sga_t": 80,
+        "sga_t1": 68,
+        "depreciation_t": 25,
+        "depreciation_t1": 22,
+        "ppe_net_t": 150,
+        "ppe_net_t1": 145,
+        "inventory_t": 50,
+        "inventory_t1": 40,
+        "shares_issued_net": true
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["ATTENTION", "WATCHLIST", "REJETER"],
+      "f_score_max": 5,
+      "drapeaux_rouges_min": 1
+    }
+  },
+  {
+    "id": "MM-03",
+    "skill": "greenblatt_magic_formula",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "MCD",
+    "description": "McDonald's FY2023 -- modele franchise a fort ROC, Earnings Yield modere",
+    "input": {
+      "ticker": "MCD",
+      "greenblatt_ratios": {
+        "ebit": 11049,
+        "enterprise_value": 215000,
+        "net_working_capital": -3000,
+        "net_fixed_assets": 23000,
+        "sector": "Consumer Discretionary"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["TOP_DECILE", "BON"],
+      "roc_min": 0.30
+    }
+  },
+  {
+    "id": "MM-04",
+    "skill": "greenblatt_magic_formula",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "INTC",
+    "description": "Intel FY2023 -- faible ROC, faible Earnings Yield, secteur semi-conducteurs en difficulte",
+    "input": {
+      "ticker": "INTC",
+      "greenblatt_ratios": {
+        "ebit": 1700,
+        "enterprise_value": 165000,
+        "net_working_capital": 12000,
+        "net_fixed_assets": 52000,
+        "sector": "Technology"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["EVITER", "MOYEN"],
+      "earnings_yield_max": 0.05
+    }
+  },
+  {
+    "id": "MM-05",
+    "skill": "lynch_categories",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "SHOP",
+    "description": "Shopify FY2023 -- fast grower, forte croissance revenus et BPA, PEG eleve",
+    "input": {
+      "ticker": "SHOP",
+      "ratios": {
+        "pe": 65.0,
+        "eps_growth_5y": 0.25,
+        "revenue_growth_5y": 0.22,
+        "net_margin": 0.019,
+        "debt_equity": 0.05,
+        "fcf_yield": 0.015,
+        "dividend_yield": null,
+        "capex_intensity": 0.02
+      }
+    },
+    "expected": {
+      "categorie_allowed": ["FAST_GROWER"],
+      "verdict_allowed": ["BON", "MOYEN"],
+      "peg_min": 2.0
+    }
+  },
+  {
+    "id": "MM-06",
+    "skill": "lynch_categories",
+    "model_haiku": "claude-haiku-4-5-20251001",
+    "ticker": "BCE",
+    "description": "BCE Inc FY2023 -- slow grower, haut dividende, croissance BPA faible, dette elevee",
+    "input": {
+      "ticker": "BCE",
+      "ratios": {
+        "pe": 14.0,
+        "eps_growth_5y": 0.01,
+        "revenue_growth_5y": 0.02,
+        "net_margin": 0.10,
+        "debt_equity": 2.5,
+        "fcf_yield": 0.04,
+        "dividend_yield": 0.09,
+        "capex_intensity": 0.12
+      }
+    },
+    "expected": {
+      "categorie_allowed": ["SLOW_GROWER"],
+      "verdict_allowed": ["MOYEN", "EVITER"],
+      "peg_min": 5.0
+    }
+  }
+]

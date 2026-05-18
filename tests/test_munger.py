@@ -278,7 +278,11 @@ class TestMungerMentalSkill:
     ):
         """execute() retourne (MungerOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=munger_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = munger_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=400,
@@ -306,7 +310,11 @@ class TestMungerMentalSkill:
     ):
         """execute() retourne bien un tuple (MungerOutput, UsageDetail)."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=munger_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = munger_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=400,
@@ -386,6 +394,7 @@ class TestOrchestratorMunger:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             thesis_ratios=True,
             munger_ratios=True,
         )
@@ -414,6 +423,7 @@ class TestOrchestratorMunger:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             thesis_ratios=False,
             munger_ratios=True,
         )
@@ -443,6 +453,7 @@ class TestOrchestratorMunger:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             thesis_ratios=True,
             munger_ratios=True,
         )

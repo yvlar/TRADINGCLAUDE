@@ -291,7 +291,11 @@ class TestPabraiDhandhoSkill:
     ):
         """execute() retourne (PabraiOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=pabrai_output_fort.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = pabrai_output_fort.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=300,
@@ -364,6 +368,7 @@ class TestOrchestratorPabrai:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="distressed_pabrai",
             pabrai_input=PabraiInput(ticker="BNS", pabrai_ratios=ratios_bns_pabrai),
         )
         response = await orchestrator.run_company_analysis(req)
@@ -388,7 +393,7 @@ class TestOrchestratorPabrai:
             earnings_skill=mock_earnings_skill,
             pabrai_skill=mock_pabrai_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="distressed_pabrai")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.pabrai is None

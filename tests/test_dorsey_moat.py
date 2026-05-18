@@ -260,7 +260,11 @@ class TestDorseyMoatSkill:
     ):
         """execute() retourne (DorseyMoatOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=dorsey_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = dorsey_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=400,
@@ -287,7 +291,11 @@ class TestDorseyMoatSkill:
         dorsey_output_bns: DorseyMoatOutput,
     ):
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=dorsey_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = dorsey_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=800,
             output_tokens=400,
@@ -312,7 +320,11 @@ class TestDorseyMoatSkill:
     ):
         """execute() transmet le contexte earnings dans le message utilisateur."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=dorsey_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = dorsey_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=400,
@@ -394,6 +406,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
         )
@@ -423,6 +436,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="MSFT",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -450,6 +464,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             dorsey_ratios=ratios_dorsey_bns,
         )
         response = await orchestrator.run_company_analysis(req)
@@ -500,6 +515,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
         )
@@ -535,6 +551,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_msft,
             dorsey_ratios=ratios_dorsey_bns,
         )
@@ -570,6 +587,7 @@ class TestOrchestratorDorsey:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             dorsey_ratios=ratios_dorsey_bns,
         )
         await orchestrator.run_company_analysis(req)

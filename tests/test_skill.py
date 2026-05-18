@@ -1,7 +1,6 @@
 """Tests unitaires du GrahamAnalysisSkill — fonctions pures et exécution mockée."""
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,11 +8,29 @@ import pytest
 
 from app.skills.base import Citation, SkillConfig, UsageDetail
 from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisInput, GrahamAnalysisOutput
-from app.skills.tier2.graham_analysis.skill import (
-    GrahamAnalysisSkill,
-    _parse_claude_json,
-)
-from app.utils.costs import PRICING, calculate_cost
+from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
+from app.utils.costs import calculate_cost
+
+
+def _tool_use_response(output: GrahamAnalysisOutput, **usage_overrides) -> MagicMock:
+    """Construit une réponse Claude simulée avec bloc tool_use."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = output.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score"}
+    )
+    mock_response = MagicMock()
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
+    defaults = dict(
+        input_tokens=100,
+        output_tokens=50,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=500,
+    )
+    defaults.update(usage_overrides)
+    mock_response.usage = SimpleNamespace(**defaults)
+    return mock_response
 
 
 # ---------------------------------------------------------------------------
@@ -63,47 +80,6 @@ class TestCalculateCost:
 
     def test_cout_strictement_positif(self, mock_usage_no_cache):
         assert calculate_cost(mock_usage_no_cache, "claude-sonnet-4-6") > 0
-
-
-# ---------------------------------------------------------------------------
-# _parse_claude_json — tests du parsing de la réponse Claude
-# ---------------------------------------------------------------------------
-
-class TestParseClaudeJson:
-    def test_json_pur(self):
-        texte = '{"ticker": "MSFT", "defensive_score": 2}'
-        resultat = _parse_claude_json(texte)
-        assert resultat["ticker"] == "MSFT"
-        assert resultat["defensive_score"] == 2
-
-    def test_json_avec_bloc_markdown_json(self):
-        texte = '```json\n{"ticker": "BNS", "defensive_score": 7}\n```'
-        resultat = _parse_claude_json(texte)
-        assert resultat["ticker"] == "BNS"
-
-    def test_json_avec_bloc_markdown_sans_langue(self):
-        texte = '```\n{"ticker": "RY", "defensive_score": 6}\n```'
-        resultat = _parse_claude_json(texte)
-        assert resultat["ticker"] == "RY"
-
-    def test_json_avec_espaces_et_newlines_autour(self):
-        texte = '\n\n  {"ticker": "TD", "defensive_score": 5}  \n\n'
-        resultat = _parse_claude_json(texte)
-        assert resultat["defensive_score"] == 5
-
-    def test_json_invalide_leve_erreur(self):
-        with pytest.raises(json.JSONDecodeError):
-            _parse_claude_json('{"ticker": "MSFT", incomplet')
-
-    def test_texte_vide_leve_erreur(self):
-        with pytest.raises((json.JSONDecodeError, ValueError)):
-            _parse_claude_json("")
-
-    def test_json_imbriqe_preserve(self):
-        texte = '{"criteria": [{"numero": 1, "passe": true}]}'
-        resultat = _parse_claude_json(texte)
-        assert resultat["criteria"][0]["numero"] == 1
-        assert resultat["criteria"][0]["passe"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +154,7 @@ class TestGrahamAnalysisSkillConstruction:
 
 
 # ---------------------------------------------------------------------------
-# GrahamAnalysisSkill.execute — tests avec API Claude mockée
+# GrahamAnalysisSkill.execute — tests avec API Claude mockée (Tool Use)
 # ---------------------------------------------------------------------------
 
 class TestGrahamAnalysisSkillExecute:
@@ -228,29 +204,6 @@ class TestGrahamAnalysisSkillExecute:
         system = call_kwargs["system"]
         assert isinstance(system, list)
         assert system[0]["cache_control"]["type"] == "ephemeral"
-
-    @pytest.mark.asyncio
-    async def test_execute_gere_json_dans_bloc_markdown(self, ratios_msft, graham_output_msft):
-        """execute() doit parser le JSON même enveloppé dans ```json ... ```."""
-        texte_avec_markdown = f"```json\n{graham_output_msft.model_dump_json()}\n```"
-
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=texte_avec_markdown)]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=800, output_tokens=150,
-            cache_read_input_tokens=1200, cache_creation_input_tokens=0,
-        )
-
-        mock_client = MagicMock()
-        mock_client.messages = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
-
-        skill = GrahamAnalysisSkill(client=mock_client, model="claude-sonnet-4-6")
-        inp = GrahamAnalysisInput(ticker="MSFT", ratios=ratios_msft)
-        output, usage = await skill.execute(inp)
-
-        assert isinstance(output, GrahamAnalysisOutput)
-        assert output.ticker == "MSFT"
 
     @pytest.mark.asyncio
     async def test_execute_retourne_usage_detail(self, skill_avec_mock_client, ratios_msft):
@@ -334,16 +287,8 @@ class TestSkillAvecConfig:
     @pytest.mark.asyncio
     async def test_execute_utilise_timeout_config(self, ratios_msft, graham_output_msft):
         """Le timeout de SkillConfig est passé à call_claude_with_retry."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=100,
-            output_tokens=50,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=500,
-        )
         mock_client = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _tool_use_response(graham_output_msft)
 
         config = SkillConfig(timeout_s=42.0, max_retries=0)
         skill = GrahamAnalysisSkill(client=mock_client, model="claude-sonnet-4-6", config=config)
@@ -356,16 +301,8 @@ class TestSkillAvecConfig:
     @pytest.mark.asyncio
     async def test_execute_appelle_tracer_si_present(self, ratios_msft, graham_output_msft):
         """Si config.tracer est fourni, record_generation est appelé."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=100,
-            output_tokens=50,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=500,
-        )
         mock_client = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _tool_use_response(graham_output_msft)
 
         mock_tracer = MagicMock()
         config = SkillConfig(tracer=mock_tracer)
@@ -382,16 +319,8 @@ class TestSkillAvecConfig:
     @pytest.mark.asyncio
     async def test_execute_sans_tracer_ne_plante_pas(self, ratios_msft, graham_output_msft):
         """Sans tracer, execute() fonctionne normalement."""
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=graham_output_msft.model_dump_json())]
-        mock_response.usage = SimpleNamespace(
-            input_tokens=100,
-            output_tokens=50,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=500,
-        )
         mock_client = AsyncMock()
-        mock_client.messages.create.return_value = mock_response
+        mock_client.messages.create.return_value = _tool_use_response(graham_output_msft)
 
         skill = GrahamAnalysisSkill(
             client=mock_client, model="claude-sonnet-4-6", config=SkillConfig(tracer=None)

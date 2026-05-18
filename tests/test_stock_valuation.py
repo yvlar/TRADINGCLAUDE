@@ -418,7 +418,11 @@ class TestStockValuationSkill:
     ):
         """execute() retourne (StockValuationOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=valuation_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = valuation_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=600,
@@ -445,7 +449,11 @@ class TestStockValuationSkill:
         valuation_output_bns: StockValuationOutput,
     ):
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=valuation_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = valuation_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=600,
@@ -470,7 +478,11 @@ class TestStockValuationSkill:
     ):
         """execute() transmet le contexte buffett dans le message utilisateur."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=valuation_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = valuation_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=600,
@@ -638,6 +650,7 @@ class TestOrchestratorValuation:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_bns,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,
@@ -756,6 +769,7 @@ class TestOrchestratorValuation:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_bns,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,
@@ -867,6 +881,7 @@ class TestOrchestratorValuation:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="compounder_buffett",
             earnings_ratios=ratios_earnings_bns,
             dorsey_ratios=ratios_dorsey_bns,
             buffett_ratios=ratios_buffett_bns,

@@ -1,0 +1,213 @@
+[
+  {
+    "id": "SCR-01",
+    "ticker": "BNS",
+    "description": "Banque canadienne — PE=11 PB=1.3 passent les seuils Graham ; eps_growth sous le seuil de 33%",
+    "ratios": {
+      "pe": 11.0,
+      "pb": 1.3,
+      "current_ratio": null,
+      "debt_equity": 0.45,
+      "eps_growth_10y": 0.27,
+      "price": 80.0,
+      "book_value": 61.5
+    },
+    "expected": {
+      "defensive_score_min": 3,
+      "defensive_verdict_allowed": ["BORDERLINE", "REJETER"],
+      "verdict_allowed": ["CANDIDAT_SOLIDE", "WATCHLIST"],
+      "composite_label_allowed": ["FAIBLE", "MODÉRÉ"]
+    }
+  },
+  {
+    "id": "SCR-02",
+    "ticker": "MSFT",
+    "description": "Tech compounder — PE=34 PB=12.5 très au-dessus des seuils Graham ; forte croissance BPA",
+    "ratios": {
+      "pe": 34.0,
+      "pb": 12.5,
+      "current_ratio": 1.8,
+      "debt_equity": 0.35,
+      "eps_growth_10y": 1.20,
+      "price": 420.0,
+      "book_value": 33.6
+    },
+    "expected": {
+      "defensive_score_min": 1,
+      "defensive_verdict_allowed": ["REJETER"],
+      "verdict_allowed": ["REJETER"],
+      "composite_label_allowed": ["FAIBLE"]
+    }
+  },
+  {
+    "id": "SCR-03",
+    "ticker": "TD",
+    "description": "TD Bank — PE=10.5 PB=1.2 passent ; dividende 28 ans ; eps_growth juste sous le seuil de 33%",
+    "ratios": {
+      "pe": 10.5,
+      "pb": 1.2,
+      "current_ratio": null,
+      "debt_equity": 0.52,
+      "eps_growth_10y": 0.31,
+      "price": 73.0,
+      "book_value": 60.8,
+      "dividend_years": 28
+    },
+    "expected": {
+      "defensive_score_min": 4,
+      "defensive_verdict_allowed": ["BORDERLINE", "PASSE"],
+      "verdict_allowed": ["CANDIDAT_SOLIDE", "WATCHLIST"],
+      "composite_label_allowed": ["MODÉRÉ", "FORT"]
+    }
+  },
+  {
+    "id": "SCR-04",
+    "ticker": "JNJ",
+    "description": "Johnson & Johnson — santé défensive ; PE=14 passe ; dividende 61 ans ; PB=5 échoue",
+    "ratios": {
+      "pe": 14.0,
+      "pb": 5.0,
+      "current_ratio": 1.5,
+      "debt_equity": 0.62,
+      "eps_growth_10y": 0.45,
+      "price": 148.0,
+      "book_value": 29.6,
+      "dividend_years": 61,
+      "revenue_bn": 85.0
+    },
+    "expected": {
+      "defensive_score_min": 4,
+      "defensive_verdict_allowed": ["BORDERLINE", "PASSE"],
+      "verdict_allowed": ["CANDIDAT_SOLIDE", "WATCHLIST"],
+      "composite_label_allowed": ["MODÉRÉ", "FORT"]
+    }
+  },
+  {
+    "id": "SCR-05",
+    "ticker": "NVDA",
+    "description": "NVIDIA — croissance extrême ; PE=55 PB=45 rejettent tous les seuils Graham de valorisation",
+    "ratios": {
+      "pe": 55.0,
+      "pb": 45.0,
+      "current_ratio": 4.1,
+      "debt_equity": 0.42,
+      "eps_growth_10y": 3.50,
+      "price": 850.0,
+      "book_value": 18.9
+    },
+    "expected": {
+      "defensive_score_min": 2,
+      "defensive_verdict_allowed": ["REJETER"],
+      "verdict_allowed": ["REJETER"],
+      "composite_label_allowed": ["FAIBLE"]
+    }
+  },
+  {
+    "id": "SCR-06",
+    "ticker": "ENB",
+    "description": "Enbridge infrastructure énergie — dividende 28 ans et revenus élevés ; PE=18 et PB=1.7 échouent",
+    "ratios": {
+      "pe": 18.0,
+      "pb": 1.7,
+      "current_ratio": 0.7,
+      "debt_equity": 1.50,
+      "eps_growth_10y": 0.22,
+      "price": 52.0,
+      "book_value": 30.6,
+      "dividend_years": 28,
+      "revenue_bn": 40.0
+    },
+    "expected": {
+      "defensive_score_min": 2,
+      "defensive_verdict_allowed": ["REJETER"],
+      "verdict_allowed": ["REJETER", "WATCHLIST"],
+      "composite_label_allowed": ["FAIBLE"]
+    }
+  },
+  {
+    "id": "SCR-07",
+    "ticker": "WMT",
+    "description": "Walmart — revenus massifs et dividende 51 ans ; PE=28 et PB=7 trop élevés pour Graham",
+    "ratios": {
+      "pe": 28.0,
+      "pb": 7.0,
+      "current_ratio": 0.8,
+      "debt_equity": 0.65,
+      "eps_growth_10y": 0.55,
+      "price": 185.0,
+      "book_value": 26.4,
+      "dividend_years": 51,
+      "revenue_bn": 650.0
+    },
+    "expected": {
+      "defensive_score_min": 3,
+      "defensive_verdict_allowed": ["REJETER", "BORDERLINE"],
+      "verdict_allowed": ["WATCHLIST", "CANDIDAT_SOLIDE"],
+      "composite_label_allowed": ["FAIBLE", "MODÉRÉ"]
+    }
+  },
+  {
+    "id": "SCR-08",
+    "ticker": "XOM",
+    "description": "ExxonMobil énergie — PE=13.5 passe ; dividende 40 ans et revenus élevés ; PB=1.9 légèrement au-dessus",
+    "ratios": {
+      "pe": 13.5,
+      "pb": 1.9,
+      "current_ratio": 1.3,
+      "debt_equity": 0.25,
+      "eps_growth_10y": 0.15,
+      "price": 105.0,
+      "book_value": 55.3,
+      "dividend_years": 40,
+      "revenue_bn": 385.0
+    },
+    "expected": {
+      "defensive_score_min": 3,
+      "defensive_verdict_allowed": ["REJETER", "BORDERLINE"],
+      "verdict_allowed": ["WATCHLIST", "CANDIDAT_SOLIDE"],
+      "composite_label_allowed": ["FAIBLE", "MODÉRÉ"]
+    }
+  },
+  {
+    "id": "SCR-09",
+    "ticker": "RY",
+    "description": "Royal Bank — PE=12 PB=1.7 PE×PB=20.4 (≤22.5) passe le critère combiné ; dividende 35 ans ; forte croissance",
+    "ratios": {
+      "pe": 12.0,
+      "pb": 1.7,
+      "current_ratio": null,
+      "debt_equity": 0.38,
+      "eps_growth_10y": 0.42,
+      "price": 140.0,
+      "book_value": 82.4,
+      "dividend_years": 35,
+      "revenue_bn": 50.0
+    },
+    "expected": {
+      "defensive_score_min": 5,
+      "defensive_verdict_allowed": ["BORDERLINE", "PASSE"],
+      "verdict_allowed": ["CANDIDAT_SOLIDE", "EXEMPLAIRE"],
+      "composite_label_allowed": ["MODÉRÉ", "FORT"]
+    }
+  },
+  {
+    "id": "SCR-10",
+    "ticker": "SHOP",
+    "description": "Shopify SaaS croissance — PE=80 PB=15 rejettent systématiquement les seuils Graham de valorisation",
+    "ratios": {
+      "pe": 80.0,
+      "pb": 15.0,
+      "current_ratio": 3.5,
+      "debt_equity": 0.18,
+      "eps_growth_10y": 2.00,
+      "price": 95.0,
+      "book_value": 6.3
+    },
+    "expected": {
+      "defensive_score_min": 2,
+      "defensive_verdict_allowed": ["REJETER"],
+      "verdict_allowed": ["REJETER"],
+      "composite_label_allowed": ["FAIBLE"]
+    }
+  }
+]

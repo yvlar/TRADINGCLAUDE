@@ -1,8 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -13,33 +11,31 @@ from app.rag.service import RagService
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
+from app.utils.tool_schema import build_tool_schema
 from .schemas import LynchInput, LynchOutput
 
 logger = logging.getLogger(__name__)
 
-
-def _parse_claude_json(text: str) -> dict[str, Any]:
-    """Parse le JSON depuis la rÃ©ponse Claude, gÃ¨re les blocs markdown optionnels."""
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-    if match:
-        text = match.group(1).strip()
-    return json.loads(text)
+# Schéma dérivé de Pydantic — champs post-assignés exclus.
+_LYNCH_TOOL_SCHEMA = build_tool_schema(
+    LynchOutput,
+    exclude={"citations", "cost_usd"},
+)
 
 
 class LynchCategoriesSkill(SkillBase):
     """
-    Skill Tier 2 : classification Lynch en 6 catÃ©gories + PEG + tenbagger.
-    Applique One Up on Wall Street (Lynch, 1989) â€” slow grower, stalwart, fast grower,
+    Skill Tier 2 : classification Lynch en 6 catégories + PEG + tenbagger.
+    Applique One Up on Wall Street (Lynch, 1989) — slow grower, stalwart, fast grower,
     cyclical, turnaround, asset play. Verdict EXCELLENT / BON / MOYEN / EVITER.
     """
 
     skill_id: ClassVar[str] = "lynch_categories"
     tier: ClassVar[int] = 2
     description: ClassVar[str] = (
-        "Applique le cadre de Peter Lynch (One Up on Wall Street) â€” classification en 6 catÃ©gories, "
+        "Applique le cadre de Peter Lynch (One Up on Wall Street) — classification en 6 catégories, "
         "calcul du PEG ratio, identification des tenbaggers potentiels. "
-        "Verdict EXCELLENT / BON / MOYEN / EVITER selon la catÃ©gorie et la valorisation."
+        "Verdict EXCELLENT / BON / MOYEN / EVITER selon la catégorie et la valorisation."
     )
 
     def __init__(
@@ -73,7 +69,7 @@ class LynchCategoriesSkill(SkillBase):
         ]
 
     async def get_citations(self, query: str, k: int = 5) -> list[Citation]:
-        """Recherche RAG dans Qdrant. Retourne [] si le RAG n'est pas initialisÃ©."""
+        """Recherche RAG dans Qdrant. Retourne [] si le RAG n'est pas initialisé."""
         if self._rag is None:
             return []
         return await self._rag.search(query, k=k)
@@ -88,7 +84,7 @@ class LynchCategoriesSkill(SkillBase):
         r = input_data.ratios
 
         parts.append(
-            f"## Action Ã  analyser : {input_data.ticker}\n\n"
+            f"## Action à analyser : {input_data.ticker}\n\n"
             f"### Ratios financiers\n"
             f"- P/E : {r.pe}\n"
             f"- Croissance BPA 5 ans (eps_growth_5y) : {r.eps_growth_5y} "
@@ -98,27 +94,27 @@ class LynchCategoriesSkill(SkillBase):
             f"- Dette/Capitaux propres : {r.debt_equity}\n"
             f"- FCF yield : {r.fcf_yield}\n"
             f"- Rendement dividende : {r.dividend_yield}\n"
-            f"- IntensitÃ© capex : {r.capex_intensity}\n"
+            f"- Intensité capex : {r.capex_intensity}\n"
         )
 
         if r.eps_growth_5y is not None and r.eps_growth_5y > 0:
             peg = r.pe / (r.eps_growth_5y * 100)
-            parts.append(f"\n**PEG calculÃ©** : {r.pe} / ({r.eps_growth_5y} Ã— 100) = {peg:.2f}\n")
+            parts.append(f"\n**PEG calculé** : {r.pe} / ({r.eps_growth_5y} × 100) = {peg:.2f}\n")
         else:
-            parts.append("\n**PEG** : null (eps_growth_5y â‰¤ 0)\n")
+            parts.append("\n**PEG** : null (eps_growth_5y ≤ 0)\n")
 
         if citations:
-            parts.append("\n## Contexte de rÃ©fÃ©rence (corpus Lynch)\n")
+            parts.append("\n## Contexte de référence (corpus Lynch)\n")
             for i, cit in enumerate(citations, 1):
                 parts.append(f"**[{i}] {cit.source}** (score : {cit.score:.2f})\n{cit.extrait}\n")
             parts.append("---\n")
 
         ratios_json = input_data.ratios.model_dump_json(indent=2)
         parts.append(
-            f"\nClassifie **{input_data.ticker}** selon les 6 catÃ©gories Lynch, "
-            f"calcule le PEG ratio, Ã©value le potentiel tenbagger, et attribue un verdict.\n\n"
-            f"DonnÃ©es complÃ¨tes :\n```json\n{ratios_json}\n```\n\n"
-            "Retourne uniquement le JSON structurÃ© conforme au format de sortie dÃ©fini."
+            f"\nClassifie **{input_data.ticker}** selon les 6 catégories Lynch, "
+            f"calcule le PEG ratio, évalue le potentiel tenbagger, et attribue un verdict.\n\n"
+            f"Données complètes :\n```json\n{ratios_json}\n```\n\n"
+            "Retourne l'analyse structurée via l'outil lynch_output."
         )
 
         return "\n".join(parts)
@@ -127,12 +123,13 @@ class LynchCategoriesSkill(SkillBase):
         self, input_data: LynchInput
     ) -> tuple[LynchOutput, UsageDetail]:
         """
-        Appelle l'API Claude avec prompt caching et retourne (LynchOutput, UsageDetail).
+        Appelle l'API Claude avec Tool Use — le modèle popule lynch_output directement,
+        éliminant les hallucinations de format JSON texte.
         """
         rag_query = (
             f"Lynch categories {input_data.ticker} "
             f"slow grower stalwart fast grower cyclical turnaround asset play "
-            f"PEG ratio tenbagger croissance bÃ©nÃ©fices"
+            f"PEG ratio tenbagger croissance bénéfices"
         )
         citations = await self.get_citations(rag_query, k=self._top_k)
 
@@ -147,11 +144,24 @@ class LynchCategoriesSkill(SkillBase):
             system=self.get_system_prompt(),
             messages=[{"role": "user", "content": user_message}],
             max_tokens=4096,
+            tools=[{"name": "lynch_output", "input_schema": _LYNCH_TOOL_SCHEMA}],
+            tool_choice={"type": "tool", "name": "lynch_output"},
         )
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        raw_text = response.content[0].text
-        data = _parse_claude_json(raw_text)
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use"),
+            None,
+        )
+        if tool_use_block is None:
+            raise ValueError(
+                f"Aucun bloc tool_use dans la réponse Claude "
+                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+            )
+
+        data = dict(tool_use_block.input)
+        data["citations"] = []
+
         cost_usd = calculate_cost(response.usage, self._model)
 
         tokens_input = response.usage.input_tokens
@@ -162,7 +172,7 @@ class LynchCategoriesSkill(SkillBase):
         cache_hit_ratio = round(tokens_cache_r / total_consumed, 4) if total_consumed else 0.0
 
         logger.info(
-            "execute terminÃ©",
+            "execute terminé",
             extra={
                 "skill_id": self.skill_id,
                 "ticker": input_data.ticker,
@@ -202,4 +212,3 @@ class LynchCategoriesSkill(SkillBase):
             )
 
         return output, usage_detail
-

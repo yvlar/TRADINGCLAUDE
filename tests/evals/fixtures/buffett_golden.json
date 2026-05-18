@@ -1,0 +1,572 @@
+[
+  {
+    "id": "buffett-001",
+    "description": "AAPL -- compounder exceptionnel : ROE eleve, FCF massif, moat clair, prix raisonnable",
+    "input": {
+      "ticker": "AAPL",
+      "ratios": {
+        "roe": 1.60,
+        "roe_5y_avg": 1.20,
+        "roic": 0.55,
+        "roic_5y_avg": 0.48,
+        "net_margin": 0.25,
+        "net_margin_5y_avg": 0.24,
+        "revenue_growth_5y": 0.09,
+        "eps_growth_5y": 0.17,
+        "debt_equity": 1.96,
+        "free_cash_flow_bn": 99.0,
+        "capex_bn": 10.0,
+        "maintenance_capex_bn": 6.0,
+        "depreciation_bn": 11.0,
+        "eps_ttm": 6.45,
+        "revenue_bn": 383.0,
+        "pe": 29.0,
+        "price": 187.0,
+        "management_quality_proxy": "Tim Cook -- execution remarquable, buybacks disciplinees",
+        "business_understandability": "Tres comprehensible -- hardware + services recurrents"
+      },
+      "dorsey_context": {
+        "moat_type": "WIDE",
+        "sources": ["switching_costs", "network_effects", "intangibles"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["COMPOUNDER", "QUALITE_CORRECTE"],
+      "quality_score_min": 3,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-002",
+    "description": "KO -- compounder classique Buffett : marque iconic, FCF stable, pricing power",
+    "input": {
+      "ticker": "KO",
+      "ratios": {
+        "roe": 0.42,
+        "roe_5y_avg": 0.38,
+        "roic": 0.13,
+        "roic_5y_avg": 0.12,
+        "net_margin": 0.23,
+        "net_margin_5y_avg": 0.22,
+        "revenue_growth_5y": 0.05,
+        "eps_growth_5y": 0.06,
+        "debt_equity": 1.73,
+        "free_cash_flow_bn": 9.5,
+        "capex_bn": 2.0,
+        "maintenance_capex_bn": 1.5,
+        "depreciation_bn": 1.7,
+        "eps_ttm": 2.47,
+        "revenue_bn": 46.0,
+        "pe": 23.0,
+        "price": 57.0,
+        "management_quality_proxy": "James Quincey -- gestion disciplinee, dividendes 60+ ans",
+        "business_understandability": "Comprehensible -- distribution mondiale boissons"
+      },
+      "dorsey_context": {
+        "moat_type": "WIDE",
+        "sources": ["intangibles", "cost_advantages"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["COMPOUNDER", "QUALITE_CORRECTE"],
+      "quality_score_min": 3,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-003",
+    "description": "V -- compounder : economics extraordinaires, capital-light, quasi-monopole paiements",
+    "input": {
+      "ticker": "V",
+      "ratios": {
+        "roe": 0.43,
+        "roe_5y_avg": 0.38,
+        "roic": 0.18,
+        "roic_5y_avg": 0.17,
+        "net_margin": 0.53,
+        "net_margin_5y_avg": 0.50,
+        "revenue_growth_5y": 0.11,
+        "eps_growth_5y": 0.16,
+        "debt_equity": 0.60,
+        "free_cash_flow_bn": 18.0,
+        "capex_bn": 1.0,
+        "maintenance_capex_bn": 0.7,
+        "depreciation_bn": 0.5,
+        "eps_ttm": 9.42,
+        "revenue_bn": 33.0,
+        "pe": 27.0,
+        "price": 254.0,
+        "management_quality_proxy": "Ryan McInerney -- allocation capital excellente, buybacks",
+        "business_understandability": "Tres comprehensible -- reseau de paiement, pas de credit risk"
+      },
+      "dorsey_context": {
+        "moat_type": "WIDE",
+        "sources": ["network_effects", "cost_advantages", "efficient_scale"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["COMPOUNDER"],
+      "quality_score_min": 3,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-004",
+    "description": "MSFT -- compounder : enterprise software, Azure, marges exceptionnelles",
+    "input": {
+      "ticker": "MSFT",
+      "ratios": {
+        "roe": 0.36,
+        "roe_5y_avg": 0.34,
+        "roic": 0.22,
+        "roic_5y_avg": 0.20,
+        "net_margin": 0.34,
+        "net_margin_5y_avg": 0.32,
+        "revenue_growth_5y": 0.15,
+        "eps_growth_5y": 0.20,
+        "debt_equity": 0.32,
+        "free_cash_flow_bn": 59.0,
+        "capex_bn": 28.0,
+        "maintenance_capex_bn": 8.0,
+        "depreciation_bn": 13.0,
+        "eps_ttm": 11.45,
+        "revenue_bn": 212.0,
+        "pe": 37.0,
+        "price": 424.0,
+        "management_quality_proxy": "Satya Nadella -- transformation cloud reussie, capital allocation excellent",
+        "business_understandability": "Comprehensible -- cloud, logiciels enterprise, gaming"
+      },
+      "dorsey_context": {
+        "moat_type": "WIDE",
+        "sources": ["switching_costs", "network_effects", "intangibles"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["COMPOUNDER", "QUALITE_CORRECTE"],
+      "quality_score_min": 3,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-005",
+    "description": "WM -- compounder infrastracture : FCF stable, pricing power, barriere entree physique",
+    "input": {
+      "ticker": "WM",
+      "ratios": {
+        "roe": 0.35,
+        "roe_5y_avg": 0.28,
+        "roic": 0.13,
+        "roic_5y_avg": 0.12,
+        "net_margin": 0.12,
+        "net_margin_5y_avg": 0.11,
+        "revenue_growth_5y": 0.07,
+        "eps_growth_5y": 0.12,
+        "debt_equity": 2.10,
+        "free_cash_flow_bn": 2.0,
+        "capex_bn": 2.8,
+        "maintenance_capex_bn": 1.5,
+        "depreciation_bn": 1.8,
+        "eps_ttm": 6.25,
+        "revenue_bn": 20.0,
+        "pe": 30.0,
+        "price": 188.0,
+        "management_quality_proxy": "James Fish -- 20+ ans, disciplined capital allocation",
+        "business_understandability": "Tres comprehensible -- collecte dechets, decharges"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["cost_advantages", "efficient_scale"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["COMPOUNDER", "QUALITE_CORRECTE"],
+      "quality_score_min": 2,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-006",
+    "description": "BNS -- qualite correcte : ROE bancaire correct, moat reglementaire, dividend solide",
+    "input": {
+      "ticker": "BNS",
+      "ratios": {
+        "roe": 0.11,
+        "roe_5y_avg": 0.13,
+        "roic": 0.09,
+        "roic_5y_avg": 0.10,
+        "net_margin": 0.21,
+        "net_margin_5y_avg": 0.22,
+        "revenue_growth_5y": 0.04,
+        "eps_growth_5y": 0.03,
+        "debt_equity": null,
+        "free_cash_flow_bn": 5.5,
+        "capex_bn": 1.0,
+        "maintenance_capex_bn": 0.8,
+        "depreciation_bn": 0.9,
+        "eps_ttm": 5.20,
+        "revenue_bn": 32.0,
+        "pe": 10.5,
+        "price": 54.6,
+        "management_quality_proxy": "Scott Thomson -- restructuration Amerique Latine en cours",
+        "business_understandability": "Comprehensible -- banque diversifiee canadienne"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["switching_costs"],
+        "roic_durability": "MODEREE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER"],
+      "quality_score_min": 2,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-007",
+    "description": "TD -- qualite correcte : franchise bancaire solide, croissance ralentie, capital abondant",
+    "input": {
+      "ticker": "TD",
+      "ratios": {
+        "roe": 0.10,
+        "roe_5y_avg": 0.14,
+        "roic": 0.10,
+        "roic_5y_avg": 0.11,
+        "net_margin": 0.22,
+        "net_margin_5y_avg": 0.24,
+        "revenue_growth_5y": 0.06,
+        "eps_growth_5y": 0.05,
+        "debt_equity": null,
+        "free_cash_flow_bn": 8.0,
+        "capex_bn": 1.2,
+        "maintenance_capex_bn": 0.9,
+        "depreciation_bn": 1.0,
+        "eps_ttm": 6.10,
+        "revenue_bn": 50.0,
+        "pe": 10.0,
+        "price": 61.0,
+        "management_quality_proxy": "Bharat Masrani / Raymond Chun -- penalite AML 2024, transition leadership",
+        "business_understandability": "Comprehensible -- banque canadienne, USA exposure"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["switching_costs"],
+        "roic_durability": "MODEREE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER"],
+      "quality_score_min": 2,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-008",
+    "description": "MCD -- qualite correcte : franchise model solide, pricing power, croissance moderee",
+    "input": {
+      "ticker": "MCD",
+      "ratios": {
+        "roe": 0.0,
+        "roe_5y_avg": 0.0,
+        "roic": 0.16,
+        "roic_5y_avg": 0.15,
+        "net_margin": 0.33,
+        "net_margin_5y_avg": 0.30,
+        "revenue_growth_5y": 0.04,
+        "eps_growth_5y": 0.08,
+        "debt_equity": -7.0,
+        "free_cash_flow_bn": 6.2,
+        "capex_bn": 2.5,
+        "maintenance_capex_bn": 1.5,
+        "depreciation_bn": 2.0,
+        "eps_ttm": 11.56,
+        "revenue_bn": 23.0,
+        "pe": 21.0,
+        "price": 243.0,
+        "management_quality_proxy": "Chris Kempczinski -- focus franchise model, digital ordering",
+        "business_understandability": "Tres comprehensible -- franchises alimentaires"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["intangibles", "cost_advantages"],
+        "roic_durability": "FORTE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER"],
+      "quality_score_min": 2,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-009",
+    "description": "JNJ -- qualite correcte apres scission Kenvue : pharma + medtech, brevets en expiration",
+    "input": {
+      "ticker": "JNJ",
+      "ratios": {
+        "roe": 0.20,
+        "roe_5y_avg": 0.22,
+        "roic": 0.18,
+        "roic_5y_avg": 0.17,
+        "net_margin": 0.22,
+        "net_margin_5y_avg": 0.23,
+        "revenue_growth_5y": 0.04,
+        "eps_growth_5y": 0.06,
+        "debt_equity": 0.50,
+        "free_cash_flow_bn": 16.0,
+        "capex_bn": 3.5,
+        "maintenance_capex_bn": 2.5,
+        "depreciation_bn": 3.0,
+        "eps_ttm": 8.71,
+        "revenue_bn": 85.0,
+        "pe": 15.0,
+        "price": 130.0,
+        "management_quality_proxy": "Joaquin Duato -- integration Medtech, pipeline diversifie",
+        "business_understandability": "Comprehensible -- pharma specialise + medtech"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["intangibles"],
+        "roic_durability": "MODEREE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER"],
+      "quality_score_min": 2,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-010",
+    "description": "PG -- qualite correcte : marques defensives, FCF previsible, croissance lente",
+    "input": {
+      "ticker": "PG",
+      "ratios": {
+        "roe": 0.32,
+        "roe_5y_avg": 0.28,
+        "roic": 0.13,
+        "roic_5y_avg": 0.12,
+        "net_margin": 0.16,
+        "net_margin_5y_avg": 0.17,
+        "revenue_growth_5y": 0.04,
+        "eps_growth_5y": 0.08,
+        "debt_equity": 0.75,
+        "free_cash_flow_bn": 14.0,
+        "capex_bn": 3.5,
+        "maintenance_capex_bn": 2.5,
+        "depreciation_bn": 3.0,
+        "eps_ttm": 6.02,
+        "revenue_bn": 84.0,
+        "pe": 24.0,
+        "price": 144.0,
+        "management_quality_proxy": "Jon Moeller -- pricing strategy disciplinee",
+        "business_understandability": "Tres comprehensible -- produits consommation courante"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["intangibles", "cost_advantages"],
+        "roic_durability": "MODEREE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER"],
+      "quality_score_min": 2,
+      "roe_durable": true
+    }
+  },
+  {
+    "id": "buffett-011",
+    "description": "UBER -- rejeter : pas de profits durables, pas de moat, cash brule massivement",
+    "input": {
+      "ticker": "UBER",
+      "ratios": {
+        "roe": 0.08,
+        "roe_5y_avg": -0.20,
+        "roic": -0.02,
+        "roic_5y_avg": -0.05,
+        "net_margin": 0.02,
+        "net_margin_5y_avg": -0.10,
+        "revenue_growth_5y": 0.28,
+        "eps_growth_5y": null,
+        "debt_equity": 2.30,
+        "free_cash_flow_bn": 3.4,
+        "capex_bn": 0.8,
+        "maintenance_capex_bn": 0.5,
+        "depreciation_bn": 0.6,
+        "eps_ttm": 0.87,
+        "revenue_bn": 37.0,
+        "pe": 75.0,
+        "price": 65.0,
+        "management_quality_proxy": "Dara Khosrowshahi -- amelioration mais historique dilutif fort",
+        "business_understandability": "Modele gig economy difficile a evaluer long-terme"
+      },
+      "dorsey_context": {
+        "moat_type": "NONE",
+        "sources": [],
+        "roic_durability": "FAIBLE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["REJETER", "QUALITE_CORRECTE"],
+      "quality_score_min": 0,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-012",
+    "description": "LYFT -- rejeter : pertes chroniques, part de marche en declin, pas de chemin vers profitabilite",
+    "input": {
+      "ticker": "LYFT",
+      "ratios": {
+        "roe": -0.30,
+        "roe_5y_avg": -0.50,
+        "roic": -0.08,
+        "roic_5y_avg": -0.12,
+        "net_margin": -0.05,
+        "net_margin_5y_avg": -0.18,
+        "revenue_growth_5y": 0.12,
+        "eps_growth_5y": null,
+        "debt_equity": null,
+        "free_cash_flow_bn": 0.3,
+        "capex_bn": 0.2,
+        "maintenance_capex_bn": 0.15,
+        "depreciation_bn": 0.2,
+        "eps_ttm": -0.80,
+        "revenue_bn": 4.4,
+        "pe": null,
+        "price": 12.0,
+        "management_quality_proxy": "David Risher -- arrivee recente, restructuration aggressive",
+        "business_understandability": "Comprehensible -- ride-sharing USA uniquement"
+      },
+      "dorsey_context": {
+        "moat_type": "NONE",
+        "sources": [],
+        "roic_durability": "FAIBLE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["REJETER"],
+      "quality_score_min": 0,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-013",
+    "description": "GME -- rejeter : modele en declin structurel, gaming digital, pas de moat",
+    "input": {
+      "ticker": "GME",
+      "ratios": {
+        "roe": 0.02,
+        "roe_5y_avg": -0.05,
+        "roic": 0.01,
+        "roic_5y_avg": -0.03,
+        "net_margin": 0.01,
+        "net_margin_5y_avg": -0.03,
+        "revenue_growth_5y": -0.15,
+        "eps_growth_5y": null,
+        "debt_equity": 0.0,
+        "free_cash_flow_bn": 0.1,
+        "capex_bn": 0.05,
+        "maintenance_capex_bn": 0.05,
+        "depreciation_bn": 0.1,
+        "eps_ttm": 0.06,
+        "revenue_bn": 5.3,
+        "pe": 200.0,
+        "price": 12.0,
+        "management_quality_proxy": "Ryan Cohen -- transformation incertaine, pas de plan clair",
+        "business_understandability": "Comprehensible -- retail jeux video en declin"
+      },
+      "dorsey_context": {
+        "moat_type": "NONE",
+        "sources": [],
+        "roic_durability": "FAIBLE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["REJETER"],
+      "quality_score_min": 0,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-014",
+    "description": "NFLX -- frontier : contenu original moat emergent, FCF positif recent, mais reinvestissement massif",
+    "input": {
+      "ticker": "NFLX",
+      "ratios": {
+        "roe": 0.35,
+        "roe_5y_avg": 0.20,
+        "roic": 0.12,
+        "roic_5y_avg": 0.08,
+        "net_margin": 0.16,
+        "net_margin_5y_avg": 0.10,
+        "revenue_growth_5y": 0.13,
+        "eps_growth_5y": null,
+        "debt_equity": 0.55,
+        "free_cash_flow_bn": 6.0,
+        "capex_bn": 0.5,
+        "maintenance_capex_bn": 0.4,
+        "depreciation_bn": 0.4,
+        "eps_ttm": 19.2,
+        "revenue_bn": 36.0,
+        "pe": 45.0,
+        "price": 864.0,
+        "management_quality_proxy": "Greg Peters / Ted Sarandos -- monetisation ads en cours",
+        "business_understandability": "Comprehensible -- streaming, contenu original"
+      },
+      "dorsey_context": {
+        "moat_type": "NARROW",
+        "sources": ["intangibles", "network_effects"],
+        "roic_durability": "MODEREE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["QUALITE_CORRECTE", "COMPOUNDER", "REJETER"],
+      "quality_score_min": 1,
+      "roe_durable": false
+    }
+  },
+  {
+    "id": "buffett-015",
+    "description": "COIN -- rejeter : revenus cycliques crypto, pas de moat, regulation imprevisible",
+    "input": {
+      "ticker": "COIN",
+      "ratios": {
+        "roe": 0.10,
+        "roe_5y_avg": 0.02,
+        "roic": 0.04,
+        "roic_5y_avg": 0.02,
+        "net_margin": 0.08,
+        "net_margin_5y_avg": -0.05,
+        "revenue_growth_5y": 0.20,
+        "eps_growth_5y": null,
+        "debt_equity": 0.40,
+        "free_cash_flow_bn": 0.8,
+        "capex_bn": 0.3,
+        "maintenance_capex_bn": 0.2,
+        "depreciation_bn": 0.2,
+        "eps_ttm": 4.84,
+        "revenue_bn": 6.0,
+        "pe": 55.0,
+        "price": 266.0,
+        "management_quality_proxy": "Brian Armstrong -- vision clair mais execution dependante du cycle crypto",
+        "business_understandability": "Difficile -- depends sur volatilite crypto et adoption institutionnelle"
+      },
+      "dorsey_context": {
+        "moat_type": "NONE",
+        "sources": [],
+        "roic_durability": "FAIBLE"
+      }
+    },
+    "expected": {
+      "verdict_allowed": ["REJETER", "QUALITE_CORRECTE"],
+      "quality_score_min": 0,
+      "roe_durable": false
+    }
+  }
+]

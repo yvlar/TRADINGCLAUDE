@@ -2,7 +2,10 @@ import { apiClient, ApiError, BASE_URL } from './client'
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
+  CompositeHistoryPoint,
+  EvalDriftResult,
   ExtractResponse,
+  PerformanceResponse,
   ScreenRequest,
   ScreenResult,
   HistoryResponse,
@@ -31,11 +34,14 @@ export async function postScreen(body: ScreenRequest): Promise<ScreenResult> {
 }
 
 export async function getHistory(
-  ticker: string,
+  ticker?: string,
   limit = 10,
   before?: string,
+  q?: string,
 ): Promise<HistoryResponse> {
-  const params = new URLSearchParams({ ticker, limit: String(limit) })
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (ticker) params.set('ticker', ticker)
+  if (q) params.set('q', q)
   if (before) params.set('before', before)
   return apiClient.request<HistoryResponse>(`/history?${params.toString()}`)
 }
@@ -46,6 +52,47 @@ export async function getHealthz(): Promise<{ status: string; version: string }>
 
 export async function getExtract(ticker: string): Promise<ExtractResponse> {
   return apiClient.request<ExtractResponse>(`/extract?ticker=${encodeURIComponent(ticker)}`)
+}
+
+export async function getPerformance(ticker: string): Promise<PerformanceResponse> {
+  return apiClient.request<PerformanceResponse>(`/performance/${encodeURIComponent(ticker)}`)
+}
+
+export async function getCompositeHistory(
+  ticker: string,
+  limit = 90,
+): Promise<CompositeHistoryPoint[]> {
+  return apiClient.request<CompositeHistoryPoint[]>(
+    `/composite-history/${encodeURIComponent(ticker)}?limit=${limit}`,
+  )
+}
+
+export async function exportScreen(
+  body: ScreenRequest,
+  format: 'csv' | 'xlsx',
+): Promise<Blob> {
+  return apiClient.requestBlob(`/export/screen?format=${format}`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function downloadTickerPdf(ticker: string, days = 90): Promise<Blob> {
+  return apiClient.requestBlob(`/ticker-report/${encodeURIComponent(ticker)}?days=${days}`)
+}
+
+export async function downloadScreenerPdf(request: ScreenRequest): Promise<Blob> {
+  const tickers = request.tickers.join(',')
+  const params = new URLSearchParams({ tickers, workflow: request.workflow })
+  return apiClient.requestBlob(`/screener-report?${params.toString()}`)
+}
+
+export async function fetchEvalDrift(): Promise<EvalDriftResult[]> {
+  try {
+    return await apiClient.request<EvalDriftResult[]>('/telemetry/eval-drift')
+  } catch {
+    return []
+  }
 }
 
 export async function* streamAnalyze(body: AnalyzeRequest): AsyncGenerator<SSEEvent> {

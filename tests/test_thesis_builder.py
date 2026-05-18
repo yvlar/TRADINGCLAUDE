@@ -451,7 +451,11 @@ class TestThesisBuilderSkill:
     ):
         """execute() retourne (ThesisBuilderOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=thesis_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = thesis_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=600,
@@ -479,7 +483,11 @@ class TestThesisBuilderSkill:
     ):
         """output.cost_usd reflète exactement le coût calculé depuis usage."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=thesis_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = thesis_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=900,
             output_tokens=600,
@@ -503,7 +511,11 @@ class TestThesisBuilderSkill:
     ):
         """execute() retourne bien un tuple (ThesisBuilderOutput, UsageDetail)."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=thesis_output_bns.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = thesis_output_bns.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=500,
             output_tokens=400,

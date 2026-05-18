@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 _SELECT_COLS = """
     id, ticker, workflow, ratios, score_alerte_min,
     created_at, last_analyzed_at, last_score, last_verdict,
-    last_intrinsic_value, last_price_checked, price_alert_threshold_pct
+    last_intrinsic_value, last_price_checked, price_alert_threshold_pct,
+    last_composite_score, composite_alert_threshold
 """
 
 
@@ -98,6 +99,38 @@ class WatchlistService:
             price,
         )
 
+    async def update_composite_score(self, entry_id: str, composite_score: float) -> None:
+        """Met a jour le score composite de reference (baseline pour les alertes)."""
+        await self._db.execute(
+            "UPDATE watchlist SET last_composite_score = $2 WHERE id = $1::uuid",
+            entry_id,
+            composite_score,
+        )
+
+    async def get_all_with_composite(self) -> list[dict]:
+        """Retourne toutes les entrées watchlist enrichies du dernier composite_score historique."""
+        rows = await self._db.fetch(
+            """
+            SELECT
+                w.id::text AS id,
+                w.ticker,
+                w.created_at,
+                w.composite_alert_threshold,
+                COALESCE(csh.score, w.last_composite_score) AS composite_score_latest,
+                csh.label AS composite_label_latest
+            FROM watchlist w
+            LEFT JOIN LATERAL (
+                SELECT score, label
+                FROM composite_score_history
+                WHERE ticker = w.ticker
+                ORDER BY recorded_at DESC
+                LIMIT 1
+            ) csh ON true
+            ORDER BY w.created_at DESC
+            """
+        )
+        return [dict(row) for row in rows]
+
 
 def _row_to_entry(row) -> WatchlistEntry:
     ratios_raw = row["ratios"]
@@ -110,6 +143,9 @@ def _row_to_entry(row) -> WatchlistEntry:
     raw_intrinsic = row["last_intrinsic_value"]
     raw_price_checked = row["last_price_checked"]
     raw_threshold = row["price_alert_threshold_pct"]
+
+    raw_composite = row.get("last_composite_score")
+    raw_comp_threshold = row.get("composite_alert_threshold")
 
     return WatchlistEntry(
         id=str(row["id"]),
@@ -124,4 +160,6 @@ def _row_to_entry(row) -> WatchlistEntry:
         last_intrinsic_value=float(raw_intrinsic) if raw_intrinsic is not None else None,
         last_price_checked=float(raw_price_checked) if raw_price_checked is not None else None,
         price_alert_threshold_pct=float(raw_threshold) if raw_threshold is not None else 0.10,
+        last_composite_score=float(raw_composite) if raw_composite is not None else None,
+        composite_alert_threshold=float(raw_comp_threshold) if raw_comp_threshold is not None else 15.0,
     )

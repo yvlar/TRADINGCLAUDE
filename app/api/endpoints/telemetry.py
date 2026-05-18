@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import os
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
+from app.services.eval_drift_service import EvalDriftResult, EvalDriftService, SUPPORTED_DATASETS
 from app.services.observability import (
     CacheStats,
     CostSummary,
@@ -83,3 +87,67 @@ async def get_latency(
 ) -> LatencyStats:
     """P50/P95/P99 depuis les sorted sets Redis skill_traces:{skill_id}."""
     return await obs.get_latency_p95(skill_id=skill_id)
+
+
+def get_eval_drift_service(request: Request) -> EvalDriftService | None:
+    return getattr(request.app.state, "eval_drift_service", None)
+
+
+@router.get(
+    "/eval-drift",
+    summary="Résultats de drift detection par golden dataset",
+)
+async def get_eval_drift(
+    request: Request,
+    dataset: str | None = Query(default=None, description="Nom du dataset (graham/earnings/dorsey/buffett/damodaran). Omis = tous."),
+) -> EvalDriftResult | list[EvalDriftResult]:
+    """
+    Lecture seule — retourne le dernier résultat de drift detection depuis Redis.
+    Ne déclenche pas d'exécution. Pour déclencher, utiliser la tâche Celery run_eval_drift_check.
+    """
+    svc: EvalDriftService | None = get_eval_drift_service(request)
+    if svc is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="EvalDriftService non disponible")
+
+    if dataset is not None:
+        if dataset not in SUPPORTED_DATASETS:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dataset {dataset!r} invalide. Valides: {sorted(SUPPORTED_DATASETS)}",
+            )
+        return await svc.get_last_result(dataset)
+
+    results: list[EvalDriftResult] = []
+    for ds in sorted(SUPPORTED_DATASETS):
+        result = await svc.get_last_result(ds)
+        if result is not None:
+            results.append(result)
+    return results
+
+
+class WebhookStatus(BaseModel):
+    url_configuree: bool
+    derniere_notification: datetime | None
+    nb_erreurs: int
+
+
+@router.get(
+    "/webhook",
+    summary="Statut du service webhook",
+)
+async def get_webhook_status(request: Request) -> WebhookStatus:
+    """URL configurée, dernière notification envoyée et nb d'erreurs depuis le démarrage."""
+    webhook_service = getattr(request.app.state, "webhook_service", None)
+    if webhook_service is None:
+        return WebhookStatus(
+            url_configuree=bool(os.environ.get("WEBHOOK_URL")),
+            derniere_notification=None,
+            nb_erreurs=0,
+        )
+    return WebhookStatus(
+        url_configuree=webhook_service.url_configuree,
+        derniere_notification=webhook_service.derniere_notification,
+        nb_erreurs=webhook_service.nb_erreurs,
+    )

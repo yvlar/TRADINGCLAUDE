@@ -24,6 +24,8 @@ celery_app.conf.update(
 # Re-analyse hebdomadaire de la watchlist — tous les dimanches à 07h00 UTC
 # Vérification quotidienne des alertes prix — tous les jours à 08h00 UTC
 # Rapport PDF hebdomadaire par email — tous les dimanches à 09h00 UTC (après 07h00 + 08h00)
+# Vérification quotidienne alertes composite_score — tous les jours à 10h00 UTC
+# Screener hebdomadaire watchlist — tous les dimanches à 11h00 UTC (après les autres tâches)
 celery_app.conf.beat_schedule = {
     "run-watchlist-analysis-weekly": {
         "task": "run_watchlist_analysis",
@@ -36,5 +38,13 @@ celery_app.conf.beat_schedule = {
     "run-weekly-watchlist-report": {
         "task": "run_weekly_watchlist_report",
         "schedule": crontab(hour=9, minute=0, day_of_week=0),
+    },
+    "run-composite-alert-check-daily": {
+        "task": "run_composite_alert_check",
+        "schedule": crontab(hour=10, minute=0),
+    },
+    "run-scheduled-screener": {
+        "task": "run_scheduled_screener",
+        "schedule": crontab(day_of_week="sunday", hour=11, minute=0),
     },
 }

@@ -254,7 +254,11 @@ class TestDamodararNarrativeSkill:
     ):
         """execute() retourne (DamodararOutput, UsageDetail) avec cost_usd > 0."""
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text=damodaran_output_acceptable.model_dump_json())]
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = damodaran_output_acceptable.model_dump(exclude={"citations", "cost_usd"})
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
         mock_response.usage = SimpleNamespace(
             input_tokens=600,
             output_tokens=300,
@@ -331,6 +335,7 @@ class TestOrchestratorDamodaran:
         req = AnalyzeRequest(
             ticker="BNS",
             ratios=ratios_msft,
+            workflow="fast_grower_lynch",
             damodaran_input=DamodararInput(
                 ticker="BNS",
                 narrative_text="BNS est un compoundeur stable.",
@@ -359,7 +364,7 @@ class TestOrchestratorDamodaran:
             earnings_skill=mock_earnings_skill,
             damodaran_skill=mock_damodaran_skill,
         )
-        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft)
+        req = AnalyzeRequest(ticker="BNS", ratios=ratios_msft, workflow="fast_grower_lynch")
         response = await orchestrator.run_company_analysis(req)
 
         assert response.damodaran is None

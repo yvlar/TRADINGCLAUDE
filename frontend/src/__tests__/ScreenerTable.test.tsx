@@ -5,9 +5,9 @@ import { ScreenerTable } from '../components/ScreenerTable'
 import type { ScreenEntry } from '../types'
 
 const ENTRIES: ScreenEntry[] = [
-  { ticker: 'BNS', defensive_score: 6, verdict: 'CANDIDAT_SOLIDE', workflow_utilise: 'value_graham', cost_usd: 0.002, depuis_cache: false, erreur: null },
-  { ticker: 'TD', defensive_score: 7, verdict: 'EXEMPLAIRE', workflow_utilise: 'value_graham', cost_usd: 0.003, depuis_cache: true, erreur: null },
-  { ticker: 'BAC', defensive_score: 2, verdict: 'REJETER', workflow_utilise: 'value_graham', cost_usd: 0.001, depuis_cache: false, erreur: null },
+  { ticker: 'BNS', defensive_score: 6, verdict: 'CANDIDAT_SOLIDE', composite_score: 72.5, composite_label: 'FORT', workflow_utilise: 'value_graham', cost_usd: 0.002, depuis_cache: false, erreur: null },
+  { ticker: 'TD', defensive_score: 7, verdict: 'EXEMPLAIRE', composite_score: 55.0, composite_label: 'MODÉRÉ', workflow_utilise: 'value_graham', cost_usd: 0.003, depuis_cache: true, erreur: null },
+  { ticker: 'BAC', defensive_score: 2, verdict: 'REJETER', composite_score: null, composite_label: null, workflow_utilise: 'value_graham', cost_usd: 0.001, depuis_cache: false, erreur: null },
 ]
 
 describe('ScreenerTable', () => {
@@ -48,5 +48,19 @@ describe('ScreenerTable', () => {
     const rows = screen.getAllByRole('row').slice(1) as HTMLTableRowElement[]
     const tickers = rows.map((r) => r.cells[1].textContent)
     expect(tickers).toEqual(['BAC', 'BNS', 'TD'])
+  })
+
+  it('affiche la colonne Composite avec score et label si non null', () => {
+    render(<ScreenerTable entries={ENTRIES} workflow="value_graham" durationMs={1200} />)
+    expect(screen.getByText('Composite')).toBeInTheDocument()
+    expect(screen.getByText(/72\.5/)).toBeInTheDocument()
+    expect(screen.getByText(/FORT/)).toBeInTheDocument()
+  })
+
+  it('affiche "—" si composite_score est null', () => {
+    render(<ScreenerTable entries={ENTRIES} workflow="value_graham" durationMs={1200} />)
+    const cells = screen.getAllByTestId('composite-cell')
+    const nullCell = cells.find((c) => c.textContent?.trim() === '—')
+    expect(nullCell).toBeInTheDocument()
   })
 })

@@ -54,6 +54,8 @@ const _MOCK_RESPONSE: AnalyzeResponse = {
   pabrai: null,
   cost_usd: 0.001,
   created_at: '2026-05-10T00:00:00+00:00',
+  inter_skill_conflicts: [],
+  composite_score: null,
 }
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -78,8 +80,8 @@ describe('AnalyzePage', () => {
 
     vi.mocked(analyzeApi.streamAnalyze).mockImplementation(async function* () {
       yield { type: 'skill_start' as const, data: { skill_id: 'graham_analysis' } }
-      // Pause pour laisser React traiter le premier event
-      await new Promise((r) => setTimeout(r, 10))
+      // Pause suffisamment longue pour que waitFor (polling 50ms) détecte streaming-progress
+      await new Promise((r) => setTimeout(r, 200))
       yield {
         type: 'skill_result' as const,
         data: { skill_id: 'graham_analysis', result: { verdict: 'CANDIDAT_SOLIDE' } },
@@ -123,9 +125,8 @@ describe('AnalyzePage', () => {
   it("affiche un message d'erreur quand streamAnalyze rejette", async () => {
     const user = userEvent.setup()
 
-    vi.mocked(analyzeApi.streamAnalyze).mockImplementation(async function* () {
+    vi.mocked(analyzeApi.streamAnalyze).mockImplementation(async function* (): AsyncGenerator<never> {
       throw new Error('Connexion refusée')
-      yield // rendre la fonction un générateur async
     })
 
     render(<AnalyzePage />, { wrapper })

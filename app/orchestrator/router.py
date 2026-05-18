@@ -27,6 +27,7 @@ WORKFLOWS: dict[str, list[SkillStep]] = {
         SkillStep("stock_valuation_triangulation", optional=True),
         SkillStep("investment_thesis_builder", optional=True),
         SkillStep("munger_mental_models", optional=True),
+        SkillStep("marks_cycles_risk", optional=True),
         SkillStep("canadian_tax_considerations", optional=True),
     ],
     "fast_grower_lynch": [
