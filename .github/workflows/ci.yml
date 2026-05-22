@@ -25,7 +25,6 @@ jobs:
       - name: Lancer les tests backend (sans E2E ni evals)
         env:
           ANTHROPIC_API_KEY: sk-ant-ci-dummy-key
-          API_KEY: ci-test-key
           DATABASE_URL: postgresql://unused:5432/unused
           REDIS_URL: redis://localhost:6379/0
           QDRANT_URL: http://localhost:6333
