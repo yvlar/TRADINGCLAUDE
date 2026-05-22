@@ -36,7 +36,7 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 | `damodaran_narrative` | `damodaran-narrative-and-numbers/` | `damodaran_narrative/` |
 | `marks_cycles` | `marks-cycles-and-risk/` | `marks_cycles/` |
 | `pabrai_dhandho` | `pabrai-dhandho-and-cloning/` | `pabrai_dhandho/` |
-| `esg_simplified` | ⚠️ **SKILL.md à créer** — code en production depuis Sprint 70 | `esg_simplified/` |
+| `esg_simplified` | `esg-simplified/` | `esg_simplified/` |
 
 #### Extracteurs tier1 (données brutes — pas de SKILL.md conceptuel)
 
@@ -49,9 +49,9 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 
 - **16 skills tier2** en production = 15 frameworks originaux + `esg_simplified` (Sprint 70)
 - **18 en production** = 16 tier2 + 2 tier1
-- Le dossier `.claude/skills/` contient **15 SKILL.md** — `esg_simplified` manque (hors scope Sprint 74)
+- Le dossier `.claude/skills/` contient **16 SKILL.md** — tous les skills tier2 sont couverts (Sprint 75)
 - Pour les skills tier2 : `app/skills/tier2/` est la source de vérité du code ; `.claude/skills/` est la source de vérité conceptuelle (formules, seuils, frameworks académiques)
 
 ### Cohérence du corpus RAG
 
-Les ~62 documents `references/*.md` dans `.claude/skills/` alimentent le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus.
+Les ~67 documents `references/*.md` dans `.claude/skills/` alimentent le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus.

@@ -3,25 +3,52 @@ from __future__ import annotations
 import io
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
 from app.orchestrator.core import AnalyzeRequest
 from app.services.email_service import EmailService
 from app.services.report import ReportService, _composite_alerte, _composite_label
+from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
+from app.utils.esg_utils import esg_verdict
 from app.workers.tasks import run_full_analysis
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 
+
+class EsgThresholdUpdate(BaseModel):
+    esg_alert_threshold: float
+
+
+class PriceThresholdUpdate(BaseModel):
+    threshold: float
+
+
+class WatchlistEsgEntry(BaseModel):
+    ticker: str
+    last_esg_score: float | None
+    esg_alert_threshold: float
+    last_analyzed_at: datetime | None
+
+
+class WatchlistEsgResponse(BaseModel):
+    entries: list[WatchlistEsgEntry]
+
 _MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_XLSX_HEADERS = ["Ticker", "Nom", "Date ajout", "Composite Score", "Label", "Alerte", "Notes"]
-_XLSX_COL_WIDTHS = [10, 20, 12, 16, 10, 8, 30]
+_XLSX_HEADERS = ["Ticker", "Nom", "Date ajout", "Composite Score", "Label", "Alerte", "Notes", "Score ESG", "Verdict ESG"]
+_XLSX_COL_WIDTHS = [10, 20, 12, 16, 10, 8, 30, 12, 14]
+
+
+# Alias retro-compatible (Sprint 88) — implementation deplacee dans app/utils/esg_utils.py
+_esg_verdict = esg_verdict
 
 
 def _generate_watchlist_xlsx(rows: list[dict]) -> bytes:
@@ -50,6 +77,7 @@ def _generate_watchlist_xlsx(rows: list[dict]) -> bytes:
         created_at = row.get("created_at")
         date_ajout = created_at.strftime("%Y-%m-%d") if created_at else ""
 
+        esg_score = row.get("last_esg_score")
         ws.append([
             row.get("ticker", ""),
             "",  # nom — champ absent du modèle actuel
@@ -58,6 +86,8 @@ def _generate_watchlist_xlsx(rows: list[dict]) -> bytes:
             label,
             alerte,
             "",  # notes — champ absent du modèle actuel
+            round(esg_score, 1) if esg_score is not None else None,
+            _esg_verdict(esg_score),
         ])
 
     for i, width in enumerate(_XLSX_COL_WIDTHS, start=1):
@@ -95,6 +125,31 @@ async def delete_entry(entry_id: str, request: Request) -> Response:
 
 
 @router.get(
+    "/export.pdf",
+    summary="Export PDF de la watchlist",
+    response_class=Response,
+)
+async def export_watchlist_pdf(request: Request) -> Response:
+    """Génère et retourne le rapport PDF de la watchlist complète."""
+    service: WatchlistPdfService = request.app.state.watchlist_pdf_service
+    composite_history_service = request.app.state.composite_history_service
+    pool = request.app.state.db_pool
+    try:
+        pdf_bytes = await service.generate_watchlist_pdf(
+            pool=pool,
+            composite_history_service=composite_history_service,
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Watchlist vide — aucune position à exporter")
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="watchlist-{date_str}.pdf"'},
+    )
+
+
+@router.get(
     "/export.xlsx",
     summary="Export Excel de la watchlist",
     response_class=Response,
@@ -109,6 +164,62 @@ async def export_watchlist_xlsx(request: Request) -> Response:
         media_type=_MIME_XLSX,
         headers={"Content-Disposition": "attachment; filename=watchlist.xlsx"},
     )
+
+
+@router.get("/esg-scores", response_model=WatchlistEsgResponse, summary="Scores ESG de la watchlist")
+async def get_esg_scores(request: Request) -> WatchlistEsgResponse:
+    """Retourne les entrées watchlist avec leurs scores ESG, triées par score DESC nulls en dernier."""
+    service: WatchlistService = request.app.state.watchlist_service
+    entries = await service.list_entries()
+    sorted_entries = sorted(
+        entries,
+        key=lambda e: (e.last_esg_score is None, -(e.last_esg_score or 0.0)),
+    )
+    return WatchlistEsgResponse(
+        entries=[
+            WatchlistEsgEntry(
+                ticker=e.ticker,
+                last_esg_score=e.last_esg_score,
+                esg_alert_threshold=e.esg_alert_threshold,
+                last_analyzed_at=e.last_analyzed_at,
+            )
+            for e in sorted_entries
+        ]
+    )
+
+
+@router.patch("/{entry_id}/esg-threshold", response_model=WatchlistEntry)
+async def update_esg_threshold(
+    entry_id: str,
+    body: EsgThresholdUpdate,
+    request: Request,
+) -> WatchlistEntry:
+    """Met à jour le seuil d'alerte ESG pour une entrée watchlist."""
+    service: WatchlistService = request.app.state.watchlist_service
+    entry = await service.get_entry(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Entrée {entry_id} introuvable")
+    await service.update_esg_threshold(entry_id, body.esg_alert_threshold)
+    updated = await service.get_entry(entry_id)
+    return updated
+
+
+@router.patch("/{entry_id}/price-threshold", response_model=WatchlistEntry)
+async def update_price_threshold(
+    entry_id: str,
+    body: PriceThresholdUpdate,
+    request: Request,
+) -> WatchlistEntry:
+    """Met à jour le seuil d'alerte de prix (en %) pour une entrée watchlist."""
+    if body.threshold <= 0 or body.threshold > 100:
+        raise HTTPException(status_code=422, detail="threshold doit être > 0 et <= 100")
+    service: WatchlistService = request.app.state.watchlist_service
+    entry = await service.get_entry(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Entrée {entry_id} introuvable")
+    await service.update_price_threshold(entry_id, body.threshold / 100)
+    updated = await service.get_entry(entry_id)
+    return updated
 
 
 @router.get("/{entry_id}/price-status", summary="Prix courant et écart vs valeur intrinsèque")

@@ -21,6 +21,8 @@ const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => (
   last_composite_score: null,
   composite_alert_threshold: 15.0,
   score_alerte_min: null,
+  esg_alert_threshold: 5.0,
+  last_esg_score: null,
   ...overrides,
 })
 

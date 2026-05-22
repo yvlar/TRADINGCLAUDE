@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { WatchlistEntry, WatchlistCreate, PriceStatus } from '../types'
+import type { WatchlistEntry, WatchlistCreate, PriceStatus, WatchlistEsgResponse } from '../types'
 
 export const getWatchlist = (): Promise<WatchlistEntry[]> =>
   apiClient.request<WatchlistEntry[]>('/watchlist')
@@ -18,3 +18,18 @@ export const triggerWatchlistAnalysis = (id: string): Promise<{ job_id: string }
 
 export const getWatchlistPriceStatus = (id: string): Promise<PriceStatus> =>
   apiClient.request<PriceStatus>(`/watchlist/${id}/price-status`)
+
+export const fetchWatchlistEsgScores = (): Promise<WatchlistEsgResponse> =>
+  apiClient.request<WatchlistEsgResponse>('/watchlist/esg-scores')
+
+export const patchEsgThreshold = (id: string, threshold: number): Promise<WatchlistEntry> =>
+  apiClient.request<WatchlistEntry>(`/watchlist/${id}/esg-threshold`, {
+    method: 'PATCH',
+    body: JSON.stringify({ esg_alert_threshold: threshold }),
+  })
+
+export const patchPriceThreshold = (id: string, threshold: number): Promise<WatchlistEntry> =>
+  apiClient.request<WatchlistEntry>(`/watchlist/${id}/price-threshold`, {
+    method: 'PATCH',
+    body: JSON.stringify({ threshold }),
+  })

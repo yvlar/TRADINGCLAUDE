@@ -51,7 +51,7 @@ class ScreenerService:
                 timeout=_TIMEOUT_GLOBAL_S,
             )
         except asyncio.TimeoutError:
-            raw = [asyncio.TimeoutError("Timeout global 120s")] * len(tickers)
+            raw = [asyncio.TimeoutError(f"Timeout global {_TIMEOUT_GLOBAL_S:.0f}s")] * len(tickers)
 
         entries: list[ScreenEntry] = []
         for ticker, result in zip(tickers, raw):

@@ -79,7 +79,10 @@
       "Skill(claude-md-management:revise-claude-md:*)",
       "WebFetch(domain:docs.anthropic.com)",
       "Bash(git rm *)",
-      "Bash(grep -E \"\\\\.\\(pyc|pyo\\)$\")"
+      "Bash(grep -E \"\\\\.\\(pyc|pyo\\)$\")",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\ivess\\\\OneDrive\\\\Documents\\\\tradingClaude\\\\.claude\\\\skills\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Edit(/.claude/skills/esg-simplified/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\ivess\\OneDrive\\Documents\\tradingClaude\\app\\skills\\tier2\\buffett_quality",

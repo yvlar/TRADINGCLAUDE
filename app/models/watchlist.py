@@ -23,6 +23,8 @@ class WatchlistEntry(BaseModel):
     price_alert_threshold_pct: float = 0.10
     last_composite_score: float | None = None
     composite_alert_threshold: float = 15.0
+    esg_alert_threshold: float = 5.0
+    last_esg_score: float | None = None
 
 
 class WatchlistCreate(BaseModel):

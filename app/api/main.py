@@ -15,10 +15,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.endpoints.admin import router as admin_router
+from app.api.endpoints.annotations import router as annotations_router
+from app.api.endpoints.compare import router as compare_router
+from app.api.endpoints.monthly_report import router as monthly_report_router
 from app.api.endpoints.screener_report import router as screener_report_router
 from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.analyze_stream import router as analyze_stream_router
 from app.api.endpoints.composite_history import router as composite_history_router
+from app.api.endpoints.esg_history import router as esg_history_router
 from app.api.endpoints.backtest import router as backtest_router
 from app.api.endpoints.evals import router as evals_router
 from app.api.endpoints.export import router as export_router
@@ -40,6 +44,7 @@ from app.orchestrator.core import (
     HistoryResponse,
     MetricsResponse,
     Orchestrator,
+    PagedHistoryResponse,
 )
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
@@ -66,11 +71,17 @@ from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
 from app.services.analysis_cache import AnalysisCacheService
 from app.services.pdf_report_service import PdfReportService
 from app.services.screener_pdf_service import ScreenerPdfService
+from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.api_key_service import ApiKeyService
 from app.services.composite_history_service import CompositeHistoryService
+from app.services.esg_history_service import EsgHistoryService
 from app.services.eval_drift_service import EvalDriftService
 from app.services.observability import ObservabilityService
 from app.services.screener import ScreenerService
+from app.services.annotation_service import AnnotationService
+from app.services.compare_service import CompareService
+from app.services.monthly_report_service import MonthlyReportService
+from app.services.slack_service import SlackService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
@@ -129,6 +140,69 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     cache_ttl = int(_get_env("ANALYSIS_CACHE_TTL", "86400"))
 
     db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+
+    # Migrations inline — idempotentes
+    # Crée la table watchlist si le volume PostgreSQL est antérieur au Sprint 23
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id                        UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+            ticker                    VARCHAR(20)   NOT NULL,
+            workflow                  VARCHAR(100)  NOT NULL DEFAULT 'value_graham',
+            ratios                    JSONB,
+            score_alerte_min          INTEGER,
+            created_at                TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            last_analyzed_at          TIMESTAMPTZ,
+            last_score                INTEGER,
+            last_verdict              VARCHAR(50),
+            last_intrinsic_value      NUMERIC(10,4),
+            last_price_checked        NUMERIC(10,4),
+            price_alert_threshold_pct NUMERIC(5,4)  NOT NULL DEFAULT 0.10
+        )
+        """
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_watchlist_ticker ON watchlist (ticker)"
+    )
+    await db_pool.execute(
+        "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS last_composite_score FLOAT DEFAULT NULL"
+    )
+    await db_pool.execute(
+        "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS composite_alert_threshold FLOAT DEFAULT 15.0"
+    )
+    await db_pool.execute(
+        "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS esg_alert_threshold FLOAT DEFAULT 5.0"
+    )
+    await db_pool.execute(
+        "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS last_esg_score FLOAT DEFAULT NULL"
+    )
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS annotations (
+            annotation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            analysis_id UUID NOT NULL UNIQUE,
+            note TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    # Sprint 89 — historique des scores ESG (pattern Sprint 57 composite_score_history)
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS esg_score_history (
+            id          BIGSERIAL    PRIMARY KEY,
+            ticker      TEXT         NOT NULL,
+            score       DOUBLE PRECISION NOT NULL,
+            verdict     TEXT         NOT NULL,
+            recorded_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_esg_hist_ticker_recorded "
+        "ON esg_score_history (ticker, recorded_at DESC)"
+    )
 
     anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
 
@@ -312,14 +386,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         daily_threshold_usd=float(os.getenv("COST_ALERT_THRESHOLD_USD", "1.0")),
     )
 
+    annotation_service = AnnotationService(db_pool=db_pool)
+    compare_service = CompareService(db_pool=db_pool)
     watchlist_service = WatchlistService(db_pool=db_pool)
     webhook_service = WebhookService()
+    slack_service = SlackService()
     composite_history_service = CompositeHistoryService(db_pool=db_pool)
+    esg_history_service = EsgHistoryService(db_pool=db_pool)
     eval_drift_service = EvalDriftService(redis_client=redis_pool)
     api_key_service = ApiKeyService(db_pool=db_pool)
     pdf_report_service = PdfReportService()
     screener_pdf_service = ScreenerPdfService()
+    watchlist_pdf_service = WatchlistPdfService()
+    monthly_report_service = MonthlyReportService()
 
+    app.state.annotation_service = annotation_service
+    app.state.compare_service = compare_service
     app.state.orchestrator = orchestrator
     app.state.db_pool = db_pool
     app.state.qdrant_url = qdrant_url
@@ -331,11 +413,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.observability = obs_service
     app.state.watchlist_service = watchlist_service
     app.state.webhook_service = webhook_service
+    app.state.slack_service = slack_service
     app.state.composite_history_service = composite_history_service
+    app.state.esg_history_service = esg_history_service
     app.state.eval_drift_service = eval_drift_service
     app.state.api_key_service = api_key_service
     app.state.pdf_report_service = pdf_report_service
     app.state.screener_pdf_service = screener_pdf_service
+    app.state.watchlist_pdf_service = watchlist_pdf_service
+    app.state.monthly_report_service = monthly_report_service
 
     logger.info("Copilote financier démarré — version %s", _VERSION)
     yield
@@ -358,10 +444,14 @@ _api_key_env = os.environ.get("API_KEY", "")
 _redis_url_env = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
 app.include_router(admin_router)
+app.include_router(annotations_router)
+app.include_router(compare_router)
+app.include_router(monthly_report_router)
 app.include_router(screener_report_router)
 app.include_router(ticker_report_router)
 app.include_router(analyze_stream_router)
 app.include_router(composite_history_router)
+app.include_router(esg_history_router)
 app.include_router(backtest_router)
 app.include_router(evals_router)
 app.include_router(export_router)
@@ -449,10 +539,12 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     cache = getattr(request.app.state, "analysis_cache", None)
     observability = getattr(request.app.state, "observability", None)
     composite_history_service = getattr(request.app.state, "composite_history_service", None)
+    esg_history_service = getattr(request.app.state, "esg_history_service", None)
     try:
         return await orchestrator.run_company_analysis(
             body, cache=cache, observability=observability,
             composite_history_service=composite_history_service,
+            esg_history_service=esg_history_service,
         )
     except Exception as exc:
         logger.exception("Erreur lors de l'analyse de %s", body.ticker)
@@ -470,12 +562,16 @@ async def history(
     q: str | None = None,
     limit: int = 10,
     before: str | None = None,
+    from_dt: str | None = None,
+    to_dt: str | None = None,
 ) -> HistoryResponse:
     """
     Retourne les analyses passées (max 50 par page).
-    - `ticker` : filtre exact sur le ticker (ex. BNS).
-    - `q`      : recherche ILIKE sur ticker partiel, workflow et verdicts.
-    Au moins un des deux paramètres est obligatoire.
+    - `ticker`  : filtre exact sur le ticker (ex. BNS).
+    - `q`       : recherche ILIKE sur ticker partiel, workflow et verdicts.
+    - `from_dt` : borne inférieure ISO 8601 sur created_at (ex. 2026-01-01).
+    - `to_dt`   : borne supérieure ISO 8601 sur created_at (ex. 2026-05-18).
+    Au moins un des deux paramètres ticker ou q est obligatoire.
     `before` : cursor ISO 8601 pour la pagination (valeur de `next_before`).
     """
     if not ticker and not q:
@@ -490,8 +586,29 @@ async def history(
         except ValueError:
             raise HTTPException(status_code=422, detail="before : format ISO 8601 requis")
 
+    from_dt_parsed: datetime | None = None
+    if from_dt:
+        try:
+            from_dt_parsed = datetime.fromisoformat(from_dt)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="from_dt : format ISO 8601 requis (ex. 2026-01-01)")
+
+    to_dt_parsed: datetime | None = None
+    if to_dt:
+        try:
+            to_dt_parsed = datetime.fromisoformat(to_dt)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="to_dt : format ISO 8601 requis (ex. 2026-05-18)")
+
     orchestrator: Orchestrator = request.app.state.orchestrator
-    return await orchestrator.get_history(ticker=ticker, q=q, limit=limit, before=before_dt)
+    return await orchestrator.get_history(
+        ticker=ticker,
+        q=q,
+        limit=limit,
+        before=before_dt,
+        from_dt=from_dt_parsed,
+        to_dt=to_dt_parsed,
+    )
 
 
 @app.get(
@@ -511,3 +628,57 @@ async def metrics(
         raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
     orchestrator: Orchestrator = request.app.state.orchestrator
     return await orchestrator.get_metrics(days=days)
+
+
+@app.get(
+    "/history-paged",
+    response_model=PagedHistoryResponse,
+    summary="Historique des analyses avec pagination offset/limit (Sprint 90)",
+)
+async def history_paged(
+    request: Request,
+    ticker: str | None = None,
+    q: str | None = None,
+    page: int = 1,
+    page_size: int = 10,
+    from_dt: str | None = None,
+    to_dt: str | None = None,
+) -> PagedHistoryResponse:
+    """
+    Retourne les analyses passees avec pagination par numero de page.
+    - `page`      : numero de page (>=1)
+    - `page_size` : nombre d'entrees par page (1-50)
+    - `ticker`    : filtre exact sur le ticker
+    - `q`         : recherche ILIKE full-text
+    - `from_dt`, `to_dt` : plage ISO 8601 sur created_at
+    """
+    if not ticker and not q:
+        raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
+    if page < 1:
+        raise HTTPException(status_code=422, detail="page doit etre >= 1")
+    if page_size < 1 or page_size > 50:
+        raise HTTPException(status_code=422, detail="page_size doit etre entre 1 et 50")
+
+    from_dt_parsed: datetime | None = None
+    if from_dt:
+        try:
+            from_dt_parsed = datetime.fromisoformat(from_dt)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="from_dt : format ISO 8601 requis")
+
+    to_dt_parsed: datetime | None = None
+    if to_dt:
+        try:
+            to_dt_parsed = datetime.fromisoformat(to_dt)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="to_dt : format ISO 8601 requis")
+
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    return await orchestrator.get_history_paged(
+        ticker=ticker,
+        q=q,
+        page=page,
+        page_size=page_size,
+        from_dt=from_dt_parsed,
+        to_dt=to_dt_parsed,
+    )

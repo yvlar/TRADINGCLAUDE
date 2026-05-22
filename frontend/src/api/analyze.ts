@@ -9,6 +9,7 @@ import type {
   ScreenRequest,
   ScreenResult,
   HistoryResponse,
+  PagedHistoryResponse,
   SSEEvent,
 } from '../types'
 
@@ -38,12 +39,40 @@ export async function getHistory(
   limit = 10,
   before?: string,
   q?: string,
+  fromDt?: string,
+  toDt?: string,
 ): Promise<HistoryResponse> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (ticker) params.set('ticker', ticker)
   if (q) params.set('q', q)
   if (before) params.set('before', before)
+  if (fromDt) params.set('from_dt', fromDt)
+  if (toDt) params.set('to_dt', toDt)
   return apiClient.request<HistoryResponse>(`/history?${params.toString()}`)
+}
+
+// Sprint 90 — pagination offset/limit
+export interface HistoryPagedFilters {
+  ticker?: string
+  q?: string
+  fromDt?: string
+  toDt?: string
+}
+
+export async function getHistoryPaged(
+  filters: HistoryPagedFilters,
+  page = 1,
+  pageSize = 10,
+): Promise<PagedHistoryResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  if (filters.ticker) params.set('ticker', filters.ticker)
+  if (filters.q) params.set('q', filters.q)
+  if (filters.fromDt) params.set('from_dt', filters.fromDt)
+  if (filters.toDt) params.set('to_dt', filters.toDt)
+  return apiClient.request<PagedHistoryResponse>(`/history-paged?${params.toString()}`)
 }
 
 export async function getHealthz(): Promise<{ status: string; version: string }> {
@@ -85,6 +114,10 @@ export async function downloadScreenerPdf(request: ScreenRequest): Promise<Blob>
   const tickers = request.tickers.join(',')
   const params = new URLSearchParams({ tickers, workflow: request.workflow })
   return apiClient.requestBlob(`/screener-report?${params.toString()}`)
+}
+
+export async function downloadWatchlistPdf(): Promise<Blob> {
+  return apiClient.requestBlob('/watchlist/export.pdf')
 }
 
 export async function fetchEvalDrift(): Promise<EvalDriftResult[]> {

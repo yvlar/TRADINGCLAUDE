@@ -7,7 +7,7 @@ import * as analyzeApi from '../api/analyze'
 
 vi.mock('../api/analyze', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/analyze')>()
-  return { ...actual, getHistory: vi.fn(), downloadTickerPdf: vi.fn() }
+  return { ...actual, getHistoryPaged: vi.fn(), downloadTickerPdf: vi.fn() }
 })
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -15,46 +15,60 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-describe('HistorySearch (Sprint 73)', () => {
+const emptyPaged = {
+  ticker: null,
+  q: null,
+  entries: [],
+  page: 1,
+  page_size: 10,
+  total_count: 0,
+  total_pages: 1,
+}
+
+describe('HistorySearch (Sprint 73 + Sprint 90)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('appelle getHistory avec q seul quand seul le champ recherche est rempli', async () => {
+  it('appelle getHistoryPaged avec q seul quand seul le champ recherche est rempli', async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
-      ticker: null,
-      entries: [],
-      next_before: null,
-    })
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)
     render(<HistoryPage />, { wrapper })
 
     await user.type(screen.getByTestId('history-search-input'), 'ACHAT')
     await user.click(screen.getByTestId('history-search-btn'))
 
-    expect(analyzeApi.getHistory).toHaveBeenCalledWith(undefined, 15, undefined, 'ACHAT')
+    await waitFor(() => {
+      expect(analyzeApi.getHistoryPaged).toHaveBeenCalledWith(
+        expect.objectContaining({ q: 'ACHAT' }),
+        1,
+        10,
+      )
+    })
   })
 
-  it('appelle getHistory avec ticker et q quand les deux champs sont remplis', async () => {
+  it('appelle getHistoryPaged avec ticker et q quand les deux champs sont remplis', async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
-      ticker: 'BNS',
-      entries: [],
-      next_before: null,
-    })
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)
     render(<HistoryPage />, { wrapper })
 
     await user.type(screen.getByTestId('history-ticker-input'), 'BNS')
     await user.type(screen.getByTestId('history-search-input'), 'CANDIDAT')
     await user.click(screen.getByTestId('history-search-btn'))
 
-    expect(analyzeApi.getHistory).toHaveBeenCalledWith('BNS', 15, undefined, 'CANDIDAT')
+    await waitFor(() => {
+      expect(analyzeApi.getHistoryPaged).toHaveBeenCalledWith(
+        expect.objectContaining({ ticker: 'BNS', q: 'CANDIDAT' }),
+        1,
+        10,
+      )
+    })
   })
 
   it('affiche le notice cross-ticker quand q seul est fourni et des résultats existent', async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
-      ticker: null,
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue({
+      ...emptyPaged,
       entries: [
         {
           analysis_id: 'aaa',
@@ -68,7 +82,7 @@ describe('HistorySearch (Sprint 73)', () => {
           created_at: '2026-05-10T12:00:00+00:00',
         },
       ],
-      next_before: null,
+      total_count: 1,
     })
     render(<HistoryPage />, { wrapper })
 
@@ -82,11 +96,7 @@ describe('HistorySearch (Sprint 73)', () => {
 
   it('affiche le message "Aucun résultat" quand la recherche est vide', async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
-      ticker: null,
-      entries: [],
-      next_before: null,
-    })
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)
     render(<HistoryPage />, { wrapper })
 
     await user.type(screen.getByTestId('history-search-input'), 'INTROUVABLE')

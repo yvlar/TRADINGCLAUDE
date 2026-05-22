@@ -51,6 +51,16 @@ CREATE TABLE IF NOT EXISTS composite_score_history (
 );
 CREATE INDEX IF NOT EXISTS idx_csh_ticker_recorded ON composite_score_history(ticker, recorded_at DESC);
 
+-- Historique des scores ESG — Sprint 89
+CREATE TABLE IF NOT EXISTS esg_score_history (
+    id          BIGSERIAL    PRIMARY KEY,
+    ticker      TEXT         NOT NULL,
+    score       DOUBLE PRECISION NOT NULL,
+    verdict     TEXT         NOT NULL,
+    recorded_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_esg_hist_ticker_recorded ON esg_score_history (ticker, recorded_at DESC);
+
 -- Migration Sprint 24 (DB existante) :
 -- ALTER TABLE watchlist
 --     ADD COLUMN IF NOT EXISTS last_intrinsic_value      NUMERIC(10,4),

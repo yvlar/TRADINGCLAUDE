@@ -29,7 +29,7 @@ Pourquoi : protège contre la fragilité des small caps.
 ### Critère 2 : Solidité financière
 Seuil : current ratio ≥ 2.0.
 Variable : `current_ratio`.
-Adaptation banques/assureurs : si `current_ratio` est null dans les données, l'entreprise est probablement une institution financière. Indiquer "NON_APPLICABLE (institution financière)" dans `valeur_observee` et `passe` = false uniquement si ce null est clairement une limite sectorielle. Ne pas pénaliser abusivement.
+Adaptation banques/assureurs : si `current_ratio` est null dans les données, l'entreprise est une institution financière soumise à des exigences de capital réglementées (Tier 1, CET1) qui remplacent le current ratio. Indiquer "NON_APPLICABLE (institution financière — capital Tier 1 réglementé)" dans `valeur_observee` et fixer `passe = true`. Pénaliser une banque sur un ratio structurellement inapplicable serait une erreur d'interprétation sectorielle.
 Pourquoi : marge de sécurité contre les pressions financières à court terme.
 
 ### Critère 3 : Stabilité des bénéfices

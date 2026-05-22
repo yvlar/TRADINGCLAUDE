@@ -39,8 +39,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
 
         api_key_service = getattr(request.app.state, "api_key_service", None)
 
-        # Mode dev : aucune clé env ET aucun service DB → bypass total
-        if not self._api_key and api_key_service is None:
+        # Mode dev : API_KEY vide → bypass total (aucune auth configurée)
+        # Depuis Sprint 62, api_key_service est toujours présent — on ne teste plus is None
+        if not self._api_key:
             return await call_next(request)
 
         auth = request.headers.get("Authorization", "")

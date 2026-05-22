@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
@@ -11,6 +13,88 @@ from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_eps_growth(income: Any, shares: float) -> float:
+    """
+    Calcule la croissance totale du BPA depuis income_stmt (horizon max disponible, ~4 ans).
+    Format : fraction totale (0.74 = +74 % sur la période). Retourne 0.0 si calcul impossible.
+    """
+    if income is None or shares <= 0:
+        return 0.0
+    ni_row = None
+    for key in ("Net Income", "Net Income Common Stockholders", "NetIncome"):
+        if key in income.index:
+            ni_row = income.loc[key]
+            break
+    if ni_row is None:
+        return 0.0
+    values: list[float] = []
+    for v in ni_row:
+        try:
+            f = float(v)
+            if not math.isnan(f):
+                values.append(f)
+        except (TypeError, ValueError):
+            continue
+    if len(values) < 2:
+        return 0.0
+    # yfinance trie les colonnes du plus récent au plus ancien
+    eps_recent = values[0] / shares
+    eps_oldest = values[-1] / shares
+    if eps_oldest <= 0:
+        return 0.0
+    return round((eps_recent / eps_oldest) - 1.0, 4)
+
+
+def _compute_dividend_years(dividends: Any) -> int | None:
+    """
+    Compte les années consécutives avec au moins un dividende depuis l'année courante.
+    Retourne None si données indisponibles, 0 si la série est vide.
+    """
+    if dividends is None:
+        return None
+    if hasattr(dividends, "empty") and dividends.empty:
+        return 0
+    try:
+        years_with_divs: set[int] = set(dividends.index.year)
+    except AttributeError:
+        return None
+    current_year = datetime.now().year
+    consecutive = 0
+    year = current_year
+    while year in years_with_divs:
+        consecutive += 1
+        year -= 1
+    return consecutive
+
+
+def _compute_no_deficit_years(income: Any, shares: float) -> int | None:
+    """
+    Compte les années avec bénéfice net positif dans income_stmt.
+    Retourne None si données insuffisantes.
+    """
+    if income is None or shares <= 0:
+        return None
+    ni_row = None
+    for key in ("Net Income", "Net Income Common Stockholders", "NetIncome"):
+        if key in income.index:
+            ni_row = income.loc[key]
+            break
+    if ni_row is None:
+        return None
+    total = 0
+    positive = 0
+    for v in ni_row:
+        try:
+            f = float(v)
+            if not math.isnan(f):
+                total += 1
+                if f > 0:
+                    positive += 1
+        except (TypeError, ValueError):
+            continue
+    return positive if total > 0 else None
 
 FINANCIAL_SECTORS: frozenset[str] = frozenset(
     {"Financial Services", "Banks", "Insurance", "Financial"}
@@ -30,6 +114,28 @@ class YahooFinanceExtractor:
         """Appel synchrone yfinance — lazy import, exécuté dans un thread via run_in_executor."""
         import yfinance as yf  # noqa: PLC0415 — import lazy pour éviter la dépendance au démarrage
         return yf.Ticker(ticker).info
+
+    def _fetch_info_and_history(self, ticker: str) -> dict[str, Any]:
+        """
+        Appel synchrone yfinance étendu : info + income_stmt + dividends en un seul appel.
+        Exécuté dans un thread via run_in_executor.
+        """
+        import yfinance as yf  # noqa: PLC0415
+        t = yf.Ticker(ticker)
+        info = t.info
+        income: Any = None
+        dividends: Any = None
+        try:
+            income = t.income_stmt
+            if income is None or (hasattr(income, "empty") and income.empty):
+                income = getattr(t, "financials", None)
+        except Exception:
+            logger.warning("income_stmt indisponible pour %s", ticker)
+        try:
+            dividends = t.dividends
+        except Exception:
+            logger.warning("dividends indisponibles pour %s", ticker)
+        return {"info": info, "income": income, "dividends": dividends}
 
     async def _get_info(self, ticker: str) -> dict[str, Any]:
         """Wrapper async avec timeout pour l'appel synchrone yfinance."""
@@ -53,7 +159,22 @@ class YahooFinanceExtractor:
         current_ratio = None si secteur financier (banques, assurances).
         HTTPException 404 si ticker inconnu ou données insuffisantes.
         """
-        info = await self._get_info(ticker)
+        loop = asyncio.get_event_loop()
+        try:
+            raw: dict[str, Any] = await asyncio.wait_for(
+                loop.run_in_executor(None, self._fetch_info_and_history, ticker),
+                timeout=self._timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Timeout yfinance pour %s après %.0fs", ticker, self._timeout_s)
+            raise HTTPException(
+                status_code=504,
+                detail=f"Timeout lors de l'extraction Yahoo Finance : {ticker}",
+            )
+
+        info = raw["info"]
+        income = raw.get("income")
+        dividends = raw.get("dividends")
 
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         if not info or price is None:
@@ -77,17 +198,23 @@ class YahooFinanceExtractor:
         revenue = info.get("totalRevenue")
         revenue_bn: float | None = revenue / 1e9 if revenue is not None else None
 
+        shares = info.get("sharesOutstanding")
+        eps_growth_10y = _compute_eps_growth(income, shares) if income is not None and shares else 0.0
+        dividend_years = _compute_dividend_years(dividends)
+        no_deficit_years = _compute_no_deficit_years(income, shares) if income is not None and shares else None
+
         return GrahamRatios(
             pe=pe if pe is not None else 0.0,
             pb=info.get("priceToBook") or 0.0,
             current_ratio=None if is_financial else info.get("currentRatio"),
             debt_equity=debt_equity,
-            eps_growth_10y=0.0,  # non disponible via yfinance — valeur neutre
+            eps_growth_10y=eps_growth_10y,
             price=float(price),
             book_value=info.get("bookValue") or 0.0,
             eps_ttm=eps_ttm,
             revenue_bn=revenue_bn,
-            dividend_years=None,
+            dividend_years=dividend_years,
+            no_deficit_years=no_deficit_years,
         )
 
     def _fetch_earnings_data(self, ticker: str) -> dict[str, Any]:

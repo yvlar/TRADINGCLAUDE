@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import HistoryPage from '../pages/HistoryPage'
@@ -7,12 +7,22 @@ import * as analyzeApi from '../api/analyze'
 
 vi.mock('../api/analyze', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/analyze')>()
-  return { ...actual, getHistory: vi.fn(), downloadTickerPdf: vi.fn() }
+  return { ...actual, getHistoryPaged: vi.fn(), downloadTickerPdf: vi.fn() }
 })
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
+
+const emptyPaged = {
+  ticker: null,
+  q: null,
+  entries: [],
+  page: 1,
+  page_size: 10,
+  total_count: 0,
+  total_pages: 1,
 }
 
 describe('HistoryPage', () => {
@@ -34,33 +44,34 @@ describe('HistoryPage', () => {
 
   it('déclenche une requête avec le bon ticker si non vide', async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue({
+      ...emptyPaged,
       ticker: 'BNS',
-      entries: [],
-      next_before: null,
     })
     render(<HistoryPage />, { wrapper })
 
     await user.type(screen.getByLabelText('Ticker'), 'BNS')
     await user.click(screen.getByTestId('history-search-btn'))
 
-    expect(analyzeApi.getHistory).toHaveBeenCalledWith('BNS', 15, undefined, undefined)
+    await waitFor(() => {
+      expect(analyzeApi.getHistoryPaged).toHaveBeenCalledWith(
+        expect.objectContaining({ ticker: 'BNS' }),
+        1,
+        10,
+      )
+    })
   })
 
   it("n'envoie jamais 'ALL' au backend", async () => {
     const user = userEvent.setup()
-    vi.mocked(analyzeApi.getHistory).mockResolvedValue({
-      ticker: null,
-      entries: [],
-      next_before: null,
-    })
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)
     render(<HistoryPage />, { wrapper })
 
     await user.type(screen.getByLabelText('Recherche'), 'ACHAT')
     await user.click(screen.getByTestId('history-search-btn'))
 
-    const calls = vi.mocked(analyzeApi.getHistory).mock.calls
-    const allCalls = calls.some(([t]) => t === 'ALL')
+    const calls = vi.mocked(analyzeApi.getHistoryPaged).mock.calls
+    const allCalls = calls.some(([filters]) => filters.ticker === 'ALL')
     expect(allCalls).toBe(false)
   })
 })

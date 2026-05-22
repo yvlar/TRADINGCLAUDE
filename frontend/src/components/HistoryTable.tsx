@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { AnnotationSection } from './AnnotationSection'
 import type { HistoryEntry } from '../types'
 
 function verdictVariant(verdict: string | null): 'success' | 'warning' | 'danger' | 'outline' {
@@ -54,6 +55,7 @@ export function HistoryTable({
                 <TableHead>Verdict</TableHead>
                 <TableHead>Coût</TableHead>
                 <TableHead>PDF</TableHead>
+                <TableHead>Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -104,6 +106,9 @@ export function HistoryTable({
                         ⬇ PDF
                       </Button>
                     )}
+                  </TableCell>
+                  <TableCell className="min-w-[140px]">
+                    <AnnotationSection analysisId={entry.analysis_id} />
                   </TableCell>
                 </TableRow>
               ))}

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-17 — Sprint 73 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 91 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,16 +8,16 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 6.6.0 |
+| **Version** | 8.4.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 74 — à définir |
-| **Dernier sprint complété** | Sprint 73 — Recherche full-text dans l'historique ✅ |
+| **Sprint actif** | Sprint 92 — Annotations dans l'export Excel watchlist |
+| **Dernier sprint complété** | Sprint 91 — Seuil de prix configurable par ticker ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 15 skills + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
+- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
@@ -48,10 +48,26 @@
 - **Badge "Score depuis cache (<24h)"** dans AnalyzePage quand `depuis_cache_composite=True` (Sprint 69)
 - **Skill ESG simplifié** — 15 critères proxy (5E+5S+5G), `POST /analyze` avec `esg_input` (Sprint 70)
 - **Bouton "Exporter PDF"** dans ScreenerPage — `GET /screener-report?tickers=&workflow=` → PDF reportlab + `downloadScreenerPdf()` (Sprint 71)
+- **Bouton "Exporter PDF"** dans WatchlistPage — `GET /watchlist/export.pdf` → PDF reportlab composite_score + verdicts + top picks + `downloadWatchlistPdf()` (Sprint 76)
 - **Rapport PDF screener planifié** — Celery `send_screener_pdf_report()` webhook multipart/form-data (Sprint 71)
 - **Section Comparaison multi-tickers** dans DashboardPage — `TickerComparisonChart` recharts, 2-5 tickers côte à côte, saisie CSV, `Promise.all` parallèle sur `/composite-history/` (Sprint 72)
 - **Recherche full-text HistoryPage** — champ `q` ILIKE cross-ticker (ticker partiel, workflow, verdict) + index GIN pg_trgm + notice résultats cross-ticker (Sprint 73)
+- **Filtre par plage de dates HistoryPage** — champs "Du" / "Au" ISO 8601, validation from>to, passés à `GET /history?from_dt=&to_dt=` (Sprint 79)
+- **Page Comparer** — tableau multi-skills côte à côte pour 2-5 tickers, données historiques uniquement (Sprint 80)
+- **Page ESG** — scores ESG de la watchlist (tableau tritable, badges ESG_FORT/MODERE/FAIBLE, lien Analyser), route `/esg` (Sprint 82)
+- **Seuil ESG configurable** — colonne "Seuil ESG" dans WatchlistTable, édition inline (bouton ✎ + Input 0-15 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/esg-threshold` (Sprint 84)
+- **Seuil Prix configurable** — colonne "Seuil Prix (%)" dans WatchlistTable, édition inline (bouton ✎ + Input 0-100 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/price-threshold`, valeur saisie en % convertie en décimal avant stockage (Sprint 91)
+- **Rapport PDF mensuel enrichi** — section ESG (Ticker / Score ESG / Verdict / Seuil) ajoutée en fin de PDF si au moins un ticker a un `last_esg_score` non-null (Sprint 88)
 - **Auth** — Bearer token (localStorage), routes protégées
+
+#### Outillage Claude Code (Sprint 74)
+- **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
+- **`docs/cheatsheet.md`** — référence exhaustive des commandes opérationnelles
+- **`.gitignore`** — exclusion `__pycache__/`, `.pyc`, `.venv/`, `.env`, `node_modules/`
+
+#### Corpus RAG ESG (Sprint 75)
+- **`.claude/skills/esg-simplified/`** — SKILL.md + 5 références (dette technique Sprint 70 fermée)
+- 16/16 skills tier2 maintenant documentés dans `.claude/skills/` — corpus RAG complet
 
 ### Skills opérationnels
 | Skill | Fichier | Statut |
@@ -81,6 +97,321 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 91 — Seuil de prix configurable par ticker ✅
+
+**Objectif :** Permettre à Yves de modifier le seuil d'alerte de prix (`price_alert_threshold_pct`) par ticker directement depuis l'interface React, via une colonne "Seuil Prix (%)" avec édition inline dans `WatchlistTable` et l'endpoint `PATCH /watchlist/{id}/price-threshold`. Pattern identique au Sprint 84 (seuil ESG).
+
+**Livrables :**
+- `app/services/watchlist_service.py` — méthode `update_price_threshold(entry_id, threshold)` (UPDATE SQL sur `price_alert_threshold_pct`)
+- `app/api/endpoints/watchlist.py` — schema Pydantic `PriceThresholdUpdate(threshold: float)` + endpoint `PATCH /watchlist/{entry_id}/price-threshold` (422 si ≤ 0 ou > 100, 404 si introuvable, division par 100 avant stockage décimal)
+- `frontend/src/api/watchlist.ts` — `patchPriceThreshold(id, threshold)` couche HTTP PATCH
+- `frontend/src/components/WatchlistTable.tsx` — nouvelle colonne "Seuil Prix (%)" : mode display (`price_alert_threshold_pct * 100`) + mode edit inline (Input 0-100 + Sauvegarder/Annuler + erreur inline) ; états `priceEditingId`/`priceEditValue`/`priceEditError`/`priceSaving` indépendants du seuil ESG
+- `tests/test_watchlist_price_threshold.py` — 3 tests CI (SQL params corrects, 200 + valeur à jour, 404 id inexistant)
+- `frontend/src/__tests__/WatchlistPriceThreshold.test.tsx` — 5 tests Vitest (affichage %, ouverture input, sauvegarde API, annuler sans appel, erreur affichée)
+- **Bonus** : correction corruption OneDrive `frontend/src/types/index.ts` (garbage lignes 463-487) + `frontend/src/pages/HistoryPage.tsx` (accents perdus sur "Télécharger PDF") + mise à jour mock `getHistoryPaged` dans `PdfDownload.test.tsx`
+
+**Version** : 8.4.0
+**Tests** : 1371 CI verts (hors e2e et evals) — +3 tests Sprint 91 ; 192 Vitest verts — +5 tests Sprint 91 (+4 bonus PdfDownload restaurés)
+
+---
+
+### Sprint 90 — Pagination avancée historique ✅
+
+**Objectif :** Remplacer la pagination cursor (`before=ISO8601`) par une pagination offset/limit avec `total_count`. Interface paginée numérotée dans `HistoryPage.tsx` avec boutons Précédent/Suivant et label "Page X sur Y", plus sélecteur de taille de page (10/25/50).
+
+**Livrables :**
+- `app/orchestrator/core.py` — modèle `PagedHistoryResponse(ticker, q, entries, page, page_size, total_count, total_pages)` ; méthode `Orchestrator.get_history_paged()` exécutant `SELECT ... LIMIT $5 OFFSET $6` et `SELECT COUNT(*)` en parallèle via `asyncio.gather` ; `get_history()` (cursor) préservé pour rétrocompat
+- `app/api/main.py` — nouvel endpoint `GET /history-paged?ticker=&q=&page=1&page_size=10&from_dt=&to_dt=` avec validation `page >= 1` et `1 <= page_size <= 50` (sinon 422) ; `GET /history` (cursor) inchangé
+- `frontend/src/types/index.ts` — interface `PagedHistoryResponse`
+- `frontend/src/api/analyze.ts` — `getHistoryPaged(filters, page, pageSize)` + interface `HistoryPagedFilters`
+- `frontend/src/pages/HistoryPage.tsx` — refonte : `currentPage`/`pageSize` (states) au lieu de `nextBefore` ; boutons `data-testid="history-pagination-prev"` / `history-pagination-next` (désactivés aux extrémités) ; label `data-testid="history-page-label"` ("Page X sur Y") ; sélecteur `data-testid="history-page-size"` (10/25/50) ; `useEffect` reset `currentPage=1` quand filtre/pageSize change
+- `tests/test_history_paged_orchestrator.py` — 3 tests CI (LIMIT/OFFSET attendus, COUNT(*) propagé, page=2 offset=10)
+- `tests/test_history_paged_endpoint.py` — 4 tests CI (200 page+page_size, 422 page<1, 422 page_size>50, total_pages correct)
+- `frontend/src/__tests__/HistoryPagination.test.tsx` — 4 tests Vitest (rendu prev/next/label, clic Suivant → page=2, clic Précédent → page=1, changement filtre reset page=1)
+- `frontend/src/__tests__/HistoryPage.test.tsx`, `HistorySearch.test.tsx`, `HistoryDateFilter.test.tsx` — mocks `getHistory` migrés vers `getHistoryPaged`
+
+**Version** : 8.3.0
+**Tests** : 1368 CI verts (hors e2e et evals) — +7 tests Sprint 90, 6 tests Sprint 89 préservés ; +4 Vitest (total 187+)
+
+**Note opérationnelle :** OneDrive a tronqué de façon répétée `app/orchestrator/core.py`, `app/api/main.py`, `frontend/src/types/index.ts`, `frontend/src/api/analyze.ts` et les 3 tests Vitest existants à mi-édition. Restauration par appends Python en chunks de ~600 bytes (sous le seuil de troncation OneDrive observé), avec vérification `wc -l` + balance braces/parens après chaque écriture. Une duplication SQL préexistante dans `get_history()` (héritée du Sprint 89) a été détectée et tronquée via `re.search` + `os.fsync` avant ré-écriture propre.
+
+---
+
+### Sprint 89 — Historique des scores ESG ✅
+
+**Objectif :** Persister un historique des scores ESG dans une nouvelle table `esg_score_history` alimentée à chaque analyse ESG, exposer un endpoint `GET /esg-history/{ticker}` et afficher un graphique recharts dans `EsgPage.tsx` pour visualiser l'évolution dans le temps. Pattern identique à `composite_score_history` + `CompositeHistoryService` (Sprint 57).
+
+**Livrables :**
+- `app/services/esg_history_service.py` — `EsgHistoryService` avec `record(ticker, score)` (calcule le verdict via `esg_verdict()` puis INSERT) et `get_history(ticker, limit=100)` (SELECT ORDER BY recorded_at DESC)
+- `app/api/endpoints/esg_history.py` — `GET /esg-history/{ticker}?limit=100` retourne `{ticker, points: [{id, ticker, score, verdict, recorded_at}]}`, 404 si aucun point
+- `app/api/main.py` — migration idempotente `CREATE TABLE IF NOT EXISTS esg_score_history (id BIGSERIAL PRIMARY KEY, ticker TEXT, score DOUBLE PRECISION, verdict TEXT, recorded_at TIMESTAMPTZ DEFAULT NOW())` + index `idx_esg_hist_ticker_recorded ON (ticker, recorded_at DESC)` ; instanciation `EsgHistoryService(db_pool)` exposée dans `app.state.esg_history_service` ; routeur enregistré ; service passé à `orchestrator.run_company_analysis()`
+- `infra/postgres/init.sql` — table `esg_score_history` + index ajoutés en bootstrap pour les nouveaux volumes PG
+- `app/orchestrator/core.py` — `run_company_analysis()` et `stream_company_analysis()` acceptent `esg_history_service` kwarg ; après l'appel à `EsgSimplifiedSkill`, `await esg_history_service.record(ticker, esg_output.esg_score)` en best-effort (try/except + `logger.warning` sans interrompre l'analyse)
+- `app/api/endpoints/analyze_stream.py` — `_sse_generator` propage `esg_history_service`
+- `frontend/src/types/index.ts` — interfaces `EsgHistoryPoint` et `EsgHistoryResponse`
+- `frontend/src/api/esg.ts` — `fetchEsgHistory(ticker, limit=100)` via `apiClient.request`
+- `frontend/src/components/EsgHistoryChart.tsx` — `LineChart` recharts (X-axis date / Y-axis 0-15), `ReferenceLine` aux seuils 10 (FORT) et 5 (MODÉRÉ), `Tooltip` coloré par verdict, palette cohérente avec `CompositeScoreChart`
+- `frontend/src/pages/EsgPage.tsx` — clic sur un ticker du tableau → `setSelectedTicker` → query `['esg-history', ticker]` (enabled si sélectionné) → rendu de `EsgHistoryChart` en bas de page avec titre "Évolution ESG — {ticker}"
+- `tests/test_esg_history_service.py` — 3 tests CI (`record()` calcule FORT/MODERE/FAIBLE via `esg_verdict()`, `record()` insère avec bons params, `get_history()` tri DESC + limit)
+- `tests/test_esg_history_endpoint.py` — 3 tests CI (200 avec points, 404 si vide, format réponse + paramètre `limit` propagé)
+- `frontend/src/__tests__/EsgHistoryChart.test.tsx` — 4 tests Vitest (empty, rendu avec 3 points, loading, error)
+
+**Version** : 8.2.0
+**Tests** : 1361 CI verts (hors e2e et evals) — +6 tests Sprint 89, 9 tests Sprint 88 préservés ; +4 Vitest
+
+**Note opérationnelle :** lors de l'exécution du sprint, la synchronisation OneDrive a tronqué `app/api/main.py` (629→596 lignes) et `app/orchestrator/core.py` (1745→1708 lignes) à mi-édition. Les fichiers ont été restaurés en concaténant la queue manquante via un script Python en bash (les Edits intermédiaires étaient présents, seule la queue avait été perdue). `app/api/endpoints/watchlist.py` et `app/workers/tasks.py` ont été vérifiés intacts avant et après les modifications (aucun octet nul, syntaxe Python OK).
+
+---
+
+### Sprint 88 — Rapport PDF mensuel : section ESG ✅
+
+**Objectif :** Enrichir le `MonthlyReportService` pour ajouter une section ESG en fin de PDF mensuel si au moins un ticker de la watchlist a un `last_esg_score` non-null. Aucun changement frontend — le PDF enrichi est servi par `GET /monthly-report` existant.
+
+**Livrables :**
+- `app/utils/esg_utils.py` — extraction du helper `esg_verdict()` (>=10 → ESG_FORT, >=5 → ESG_MODERE, sinon ESG_FAIBLE, None → N/A) pour éviter l'import circulaire `services → api/endpoints`
+- `app/api/endpoints/watchlist.py` — `_esg_verdict` devient un alias rétro-compatible pointant vers `app.utils.esg_utils.esg_verdict`
+- `app/services/monthly_report_service.py` — nouveau kwarg optionnel `watchlist_service: WatchlistService | None`, méthodes `_build_esg_section_pdf()` (mini-PDF reportlab avec table 4 colonnes : Ticker / Score ESG / Verdict ESG / Seuil alerte, tri scores non-null DESC puis null) et `_append_esg_section()` (concaténation pypdf, fallback silencieux si PDF non parseable) ; section ajoutée uniquement si au moins un score non-null
+- `app/api/endpoints/monthly_report.py` — `watchlist_service` récupéré depuis `request.app.state` et passé à `generate()`
+- `app/workers/tasks.py` — `_execute_monthly_report()` instancie `WatchlistService(db_pool)` et le passe à `generate()`
+- `requirements.txt` — ajout `pypdf>=3.0.0` (concaténation de PDF)
+- `tests/test_monthly_report_service.py` — 3 nouveaux tests : `test_monthly_report_pdf_contient_esg_quand_score_present` (extraction texte pypdf), `test_monthly_report_pdf_sans_esg_quand_aucun_score` (PDF identique au mock watchlist), `test_esg_verdict_helper_importable` (verdict + alias `_esg_verdict is esg_verdict`)
+
+**Version** : 8.1.0
+**Tests** : 1355 CI verts (hors e2e et evals) — +3 tests Sprint 88, 6 tests Sprint 81 préservés
+
+---
+
+### Sprint 87 — Comparaison avec analyse Claude live (opt-in) ✅
+
+**Objectif :** Enrichir la page `/compare` avec un bouton "Analyser" opt-in sur les colonnes dont le ticker n'a pas encore d'analyse dans l'historique (`analysis_id = null`). Quand l'utilisateur clique, une analyse fraîche est lancée via `POST /analyze` et le tableau se rafraîchit automatiquement.
+
+**Livrables :**
+- Backend : aucun changement requis — `analysis_id: str | None` déjà présent dans `TickerComparison` (backend + frontend types) depuis Sprint 80
+- `frontend/src/pages/ComparePage.tsx` — import `postAnalyze` + `useRef` ; states `analyzingTickers: Set<string>` + `tickerErrors: Record<string, string>` ; `handleAnalyze()` : `Promise.race` avec timeout 60s, refresh via `postCompare(result.tickers)`, message d'erreur inline avec disparition après 5s ; bouton "Analyser" (`data-testid="analyze-btn-{ticker}"`) visible uniquement si `analysis_id === null`, désactivé pendant l'appel
+- `frontend/src/__tests__/ComparePage.test.tsx` — 5 nouveaux tests (bouton visible si null, absent si défini, appel `postAnalyze` avec bon ticker, refresh `postCompare` après succès, message d'erreur inline)
+
+**Version** : 8.0.0
+**Tests** : 1340 CI verts (hors e2e et evals) + 179 Vitest verts (0 CI ajouté, +5 Vitest)
+
+---
+
+### Sprint 86 — Alertes Slack / email ✅
+
+**Objectif :** Ajouter un canal de notification Slack (Incoming Webhook) en complément du webhook HTTP générique existant. Les alertes ESG, le screener hebdomadaire et le rapport mensuel peuvent désormais être envoyés sur Slack via `SLACK_WEBHOOK_URL` — optionnel, retourne False silencieusement si absent.
+
+**Livrables :**
+- `app/services/slack_service.py` — `SlackService` (4 méthodes async : `send_text`, `send_esg_alert`, `send_screener_summary`, `send_monthly_report_summary`) ; `httpx.AsyncClient` avec 1 retry, no-op si `SLACK_WEBHOOK_URL` absent
+- `app/services/webhook_service.py` — `WebhookService.__init__` instancie `SlackService` ; `send_esg_alert()` appelle aussi `self._slack.send_esg_alert()` en complément
+- `app/workers/tasks.py` — import `SlackService` ; `_execute_scheduled_screener()` appelle `send_screener_summary()` en fin de tâche ; `_execute_monthly_report()` supprime le guard WEBHOOK_URL-only (supporte SLACK_WEBHOOK_URL seul) et appelle `send_monthly_report_summary()` après envoi webhook
+- `app/api/main.py` — import + instanciation `SlackService()` dans lifespan + `app.state.slack_service`
+- `.env.example` — `SLACK_WEBHOOK_URL=https://hooks.slack.com/services/VOTRE_WEBHOOK_ICI`
+- `tests/test_slack_service.py` — 3 tests CI : `send_text` False sans URL, payload JSON correct avec URL, `send_esg_alert` False sans URL
+
+**Version** : 7.9.0
+**Tests** : 1340 CI verts (hors e2e et evals) + 174 Vitest verts
+
+---
+
+### Sprint 85 — Export annotations CSV/Excel ✅
+
+**Objectif :** Permettre à Yves d'exporter toutes ses annotations en CSV et Excel (avec le ticker du JOIN `analysis_history`), via deux boutons dans HistoryPage et deux endpoints dédiés.
+
+**Livrables :**
+- `app/services/annotation_service.py` — `get_all_with_ticker()` : requête SQL avec `LEFT JOIN analysis_history` ordonnée par `updated_at DESC`
+- `app/api/endpoints/annotations.py` — `GET /annotations/export.csv` (utf-8-sig BOM, 5 colonnes) et `GET /annotations/export.xlsx` (openpyxl, en-têtes gras gris) ; routes statiques placées avant `/{analysis_id}` pour éviter le conflit de routage
+- `frontend/src/api/annotations.ts` — `downloadAnnotationsCsv()` et `downloadAnnotationsXlsx()` via `apiClient.requestBlob()`
+- `frontend/src/pages/HistoryPage.tsx` — boutons "Exporter CSV" (`data-testid="export-annotations-csv-btn"`) et "Exporter Excel" (`data-testid="export-annotations-xlsx-btn"`) avec états loading/erreur ; message `data-testid="export-annotations-error"` en cas d'échec
+- `tests/test_annotations_export.py` — 3 tests CI : get_all_with_ticker() retourne le ticker, CSV 200 + content-type + colonnes, XLSX 200 + content-type
+- `frontend/src/__tests__/AnnotationsExport.test.tsx` — 5 tests Vitest : présence des 2 boutons, clic CSV appelle downloadAnnotationsCsv, clic Excel appelle downloadAnnotationsXlsx, erreur API affiche message
+
+**Version** : 7.8.0
+**Tests** : 1337 CI verts (hors e2e et evals) + 174 Vitest verts
+
+---
+
+### Sprint 84 — Seuil ESG configurable par ticker (UI) ✅
+
+**Objectif :** Permettre à Yves de modifier le seuil d'alerte ESG (`esg_alert_threshold`) pour chaque ticker de la watchlist directement depuis l'interface React, via un bouton inline dans `WatchlistTable` et l'endpoint `PATCH /watchlist/{id}/esg-threshold`.
+
+**Livrables :**
+- `app/services/watchlist_service.py` — `update_esg_threshold(entry_id, threshold)` : UPDATE SQL sur le champ existant
+- `app/api/endpoints/watchlist.py` — `EsgThresholdUpdate` Pydantic + `PATCH /{entry_id}/esg-threshold` : get_entry → update → get_entry → return
+- `frontend/src/api/watchlist.ts` — `patchEsgThreshold(id, threshold)` couche HTTP PATCH
+- `frontend/src/components/WatchlistTable.tsx` — colonne "Seuil ESG" avec édition inline (display mode : valeur + bouton ✎ ; edit mode : Input + Sauvegarder + Annuler + message d'erreur), appel `patchEsgThreshold()` + `onRefresh()`
+- `frontend/src/pages/WatchlistPage.tsx` — prop `onRefresh` passée à `WatchlistTable` (invalide la query `['watchlist']`)
+- `tests/test_watchlist_esg_threshold.py` — 3 tests CI : service SQL params corrects, PATCH 200 avec nouveau seuil, PATCH 404 id inexistant
+- `frontend/src/__tests__/WatchlistEsgThreshold.test.tsx` — 5 tests Vitest : affichage seuil, ouverture input, sauvegarde API, annuler sans appel, erreur API
+- `frontend/src/__tests__/PdfDownload.test.tsx` — correction `makeEntry` (champs `esg_alert_threshold` + `last_esg_score` manquants depuis Sprint 77)
+
+**Version** : 7.7.0
+**Tests** : 1334 CI verts (hors e2e et evals) + 169 Vitest verts
+
+---
+
+### Sprint 83 — Export watchlist Excel enrichi (ESG) ✅
+
+**Objectif :** Enrichir `GET /watchlist/export.xlsx` avec deux nouvelles colonnes : `Score ESG` (valeur numérique arrondie à 1 décimale) et `Verdict ESG` (ESG_FORT / ESG_MODERE / ESG_FAIBLE / N/A), alimentées depuis `last_esg_score` déjà persisté (Sprint 77).
+
+**Livrables :**
+- `app/api/endpoints/watchlist.py` — helper `_esg_verdict(score)`, constantes `_XLSX_HEADERS` / `_XLSX_COL_WIDTHS` étendues, boucle `_generate_watchlist_xlsx()` enrichie
+- `app/services/watchlist_service.py` — `get_all_with_composite()` : SELECT étendu avec `w.last_esg_score` et `w.esg_alert_threshold`
+- `tests/test_watchlist_xlsx_esg.py` — 8 tests unitaires (`_esg_verdict` indépendant, headers, score 7.5, verdict ESG_MODERE, score None, verdict N/A, rétrocompatibilité 7 colonnes)
+- Aucun changement frontend requis — les nouvelles colonnes apparaissent automatiquement dans le fichier téléchargé
+
+**Version** : 7.6.0
+**Tests** : 1331 CI verts (hors e2e et evals) + 164 Vitest verts
+
+---
+
+### Sprint 82 — Page ESG dans le frontend ✅
+
+**Objectif :** Créer une page dédiée `/esg` affichant les scores ESG de tous les tickers de la watchlist depuis le champ `last_esg_score` persisté (Sprint 77). Tableau tritable par colonne, badge verdict coloré, lien vers analyse.
+
+**Livrables :**
+- `app/api/endpoints/watchlist.py` — schemas Pydantic `WatchlistEsgEntry` / `WatchlistEsgResponse` + `GET /watchlist/esg-scores` (tri DESC nulls last, utilise `WatchlistService.list_entries()`)
+- `frontend/src/types/index.ts` — interfaces `WatchlistEsgEntry` / `WatchlistEsgResponse` (snake_case, cohérent avec le reste du projet)
+- `frontend/src/api/watchlist.ts` — `fetchWatchlistEsgScores()` 
+- `frontend/src/pages/EsgPage.tsx` — tableau tritable (Score ESG + Ticker), badges ESG_FORT/ESG_MODERE/ESG_FAIBLE, score null → "--", loading state, lien "Analyser"
+- `frontend/src/App.tsx` — route `/esg` + NavItem "ESG" dans la barre de navigation
+- `tests/test_esg_scores_endpoint.py` — 3 tests CI (200 champs, liste vide, tri DESC nulls last)
+- `frontend/src/__tests__/EsgPage.test.tsx` — 5 tests Vitest (badge FORT/MODERE/FAIBLE, score null "--", tri colonne)
+
+**Version** : 7.5.0
+**Tests** : 1323 CI verts (hors e2e et evals) + 164 Vitest verts
+
+---
+
+### Sprint 81 — Rapport PDF mensuel automatisé ✅
+
+**Objectif :** Ajouter une tâche Celery mensuelle (1er du mois à 08h00 UTC) qui génère automatiquement un rapport PDF consolidé (watchlist + screener des tickers FORT) et l'envoie par webhook multipart.
+
+**Livrables :**
+- `app/services/monthly_report_service.py` — `MonthlyReportService.generate()`, requête `composite_score_history` DISTINCT ON pour tickers FORT, `ScreenResult` synthétique sans appel Claude
+- `app/api/endpoints/monthly_report.py` — `GET /monthly-report`, déclenchement manuel, 404 si watchlist vide
+- `app/api/main.py` — `MonthlyReportService` instancié dans lifespan + `app.state.monthly_report_service` + `monthly_report_router` enregistré
+- `app/services/webhook_service.py` — `send_monthly_report(watchlist_pdf, screener_pdf)`, multipart 2 fichiers, pattern identique à `send_screener_pdf_report()`
+- `app/workers/tasks.py` — `_execute_monthly_report()` + `run_monthly_report` Celery task, skip si `WEBHOOK_URL` absent
+- `app/workers/celery_app.py` — `beat_schedule` entrée `run-monthly-report`, `crontab(hour=8, minute=0, day_of_month=1)`
+- `tests/test_monthly_report_service.py` — 6 tests unitaires (init, tuple bytes, PDF watchlist, PDF screener, ValueError vide, aucun FORT)
+- `tests/test_monthly_report_endpoint.py` — 4 tests intégration (200, media_type, Content-Disposition, 404 vide)
+
+**Version** : 7.4.0
+**Tests** : 1320 CI verts (hors e2e et evals) + 159 Vitest verts
+
+---
+
+### Sprint 80 — Mode comparaison tickers ✅
+
+**Objectif :** Ajouter une page `/compare` affichant un tableau multi-skills côte à côte pour 2 à 5 tickers. Données historiques uniquement — aucun appel Claude.
+
+**Livrables :**
+- `app/services/compare_service.py` — `CompareService.compare()`, requête SQL `DISTINCT ON (ticker)` + `LEFT JOIN LATERAL composite_score_history`, extraction JSONB graham/buffett/dorsey
+- `app/api/endpoints/compare.py` — `POST /compare`, `CompareRequest` (validation 2-5 tickers), `CompareResponse`
+- `app/api/main.py` — `CompareService` instancié dans lifespan + `app.state.compare_service` + `compare_router` enregistré
+- `frontend/src/types/index.ts` — `TickerComparison` + `CompareResponse` interfaces
+- `frontend/src/api/compare.ts` — `postCompare()` couche HTTP
+- `frontend/src/pages/ComparePage.tsx` — tableau 7 lignes × N colonnes, highlight jaune du meilleur composite_score, badges colorés par verdict, gestion ticker absent `--`
+- `frontend/src/App.tsx` — route `/compare` + lien nav "Comparer"
+- `tests/test_compare_service.py` — 4 tests unitaires (2 tickers, ticker absent, ordre, champs optionnels null)
+- `tests/test_compare_endpoint.py` — 6 tests intégration (200 avec 2/5 tickers, 422 si 1/6/0, ticker absent null)
+- `frontend/src/__tests__/ComparePage.test.tsx` — 5 tests Vitest (rendu, soumission, highlight, ticker absent, erreur validation)
+
+**Version** : 7.3.0
+**Tests** : 1310 CI verts (hors e2e et evals) + 159 Vitest verts
+
+---
+
+### Sprint 79 — Filtre dates dans l'historique ✅
+
+**Objectif :** Ajouter un filtre par plage de dates ISO 8601 dans `GET /history` et les sélecteurs date correspondants dans `HistoryPage`.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `get_history()` étendu avec `from_dt` et `to_dt` (`datetime | None`), clauses SQL `created_at >= $5` / `created_at <= $6`
+- `app/api/main.py` — paramètres query `from_dt` et `to_dt` sur `GET /history`, validation `datetime.fromisoformat()`, 422 si format invalide
+- `frontend/src/api/analyze.ts` — `getHistory()` étendu avec `fromDt?` et `toDt?`, ajoutés aux URLSearchParams
+- `frontend/src/pages/HistoryPage.tsx` — deux `<Input type="date">` "Du" / "Au" (`data-testid` normalisés), validation UI from>to, passés dans query + loadMore
+- `tests/test_history_filter_dates.py` — 5 tests CI (from_dt seul, to_dt seul, les deux passés à l'orchestrateur, formats invalides 422)
+- `frontend/src/__tests__/HistoryDateFilter.test.tsx` — 5 tests Vitest (rendu champs, soumission from+to, validation from>to, fromDt seul)
+- `frontend/src/__tests__/HistorySearch.test.tsx` + `HistoryPage.test.tsx` — signatures mises à jour (6 args)
+
+**Version** : 7.2.0
+**Tests** : 1300 CI verts (hors e2e et evals) + 154 Vitest verts
+
+---
+
+### Sprint 78 — Annotations d'analyses ✅
+
+**Objectif :** Permettre à Yves d'annoter chaque analyse avec des notes libres, persistées en PostgreSQL et consultables depuis l'historique.
+
+**Livrables :**
+- `app/models/annotation.py` — `Annotation` + `AnnotationCreate` (Pydantic v2, `min_length=1`)
+- `app/services/annotation_service.py` — `AnnotationService.upsert()` + `get()` — INSERT ON CONFLICT DO UPDATE
+- `app/api/endpoints/annotations.py` — `POST /annotations` (201, upsert idempotent) + `GET /annotations/{analysis_id}` (200/404)
+- `app/api/main.py` — migration `CREATE TABLE IF NOT EXISTS annotations` + instanciation `AnnotationService` dans lifespan + router enregistré
+- `frontend/src/types/index.ts` — `Annotation` + `AnnotationCreate` interfaces
+- `frontend/src/api/annotations.ts` — `getAnnotation()` + `upsertAnnotation()`
+- `frontend/src/components/AnnotationSection.tsx` — composant accordéon (toggle, affichage note existante, édition en place, `data-testid` normalisés)
+- `frontend/src/components/HistoryTable.tsx` — colonne "Notes" avec `AnnotationSection` par ligne
+- `tests/test_annotation_service.py` — 5 tests unitaires (upsert, get, get absent, exception DB)
+- `tests/test_annotations_endpoint.py` — 5 tests intégration (201 create, 422 note vide, 200 get, 404 absent, idempotent)
+- `frontend/src/__tests__/AnnotationSection.test.tsx` — 5 tests Vitest (toggle fermé, vide, note existante, sauvegarde, édition)
+
+**Version** : 7.1.0
+**Tests** : 1294 CI verts (hors e2e et evals) + 149 Vitest verts
+
+---
+
+### Sprint 76 — Export PDF watchlist depuis l'interface ✅
+
+**Objectif :** Ajouter un bouton "Exporter PDF" dans WatchlistPage appelant `GET /watchlist/export.pdf`. Le rapport couvre toutes les positions surveillées avec composite_score, label, alerte, date de dernière analyse et section Top Picks.
+
+**Livrables :**
+- `app/services/watchlist_pdf_service.py` — `WatchlistPdfService.generate_watchlist_pdf()`, requête SQL enrichie (JOIN LATERAL composite_score_history + analysis_history), styles reportlab cohérents avec ScreenerPdfService
+- `GET /watchlist/export.pdf` dans `app/api/endpoints/watchlist.py` — `application/pdf`, `Content-Disposition` daté, 404 si vide
+- `app/api/main.py` — `WatchlistPdfService` instancié dans lifespan et exposé dans `app.state`
+- `downloadWatchlistPdf()` dans `frontend/src/api/analyze.ts` — pattern requestBlob
+- Bouton "Exporter PDF" dans WatchlistPage (`data-testid="export-pdf-watchlist"`, état loading, gestion 404)
+- `tests/test_watchlist_pdf_service.py` — 8 tests unitaires (signature PDF, tickers, ValueError vide, top picks, score absent)
+- `tests/test_watchlist_export_pdf.py` — 5 tests intégration (200, Content-Disposition, 404, appel pool/composite_history_service)
+- `frontend/src/__tests__/WatchlistPdfExport.test.tsx` — 5 tests Vitest (rendu bouton, click, loading, 404, erreur 500)
+
+**Version** : 7.0.0
+**Tests** : 1284 CI verts (hors e2e et evals) + 144 Vitest verts
+
+---
+
+### Sprint 75 — ESG SKILL.md + references/ — dette technique ✅
+
+**Objectif :** Créer le dossier `.claude/skills/esg-simplified/` avec `SKILL.md` et 5 fichiers `references/`, fermant la dette technique ouverte lors du Sprint 74. Le skill `esg_simplified` est en production depuis Sprint 70 sans corpus conceptuel dans `.claude/skills/`.
+
+**Livrables :**
+- `.claude/skills/esg-simplified/SKILL.md` — logique, workflow, 15 critères ESG 5E+5S+5G, guard-rails
+- `.claude/skills/esg-simplified/references/esg-proxies-rationale.md` — justification de l'approche proxy, limites fondamentales, comparaison MSCI/Sustainalytics
+- `.claude/skills/esg-simplified/references/criteres-dimension-E.md` — 5 critères E avec formules, seuils, ajustements sectoriels
+- `.claude/skills/esg-simplified/references/criteres-dimension-S.md` — 5 critères S
+- `.claude/skills/esg-simplified/references/criteres-dimension-G.md` — 5 critères G
+- `.claude/skills/esg-simplified/references/scoring-verdicts.md` — barème 0-15, verdicts, 3 exemples chiffrés (banque / tech / industriel)
+- `base-connaissances-skills.md` mis à jour : flag ⚠️ retiré, compteur 15→16 SKILL.md
+
+**Version** : 6.8.0
+
+---
+
+### Sprint 74 — Refactor CLAUDE.md → `.claude/rules/` path-scoped ✅
+
+**Objectif :** Éclater le CLAUDE.md monolithique (490 lignes) en un système modulaire `.claude/rules/` avec scoping par chemin de fichier, sans perdre une seule directive opérationnelle.
+
+**Livrables :**
+- `CLAUDE.md` réduit à 100 lignes (index + table de pointeurs)
+- 16 fichiers `.claude/rules/*.md` — chacun avec `paths:` ciblant les contextes pertinents
+- `docs/cheatsheet.md` — toutes les commandes opérationnelles (201 lignes)
+- `.gitignore` créé à la racine (manquait depuis la Phase 0)
+- Incohérences résolues : catalogue 15→16 skills tier2, `compounder_buffett` documenté comme workflow, compteur pages frontend corrigé à 7
+
+**Version** : 6.7.0
+
+---
 
 ### Phase 1 — Infrastructure RAG ✅ (Sprints 1–4)
 - **Sprint 1** : `SkillBase` extrait dans `app/skills/base.py`, `UsageDetail` propagé, tokens persistés, `@model_validator` critères Graham, `/healthz` enrichi
@@ -2099,6 +2430,30 @@ Chaque skill reçoit son propre `_SKILL_TOOL_SCHEMA = build_tool_schema(SkillOut
 *Sprint 61 complété : Eval drift detection — EvalDriftService + EvalDriftResult + GET /telemetry/eval-drift + run_eval_drift_check Celery + 19 tests CI — 1171 tests CI verts — version 5.4.0*
 *Sprint 60 complété : Dashboard composite trends — recharts LineChart + CompositeScoreChart.tsx + DashboardPage section Évolution + 7 tests Vitest + 5 tests CI endpoint — 1152 tests CI verts — version 5.3.0*
 *Sprint 59 complété : Export Excel watchlist — GET /watchlist/export.xlsx + get_all_with_composite() JOIN LATERAL + _generate_watchlist_xlsx() + 15 tests CI — 1147 tests CI verts — version 5.2.0*
+*Sprint 58 complété : Screener avancé — 3 filtres POST /screen (composite_label, min_composite_score, filter_workflow) + logique AND + tickers en échec toujours inclus + 15 tests CI — 1129 tests CI verts — version 5.1.0*
+*Sprint Frontend Catchup complété : Synchronisation types TS + 5 bugs corrigés + 3 features ajoutées + 5 nouveaux fichiers de tests — 83 tests Vitest verts, 0 failing — build propre — 2026-05-14*
+*Sprint 57 complété : Historique composite_score — table composite_score_history + CompositeHistoryService record()/get_history() + GET /composite-history/{ticker} + 10 tests CI, 1114 tests CI verts — version 5.0.0*
+*Utiliser `prompt-mise-a-jour-roadmap.md` pour guider Claude lors des mises à jour.*
+*Sprint 24 complété : Alertes prix — PriceAlertService + run_price_alert_check + GET /price-status + 7 tests verts — version 2.4.0*
+*Sprint 25 complété : Export hebdomadaire automatique — EmailService + generate_watchlist_summary_pdf + run_weekly_watchlist_report + 7 tests verts — version 2.5.0*
+*Sprint 26 complété : Déploiement homelab — Caddy + TLS Let's Encrypt + backup PostgreSQL + Uptime Kuma + docker-compose.prod.yml + 2 tests healthz — version 2.5.0*
+*Sprint 27 complété : Watchlist dans le frontend — WatchlistPage React + WatchlistTable + api/watchlist.ts + requestEmpty() + 6 tests Vitest — total frontend 34 tests verts — version 2.5.0*
+*Sprint 28 complété : Authentification frontend — AuthContext + ProtectedRoute + LoginPage + token localStorage + 5 tests Vitest — total frontend 39 tests verts — version 2.5.0*
+*Sprint 29 complété : Fix WorkflowRouter — 24 échecs corrigés (dorsey_moat + buffett_quality dans value_graham) — total backend 806 passés — version 2.5.0*
+*Sprint 30 complété : Tests E2E Frontend → Backend — 16 tests Playwright (auth×4, analyze×5, screener×3, watchlist×4) — InMemoryWatchlistService + stubs JSON 15 skills + mocks middleware — version 2.6.0*
+*Sprint 31 complété : CI/CD GitHub Actions — .github/workflows/ci.yml — 2 jobs parallèles (backend pytest + frontend vitest) — badge CI README.md — version 2.6.0*
+*Sprint 32 complété : Extraction auto Yahoo Finance (frontend) — bouton Auto-fill AnalyzeForm → GET /extract → ratios pré-remplis — 3 tests Vitest + fix LoginPage validation — total frontend 42 tests verts — version 2.7.0*
+*Sprint 33 complété : Qualité bénéfices fonctionnelle — extract_earnings_quality() + ExtractResponse + checkbox AnalyzeForm + 5 tests backend + 3 tests frontend — 45 tests Vitest verts — version 2.8.0*
+*Sprint 34 complété : Tests E2E Sprint 33 — 3 tests Playwright (autofill Graham, checkbox earnings active, analyse complète) + fix mock extract_earnings_quality dans conftest E2E — 19 tests E2E verts — version 2.9.0*
+*Sprint 35 complété : SSE Streaming — POST /analyze-stream + stream_company_analysis() + StreamingProgress React + streamAnalyze() fetch/ReadableStream + 8 tests backend + 5 tests frontend — 50 tests Vitest verts — version 3.0.0*
+*Sprint 36 complété : Eval framework qualité IA + Sanitisation ticker — defensive_verdict computed_field + defensive_score computed_field + pe nullable + sanitize_ticker() intégré dans 3 endpoints + EvalRunner + graham_golden.json 20 cas + test_graham_evals.py **20/20 PASS** — 817 tests CI verts*
+*Sprint 37 complété : Validation anti-hallucination — @model_validator GrahamRatios (pe<0, pb<0, eps_growth>5, triangle pe/price/eps_ttm) + confidence_score sur 4 skills (Graham @computed_field, Buffett/Dorsey champ régulier, Earnings @computed_field) + _detect_inter_skill_conflicts() + inter_skill_conflicts dans AnalyzeResponse — 27 nouveaux tests — 851 tests CI verts — version 3.1.0*
+*Sprint 38 complété : Scoring composite unifié — CompositeScore dataclass + compute_composite_score() 6 skills pondérés (verdict × poids × confidence) + composite_score dans AnalyzeResponse + run_company_analysis() + stream_company_analysis() — 23 nouveaux tests (+ 8 schémas réels) — 874 tests CI verts — version 3.2.0*
+*Sprint 39 complété : Performance tracking — migration_sprint39.sql (price_at_analysis FLOAT) + _persist() + get_price() YahooFinanceExtractor + GET /performance/{ticker} (PerformanceResponse, rendement_pct, composite_score si disponible) + 19 tests (7 unitaires + 4 extracteur + 8 intégration) — 893 tests CI verts — version 3.3.0*
+*Sprint 40 complété : Tests E2E SSE — test_e2e_stream.py (4 tests Playwright : skill_start MutationObserver, progression skill-done-*, complete+composite_score, ticker invalide 422) + CompositeScore dans types/index.ts + data-testid="composite-score" dans AnalysisResult.tsx — 914 tests CI verts — version 3.4.0*
+*Sprint 41 complété : Dashboard métriques qualité IA — DashboardPage étendue + CompositeScoreHistory (GET /performance/{ticker}) + ConflictsList + lib/recentAnalyses.ts (localStorage) + saveRecentAnalysis() dans AnalyzePage + getPerformance() API + PerformanceEntry/RecentAnalysis types — 68 tests Vitest verts (+18 nouveaux) — version 3.5.0*
+*Sprint 42 complété : Tool Use pilote — graham_analysis + earnings_quality migrés vers Anthropic Tool Use (tool_choice forcé) + build_tool_schema() dérivé de Pydantic + _parse_claude_json retiré des 2 skills + 9 nouveaux tests unitaires — 915 tests CI verts — version 3.6.0*
+ Export Excel watchlist — GET /watchlist/export.xlsx + get_all_with_composite() JOIN LATERAL + _generate_watchlist_xlsx() + 15 tests CI — 1147 tests CI verts — version 5.2.0*
 *Sprint 58 complété : Screener avancé — 3 filtres POST /screen (composite_label, min_composite_score, filter_workflow) + logique AND + tickers en échec toujours inclus + 15 tests CI — 1129 tests CI verts — version 5.1.0*
 *Sprint Frontend Catchup complété : Synchronisation types TS + 5 bugs corrigés + 3 features ajoutées + 5 nouveaux fichiers de tests — 83 tests Vitest verts, 0 failing — build propre — 2026-05-14*
 *Sprint 57 complété : Historique composite_score — table composite_score_history + CompositeHistoryService record()/get_history() + GET /composite-history/{ticker} + 10 tests CI, 1114 tests CI verts — version 5.0.0*

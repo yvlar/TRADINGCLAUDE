@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — Sprint 74 — Dernière mise à jour : 2026-05-17*
+*Phase 3 active — Sprint 82 — Dernière mise à jour : 2026-05-19*
 
 ---
 
@@ -30,7 +30,7 @@ Système d'analyse d'investissement multi-frameworks : API FastAPI + 18 skills (
 | Phase 0 | ✅ | API FastAPI + graham_analysis + PostgreSQL |
 | Phase 1 | ✅ | RAG Qdrant, get_citations(), Langfuse, retry backoff |
 | Phase 2 | ✅ | 18 skills en production, extracteurs tier1, screener multi-tickers |
-| Phase 3 | 🔄 Sprint 74 | Eval framework, multi-users API, PDF reports, ESG, recherche full-text |
+| Phase 3 | 🔄 Sprint 81 | Rapport PDF mensuel automatisé, page ESG, export annotations |
 
 ---
 

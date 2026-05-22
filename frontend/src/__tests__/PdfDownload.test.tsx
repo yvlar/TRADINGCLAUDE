@@ -14,6 +14,7 @@ vi.mock('../api/analyze', async (importOriginal) => {
   return {
     ...actual,
     getHistory: vi.fn(),
+    getHistoryPaged: vi.fn().mockResolvedValue({ entries: [], total_count: 0, total_pages: 1 }),
     downloadTickerPdf: vi.fn(),
   }
 })
@@ -38,6 +39,8 @@ const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => (
   last_composite_score: null,
   composite_alert_threshold: 15.0,
   score_alerte_min: null,
+  esg_alert_threshold: 5.0,
+  last_esg_score: null,
   ...overrides,
 })
 

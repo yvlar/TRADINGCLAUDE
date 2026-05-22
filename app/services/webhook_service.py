@@ -17,6 +17,9 @@ class WebhookService:
         self._secret: str | None = os.environ.get("WEBHOOK_SECRET") or None
         self._nb_erreurs: int = 0
         self._derniere_notification: datetime | None = None
+        # import tardif pour éviter la circularité de dépendances au niveau module
+        from app.services.slack_service import SlackService
+        self._slack = SlackService()
 
     @property
     def url_configuree(self) -> bool:
@@ -118,6 +121,21 @@ class WebhookService:
         }
         return await self._post(payload)
 
+    async def send_esg_alert(self, ticker: str, esg_score: float, threshold: float) -> bool:
+        """Envoie une alerte webhook si esg_score < threshold. Retourne False si WEBHOOK_URL absent."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "type": "esg_alert",
+            "ticker": ticker,
+            "esg_score": esg_score,
+            "threshold": threshold,
+            "timestamp": timestamp,
+        }
+        webhook_result = await self._post(payload)
+        # Notification Slack en complément (no-op si SLACK_WEBHOOK_URL absent)
+        await self._slack.send_esg_alert(ticker=ticker, score=esg_score, threshold=threshold)
+        return webhook_result
+
     async def send_screener_report(
         self, nb_tickers_screenes: int, tickers_fort: list[str]
     ) -> bool:
@@ -134,6 +152,54 @@ class WebhookService:
             "tickers_fort": tickers_fort,
         }
         return await self._post(payload)
+
+    async def send_monthly_report(
+        self, watchlist_pdf: bytes, screener_pdf: bytes
+    ) -> bool:
+        """Envoie les deux PDFs du rapport mensuel via webhook multipart."""
+        if not self._url:
+            return False
+
+        headers: dict[str, str] = {}
+        if self._secret:
+            headers["X-Webhook-Secret"] = self._secret
+
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m")
+
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        self._url,
+                        headers=headers,
+                        files=[
+                            ("file", (f"watchlist-{date_str}.pdf", watchlist_pdf, "application/pdf")),
+                            ("file", (f"screener-fort-{date_str}.pdf", screener_pdf, "application/pdf")),
+                        ],
+                    )
+                    resp.raise_for_status()
+                self._derniere_notification = datetime.now(timezone.utc)
+                logger.info("Webhook rapport mensuel envoyé — %s", date_str)
+                return True
+            except httpx.RequestError as exc:
+                logger.warning(
+                    "Erreur réseau webhook mensuel (essai %d/2) — %s", attempt + 1, exc
+                )
+                if attempt == 1:
+                    self._nb_erreurs += 1
+                    logger.error("Webhook mensuel échoué après retry — %s", exc)
+                    return False
+            except httpx.HTTPStatusError as exc:
+                self._nb_erreurs += 1
+                logger.error(
+                    "Webhook mensuel HTTP erreur %d — %s", exc.response.status_code, exc
+                )
+                return False
+            except Exception:
+                self._nb_erreurs += 1
+                logger.exception("Erreur inattendue lors de l'envoi du webhook mensuel")
+                return False
+        return False
 
     async def send_screener_pdf_report(self, result: object) -> bool:
         """

@@ -7,7 +7,7 @@ import {
   removeFromWatchlist,
   triggerWatchlistAnalysis,
 } from '../api/watchlist'
-import { downloadTickerPdf } from '../api/analyze'
+import { downloadTickerPdf, downloadWatchlistPdf } from '../api/analyze'
 import { ApiError } from '../api/client'
 import type { WatchlistCreate } from '../types'
 import { Button } from '../components/ui/button'
@@ -21,6 +21,7 @@ export default function WatchlistPage() {
   const [addError, setAddError] = useState('')
   const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null)
   const [pdfMessage, setPdfMessage] = useState<string | null>(null)
+  const [globalPdfLoading, setGlobalPdfLoading] = useState(false)
 
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ['watchlist'],
@@ -71,6 +72,29 @@ export default function WatchlistPage() {
     }
   }
 
+  const handleExportGlobalPdf = async () => {
+    setGlobalPdfLoading(true)
+    setPdfMessage(null)
+    try {
+      const blob = await downloadWatchlistPdf()
+      const today = new Date().toISOString().slice(0, 10)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `watchlist-${today}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        setPdfMessage('Watchlist vide — aucun rapport à générer.')
+      } else {
+        setPdfMessage('Erreur lors du téléchargement du rapport PDF global.')
+      }
+    } finally {
+      setGlobalPdfLoading(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const t = ticker.trim().toUpperCase()
@@ -87,7 +111,18 @@ export default function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Watchlist</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Watchlist</h1>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="export-pdf-watchlist"
+          disabled={globalPdfLoading}
+          onClick={() => void handleExportGlobalPdf()}
+        >
+          {globalPdfLoading ? 'Génération PDF...' : 'Exporter PDF'}
+        </Button>
+      </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2" aria-label="Formulaire d'ajout watchlist">
         <Input
@@ -136,6 +171,7 @@ export default function WatchlistPage() {
             analyzingId={analyzeMutation.isPending ? (analyzeMutation.variables ?? null) : null}
             onDownloadPdf={handleDownloadPdf}
             pdfLoadingId={pdfLoadingId}
+            onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['watchlist'] })}
           />
         </>
       )}

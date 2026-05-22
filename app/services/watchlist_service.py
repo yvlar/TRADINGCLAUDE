@@ -14,7 +14,8 @@ _SELECT_COLS = """
     id, ticker, workflow, ratios, score_alerte_min,
     created_at, last_analyzed_at, last_score, last_verdict,
     last_intrinsic_value, last_price_checked, price_alert_threshold_pct,
-    last_composite_score, composite_alert_threshold
+    last_composite_score, composite_alert_threshold,
+    esg_alert_threshold, last_esg_score
 """
 
 
@@ -99,6 +100,30 @@ class WatchlistService:
             price,
         )
 
+    async def update_esg_score(self, entry_id: str, esg_score: float | None) -> None:
+        """Met à jour le dernier esg_score pour un ticker."""
+        await self._db.execute(
+            "UPDATE watchlist SET last_esg_score = $2 WHERE id = $1::uuid",
+            entry_id,
+            esg_score,
+        )
+
+    async def update_esg_threshold(self, entry_id: str, threshold: float) -> None:
+        """Met à jour le seuil d'alerte ESG pour une entrée watchlist."""
+        await self._db.execute(
+            "UPDATE watchlist SET esg_alert_threshold = $2 WHERE id = $1::uuid",
+            entry_id,
+            threshold,
+        )
+
+    async def update_price_threshold(self, entry_id: str, threshold: float) -> None:
+        """Met à jour le seuil d'alerte de prix (décimal, ex: 0.10 = 10%) pour une entrée watchlist."""
+        await self._db.execute(
+            "UPDATE watchlist SET price_alert_threshold_pct = $2 WHERE id = $1::uuid",
+            entry_id,
+            threshold,
+        )
+
     async def update_composite_score(self, entry_id: str, composite_score: float) -> None:
         """Met a jour le score composite de reference (baseline pour les alertes)."""
         await self._db.execute(
@@ -117,7 +142,9 @@ class WatchlistService:
                 w.created_at,
                 w.composite_alert_threshold,
                 COALESCE(csh.score, w.last_composite_score) AS composite_score_latest,
-                csh.label AS composite_label_latest
+                csh.label AS composite_label_latest,
+                w.last_esg_score,
+                w.esg_alert_threshold
             FROM watchlist w
             LEFT JOIN LATERAL (
                 SELECT score, label
@@ -146,6 +173,8 @@ def _row_to_entry(row) -> WatchlistEntry:
 
     raw_composite = row.get("last_composite_score")
     raw_comp_threshold = row.get("composite_alert_threshold")
+    raw_esg_threshold = row.get("esg_alert_threshold")
+    raw_last_esg = row.get("last_esg_score")
 
     return WatchlistEntry(
         id=str(row["id"]),
@@ -162,4 +191,6 @@ def _row_to_entry(row) -> WatchlistEntry:
         price_alert_threshold_pct=float(raw_threshold) if raw_threshold is not None else 0.10,
         last_composite_score=float(raw_composite) if raw_composite is not None else None,
         composite_alert_threshold=float(raw_comp_threshold) if raw_comp_threshold is not None else 15.0,
+        esg_alert_threshold=float(raw_esg_threshold) if raw_esg_threshold is not None else 5.0,
+        last_esg_score=float(raw_last_esg) if raw_last_esg is not None else None,
     )

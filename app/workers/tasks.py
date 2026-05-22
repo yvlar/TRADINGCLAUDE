@@ -22,6 +22,7 @@ from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
 from app.services.report import ReportService
 from app.services.screener import ScreenerService
+from app.services.slack_service import SlackService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
@@ -534,8 +535,37 @@ async def _execute_scheduled_screener() -> dict:
         # Envoi du rapport PDF en plus du JSON (optionnel — no-op si WEBHOOK_URL absent)
         await webhook_service.send_screener_pdf_report(screen_result)
 
+        # Alertes ESG — vérification des scores ESG stockés vs seuils par entrée watchlist
+        nb_alertes_esg = 0
+        for entry in entries:
+            if (
+                entry.last_esg_score is not None
+                and entry.last_esg_score < entry.esg_alert_threshold
+            ):
+                sent = await webhook_service.send_esg_alert(
+                    ticker=entry.ticker,
+                    esg_score=entry.last_esg_score,
+                    threshold=entry.esg_alert_threshold,
+                )
+                if sent:
+                    nb_alertes_esg += 1
+                    logger.warning(
+                        "Alerte ESG — %s : score %.1f < seuil %.1f",
+                        entry.ticker, entry.last_esg_score, entry.esg_alert_threshold,
+                    )
+        if nb_alertes_esg:
+            logger.info("Screener planifié — %d alerte(s) ESG envoyée(s)", nb_alertes_esg)
+
         if not tickers_fort:
             logger.info("Screener planifié — aucune opportunité FORT identifiée")
+
+        # Résumé Slack (no-op si SLACK_WEBHOOK_URL absent)
+        slack_service = SlackService()
+        await slack_service.send_screener_summary(
+            nb_analyses=len(tickers),
+            nb_fort=len(tickers_fort),
+            cout_usd=screen_result.cout_total_usd,
+        )
 
         return {
             "nb_tickers_screenes": len(tickers),
@@ -546,6 +576,67 @@ async def _execute_scheduled_screener() -> dict:
         await db_pool.close()
         if orch_pool is not None:
             await orch_pool.close()
+
+
+async def _execute_monthly_report() -> None:
+    """Génère le rapport PDF mensuel et l'envoie par webhook et/ou Slack."""
+    webhook_url = os.environ.get("WEBHOOK_URL")
+    slack_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url and not slack_url:
+        logger.info("WEBHOOK_URL et SLACK_WEBHOOK_URL absents — rapport mensuel ignoré")
+        return
+
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    try:
+        from app.services.monthly_report_service import MonthlyReportService
+        from app.services.screener_pdf_service import ScreenerPdfService
+        from app.services.watchlist_pdf_service import WatchlistPdfService
+        from app.services.watchlist_service import WatchlistService
+
+        monthly_service = MonthlyReportService()
+        watchlist_pdf_service = WatchlistPdfService()
+        screener_pdf_service = ScreenerPdfService()
+        watchlist_service = WatchlistService(db_pool)
+
+        try:
+            watchlist_pdf, screener_pdf = await monthly_service.generate(
+                db_pool=db_pool,
+                watchlist_pdf_service=watchlist_pdf_service,
+                screener_pdf_service=screener_pdf_service,
+                watchlist_service=watchlist_service,
+            )
+        except ValueError:
+            logger.info("Rapport mensuel ignoré — watchlist vide")
+            return
+
+        webhook_service = WebhookService()
+        sent = await webhook_service.send_monthly_report(watchlist_pdf, screener_pdf)
+        if sent:
+            logger.info("Rapport mensuel envoyé par webhook")
+        else:
+            logger.warning("Rapport mensuel non envoyé (échec WebhookService)")
+
+        # Résumé Slack (no-op si SLACK_WEBHOOK_URL absent)
+        slack_service = SlackService()
+        nb_positions = int(await db_pool.fetchval("SELECT COUNT(*) FROM watchlist") or 0)
+        await slack_service.send_monthly_report_summary(nb_positions=nb_positions, nb_fort=0)
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_monthly_report", bind=True)
+def run_monthly_report(self) -> None:
+    """
+    Tâche Celery — rapport PDF mensuel consolidé watchlist + screener FORT.
+    Planifiée le 1er du mois à 08h00 UTC via Celery beat.
+    No-op si WEBHOOK_URL absent.
+    """
+    logger.info("Début rapport mensuel automatisé")
+    asyncio.run(_execute_monthly_report())
+    logger.info("Fin rapport mensuel automatisé")
 
 
 @celery_app.task(name="run_scheduled_screener", bind=True)

@@ -21,6 +21,8 @@ from app.workers.celery_app import celery_app
 def _make_wl_entry(ticker: str) -> MagicMock:
     entry = MagicMock()
     entry.ticker = ticker
+    entry.last_esg_score = None
+    entry.esg_alert_threshold = 5.0
     return entry
 
 

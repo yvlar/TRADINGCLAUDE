@@ -196,6 +196,20 @@ export interface CompositeHistoryPoint {
   recorded_at: string  // ISO 8601
 }
 
+// ---- Historique ESG (Sprint 89) ----
+export interface EsgHistoryPoint {
+  id: string
+  ticker: string
+  score: number
+  verdict: string  // "ESG_FORT" | "ESG_MODERE" | "ESG_FAIBLE" | "N/A"
+  recorded_at: string  // ISO 8601
+}
+
+export interface EsgHistoryResponse {
+  ticker: string
+  points: EsgHistoryPoint[]
+}
+
 // ---- Screener ----
 export interface ScreenEntry {
   ticker: string
@@ -243,6 +257,17 @@ export interface HistoryResponse {
   ticker: string | null
   entries: HistoryEntry[]
   next_before: string | null
+}
+
+// Sprint 90 — pagination offset/limit
+export interface PagedHistoryResponse {
+  ticker: string | null
+  q: string | null
+  entries: HistoryEntry[]
+  page: number
+  page_size: number
+  total_count: number
+  total_pages: number
 }
 
 // ---- Performance rétrospective (Sprint 39) ----
@@ -294,6 +319,8 @@ export interface WatchlistEntry {
   last_composite_score: number | null
   composite_alert_threshold: number
   score_alerte_min: number | null
+  esg_alert_threshold: number
+  last_esg_score: number | null
 }
 
 export interface WatchlistCreate {
@@ -353,6 +380,50 @@ export interface ApiKey {
 export interface ApiKeyCreate {
   name: string
   role?: string  // défaut "user"
+}
+
+// ---- Annotations (Sprint 78) ----
+export interface Annotation {
+  annotation_id: string
+  analysis_id: string
+  note: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AnnotationCreate {
+  analysis_id: string
+  note: string
+}
+
+// ---- ESG Watchlist scores (Sprint 82) ----
+export interface WatchlistEsgEntry {
+  ticker: string
+  last_esg_score: number | null
+  esg_alert_threshold: number
+  last_analyzed_at: string | null
+}
+
+export interface WatchlistEsgResponse {
+  entries: WatchlistEsgEntry[]
+}
+
+// ---- Comparaison tickers (Sprint 80) ----
+export interface TickerComparison {
+  ticker: string
+  analysis_id: string | null
+  graham_verdict: string | null
+  graham_score: number | null
+  buffett_verdict: string | null
+  dorsey_moat_type: string | null
+  composite_score: number | null
+  composite_label: string | null
+  created_at: string | null
+}
+
+export interface CompareResponse {
+  tickers: string[]
+  comparisons: TickerComparison[]
 }
 
 // ---- Workflow ----

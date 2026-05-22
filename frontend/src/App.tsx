@@ -7,6 +7,8 @@ import HistoryPage from './pages/HistoryPage'
 import DashboardPage from './pages/DashboardPage'
 import WatchlistPage from './pages/WatchlistPage'
 import AdminPage from './pages/AdminPage'
+import ComparePage from './pages/ComparePage'
+import EsgPage from './pages/EsgPage'
 import LoginPage from './pages/LoginPage'
 import { Button } from './components/ui/button'
 
@@ -41,6 +43,8 @@ function AppShell() {
             <NavItem to="/historique" label="Historique" />
             <NavItem to="/dashboard" label="Dashboard" />
             <NavItem to="/watchlist" label="Watchlist" />
+            <NavItem to="/compare" label="Comparer" />
+            <NavItem to="/esg" label="ESG" />
             <NavItem to="/admin" label="Admin" />
           </nav>
         )}
@@ -90,6 +94,22 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <WatchlistPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/compare"
+            element={
+              <ProtectedRoute>
+                <ComparePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/esg"
+            element={
+              <ProtectedRoute>
+                <EsgPage />
               </ProtectedRoute>
             }
           />

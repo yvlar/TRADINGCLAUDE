@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,7 +13,12 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.api.main import app
-from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
+from app.skills.tier1.yahoo_finance import (
+    YahooFinanceExtractor,
+    _compute_dividend_years,
+    _compute_eps_growth,
+    _compute_no_deficit_years,
+)
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
@@ -116,6 +122,11 @@ _INFO_MSFT = {
 }
 
 
+def _raw(info: dict) -> dict:
+    """Construit le dict retourné par _fetch_info_and_history sans income ni dividends."""
+    return {"info": info, "income": None, "dividends": None}
+
+
 # ─── Tests unitaires — extract() ───────────────────────────────────────────────
 
 class TestYahooFinanceExtract:
@@ -123,7 +134,7 @@ class TestYahooFinanceExtract:
     async def test_graham_ratios_valide(self):
         """Données BNS complètes → GrahamRatios avec pe, pb, price, book_value, eps_ttm renseignés."""
         extractor = YahooFinanceExtractor()
-        with patch.object(extractor, "_fetch_info", return_value=_INFO_BNS_FINANCIER):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_BNS_FINANCIER)):
             result = await extractor.extract("BNS")
 
         assert isinstance(result, GrahamRatios)
@@ -138,7 +149,7 @@ class TestYahooFinanceExtract:
         """sector == Financial Services → current_ratio = None même si yfinance retourne une valeur."""
         extractor = YahooFinanceExtractor()
         info = {**_INFO_BNS_FINANCIER, "sector": "Financial Services", "currentRatio": 1.5}
-        with patch.object(extractor, "_fetch_info", return_value=info):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
             result = await extractor.extract("BNS")
         assert result.current_ratio is None
 
@@ -146,7 +157,7 @@ class TestYahooFinanceExtract:
     async def test_ticker_inconnu_leve_404(self):
         """info = {} → HTTPException 404."""
         extractor = YahooFinanceExtractor()
-        with patch.object(extractor, "_fetch_info", return_value={}):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw({})):
             with pytest.raises(HTTPException) as exc_info:
                 await extractor.extract("ZZZZZ")
         assert exc_info.value.status_code == 404
@@ -157,7 +168,7 @@ class TestYahooFinanceExtract:
         extractor = YahooFinanceExtractor()
         info_sans_prix = {k: v for k, v in _INFO_BNS_FINANCIER.items()
                          if k not in ("currentPrice", "regularMarketPrice")}
-        with patch.object(extractor, "_fetch_info", return_value=info_sans_prix):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info_sans_prix)):
             with pytest.raises(HTTPException) as exc_info:
                 await extractor.extract("BNS")
         assert exc_info.value.status_code == 404
@@ -166,7 +177,7 @@ class TestYahooFinanceExtract:
     async def test_debt_equity_divise_par_100(self):
         """yfinance retourne 45.0 (%) → debt_equity = 0.45 dans GrahamRatios."""
         extractor = YahooFinanceExtractor()
-        with patch.object(extractor, "_fetch_info", return_value=_INFO_BNS_FINANCIER):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_BNS_FINANCIER)):
             result = await extractor.extract("BNS")
         assert result.debt_equity == pytest.approx(0.45)
 
@@ -176,7 +187,7 @@ class TestYahooFinanceExtract:
         extractor = YahooFinanceExtractor()
         info = {**_INFO_BNS_FINANCIER}
         del info["trailingPE"]
-        with patch.object(extractor, "_fetch_info", return_value=info):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
             result = await extractor.extract("BNS")
         assert result.pe == pytest.approx(80.0 / 7.25, rel=0.01)
 
@@ -196,9 +207,39 @@ class TestYahooFinanceExtract:
     async def test_secteur_non_financier_current_ratio_present(self):
         """sector == Technology → current_ratio conservé."""
         extractor = YahooFinanceExtractor()
-        with patch.object(extractor, "_fetch_info", return_value=_INFO_MSFT):
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_MSFT)):
             result = await extractor.extract("MSFT")
         assert result.current_ratio == pytest.approx(1.34)
+
+    @pytest.mark.asyncio
+    async def test_eps_growth_calcule_depuis_income(self):
+        """income_stmt avec 2 ans → eps_growth_10y calculé (non nul)."""
+        extractor = YahooFinanceExtractor()
+        income = pd.DataFrame({
+            "2024": {"Net Income": 12_000_000_000.0},
+            "2022": {"Net Income": 8_000_000_000.0},
+        })
+        info = {**_INFO_BNS_FINANCIER, "sharesOutstanding": 1_000_000_000}
+        raw = {"info": info, "income": income, "dividends": None}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=raw):
+            result = await extractor.extract("BNS")
+        # 12B/1B = 12 eps récent, 8B/1B = 8 eps ancien → growth = (12/8)-1 = 0.5
+        assert result.eps_growth_10y == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_dividend_years_compte_consecutif(self):
+        """dividends avec 3 années consécutives → dividend_years = 3."""
+        extractor = YahooFinanceExtractor()
+        current_year = datetime.now().year
+        idx = pd.DatetimeIndex([
+            f"{current_year}-03-15", f"{current_year}-06-15",
+            f"{current_year - 1}-03-15", f"{current_year - 2}-03-15",
+        ])
+        divs = pd.Series([1.0, 1.0, 1.0, 1.0], index=idx)
+        raw = {"info": _INFO_BNS_FINANCIER, "income": None, "dividends": divs}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=raw):
+            result = await extractor.extract("BNS")
+        assert result.dividend_years == 3
 
 
 # ─── Tests unitaires — extract_earnings_quality() ──────────────────────────────
@@ -429,3 +470,83 @@ class TestExtractEndpoint:
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
             eps_growth_10y=0.0, price=80.0, book_value=61.5,
         )
+
+
+# ─── Tests unitaires — helpers module-level ────────────────────────────────────
+
+def _make_income_2cols(ni_recent: float, ni_oldest: float) -> pd.DataFrame:
+    """DataFrame income_stmt minimal avec Net Income sur 2 années."""
+    return pd.DataFrame({
+        "2024": {"Net Income": ni_recent},
+        "2022": {"Net Income": ni_oldest},
+    })
+
+
+class TestComputeEpsGrowth:
+    def test_croissance_positive(self):
+        """net income 8B → 12B, 1B actions → growth = 0.50."""
+        income = _make_income_2cols(12_000_000_000.0, 8_000_000_000.0)
+        assert _compute_eps_growth(income, 1_000_000_000) == pytest.approx(0.5)
+
+    def test_base_negative_retourne_zero(self):
+        """BPA ancien négatif (déficit) → impossible de calculer, retourne 0.0."""
+        income = _make_income_2cols(10_000_000_000.0, -2_000_000_000.0)
+        assert _compute_eps_growth(income, 1_000_000_000) == 0.0
+
+    def test_une_seule_periode_retourne_zero(self):
+        """Une seule colonne → insuffisant pour calculer la croissance."""
+        income = pd.DataFrame({"2024": {"Net Income": 10_000_000_000.0}})
+        assert _compute_eps_growth(income, 1_000_000_000) == 0.0
+
+    def test_income_none_retourne_zero(self):
+        """income = None → retourne 0.0 sans exception."""
+        assert _compute_eps_growth(None, 1_000_000_000) == 0.0
+
+
+class TestComputeDividendYears:
+    def test_trois_ans_consecutifs(self):
+        """3 années consécutives → dividend_years = 3."""
+        current_year = datetime.now().year
+        idx = pd.DatetimeIndex([
+            f"{current_year}-06-01",
+            f"{current_year - 1}-06-01",
+            f"{current_year - 2}-06-01",
+        ])
+        divs = pd.Series([1.0, 1.0, 1.0], index=idx)
+        assert _compute_dividend_years(divs) == 3
+
+    def test_gap_stoppe_le_compte(self):
+        """Année manquante → compte s'arrête avant le gap."""
+        current_year = datetime.now().year
+        idx = pd.DatetimeIndex([
+            f"{current_year}-06-01",
+            # année current_year-1 manquante volontairement
+            f"{current_year - 2}-06-01",
+        ])
+        divs = pd.Series([1.0, 1.0], index=idx)
+        assert _compute_dividend_years(divs) == 1
+
+    def test_serie_vide_retourne_zero(self):
+        """Serie vide → 0 dividendes."""
+        divs = pd.Series([], dtype=float)
+        assert _compute_dividend_years(divs) == 0
+
+    def test_none_retourne_none(self):
+        """None → données indisponibles → retourne None."""
+        assert _compute_dividend_years(None) is None
+
+
+class TestComputeNoDeficitYears:
+    def test_trois_sur_quatre_positifs(self):
+        """3 années positives sur 4 disponibles → retourne 3."""
+        income = pd.DataFrame({
+            "2024": {"Net Income": 10e9},
+            "2023": {"Net Income": -2e9},
+            "2022": {"Net Income": 8e9},
+            "2021": {"Net Income": 7e9},
+        })
+        assert _compute_no_deficit_years(income, 1_000_000_000) == 3
+
+    def test_income_none_retourne_none(self):
+        """income = None → retourne None."""
+        assert _compute_no_deficit_years(None, 1_000_000_000) is None

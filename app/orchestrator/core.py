@@ -18,6 +18,7 @@ from app.utils.ticker_sanitizer import sanitize_ticker
 if TYPE_CHECKING:
     from app.services.analysis_cache import AnalysisCacheService
     from app.services.composite_history_service import CompositeHistoryService
+    from app.services.esg_history_service import EsgHistoryService
     from app.services.observability import ObservabilityService
 
 from app.orchestrator.router import WorkflowRouter
@@ -265,6 +266,18 @@ class HistoryResponse(BaseModel):
     next_before: str | None
 
 
+class PagedHistoryResponse(BaseModel):
+    """Pagination offset/limit pour /history-paged (Sprint 90)."""
+
+    ticker: str | None
+    q: str | None
+    entries: list[HistoryEntry]
+    page: int
+    page_size: int
+    total_count: int
+    total_pages: int
+
+
 class TickerMetrics(BaseModel):
     ticker: str
     analyses: int
@@ -333,6 +346,7 @@ class Orchestrator:
         cache: AnalysisCacheService | None = None,
         observability: ObservabilityService | None = None,
         composite_history_service: "CompositeHistoryService | None" = None,
+        esg_history_service: "EsgHistoryService | None" = None,
     ) -> AnalyzeResponse:
         """
         Exécute le workflow company_analysis.
@@ -832,6 +846,19 @@ class Orchestrator:
             total_cost += esg_usage.cost_usd
             all_usages.append(esg_usage)
 
+            # Sprint 89 — persiste le score ESG dans esg_score_history (best-effort)
+            if esg_history_service is not None:
+                try:
+                    await esg_history_service.record(
+                        ticker=request.ticker,
+                        score=float(esg_output.esg_score),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Échec enregistrement esg_score_history pour %s",
+                        request.ticker, exc_info=True,
+                    )
+
         analysis_id = await self._persist(
             request, graham_output, earnings_output, dorsey_output, buffett_output,
             valuation_output, thesis_output, munger_output, tax_output,
@@ -909,6 +936,7 @@ class Orchestrator:
         cache: AnalysisCacheService | None = None,
         observability: ObservabilityService | None = None,
         composite_history_service: "CompositeHistoryService | None" = None,
+        esg_history_service: "EsgHistoryService | None" = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Version streaming de run_company_analysis.
@@ -1389,6 +1417,19 @@ class Orchestrator:
             all_usages.append(esg_usage)
             yield {"event": "skill_result", "data": {"skill_id": "esg_simplified", "result": esg_output.model_dump()}}
 
+            # Sprint 89 — persiste le score ESG (best-effort) en mode stream
+            if esg_history_service is not None:
+                try:
+                    await esg_history_service.record(
+                        ticker=request.ticker,
+                        score=float(esg_output.esg_score),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Échec enregistrement esg_score_history (stream) pour %s",
+                        request.ticker, exc_info=True,
+                    )
+
         analysis_id = await self._persist(
             request, graham_output, earnings_output, dorsey_output, buffett_output,
             valuation_output, thesis_output, munger_output, tax_output,
@@ -1657,11 +1698,15 @@ class Orchestrator:
         q: str | None = None,
         limit: int = 10,
         before: datetime | None = None,
+        from_dt: datetime | None = None,
+        to_dt: datetime | None = None,
     ) -> HistoryResponse:
         """
         Retourne les analyses passées, triées par date décroissante.
-        ticker : filtre exact (obligatoire si q absent).
-        q      : filtre full-text ILIKE sur ticker, workflow et verdicts JSONB.
+        ticker  : filtre exact (obligatoire si q absent).
+        q       : filtre full-text ILIKE sur ticker, workflow et verdicts JSONB.
+        from_dt : borne inférieure incluse sur created_at (ISO 8601).
+        to_dt   : borne supérieure incluse sur created_at (ISO 8601).
         Utilise un cursor sur created_at pour la pagination stable.
         """
         rows = await self._db.fetch(
@@ -1676,6 +1721,8 @@ class Orchestrator:
                  OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
               ))
               AND ($3::timestamptz IS NULL OR created_at < $3)
+              AND ($5::timestamptz IS NULL OR created_at >= $5)
+              AND ($6::timestamptz IS NULL OR created_at <= $6)
             ORDER BY created_at DESC
             LIMIT $4
             """,
@@ -1683,6 +1730,8 @@ class Orchestrator:
             q,
             before,
             limit + 1,
+            from_dt,
+            to_dt,
         )
 
         has_more = len(rows) > limit
@@ -1706,3 +1755,87 @@ class Orchestrator:
         next_before = entries[-1].created_at if has_more and entries else None
 
         return HistoryResponse(ticker=ticker, entries=entries, next_before=next_before)
+
+
+    async def get_history_paged(
+        self,
+        ticker: str | None = None,
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 10,
+        from_dt: "datetime | None" = None,
+        to_dt: "datetime | None" = None,
+    ) -> "PagedHistoryResponse":
+        """
+        Pagination offset/limit avec total_count (Sprint 90).
+        Execute deux requetes en parallele : SELECT LIMIT/OFFSET et SELECT COUNT(*).
+        """
+        offset = (page - 1) * page_size
+
+        async def _fetch_rows():
+            return await self._db.fetch(
+                """
+                SELECT id, ticker, workflow_name, skills_used, cost_usd, result, created_at
+                FROM analysis_history
+                WHERE ($1::text IS NULL OR ticker = $1)
+                  AND ($2::text IS NULL OR (
+                        ticker        ILIKE '%' || $2 || '%'
+                     OR workflow_name ILIKE '%' || $2 || '%'
+                     OR (result->>'graham')          ILIKE '%' || $2 || '%'
+                     OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+                  ))
+                  AND ($3::timestamptz IS NULL OR created_at >= $3)
+                  AND ($4::timestamptz IS NULL OR created_at <= $4)
+                ORDER BY created_at DESC
+                LIMIT $5 OFFSET $6
+                """,
+                ticker, q, from_dt, to_dt, page_size, offset,
+            )
+
+        async def _fetch_count():
+            return await self._db.fetchval(
+                """
+                SELECT COUNT(*)
+                FROM analysis_history
+                WHERE ($1::text IS NULL OR ticker = $1)
+                  AND ($2::text IS NULL OR (
+                        ticker        ILIKE '%' || $2 || '%'
+                     OR workflow_name ILIKE '%' || $2 || '%'
+                     OR (result->>'graham')          ILIKE '%' || $2 || '%'
+                     OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+                  ))
+                  AND ($3::timestamptz IS NULL OR created_at >= $3)
+                  AND ($4::timestamptz IS NULL OR created_at <= $4)
+                """,
+                ticker, q, from_dt, to_dt,
+            )
+
+        rows, total_count = await asyncio.gather(_fetch_rows(), _fetch_count())
+        total_count = int(total_count or 0)
+
+        entries = [
+            HistoryEntry(
+                analysis_id=str(row["id"]),
+                ticker=row["ticker"],
+                workflow=row["workflow_name"],
+                skills_applied=_json.loads(row["skills_used"]),
+                cost_usd=float(row["cost_usd"]),
+                defensive_score=_extract_int(row["result"], "graham", "defensive_score"),
+                graham_verdict=_extract_str(row["result"], "graham", "verdict"),
+                earnings_verdict=_extract_str(row["result"], "earnings_quality", "verdict"),
+                created_at=row["created_at"].isoformat(),
+            )
+            for row in rows
+        ]
+
+        total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count > 0 else 1
+
+        return PagedHistoryResponse(
+            ticker=ticker,
+            q=q,
+            entries=entries,
+            page=page,
+            page_size=page_size,
+            total_count=total_count,
+            total_pages=total_pages,
+        )
