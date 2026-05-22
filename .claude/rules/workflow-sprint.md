@@ -7,7 +7,7 @@
 À la fin de chaque sprint, dès que les livrables sont validés.  
 **Ces mises à jour sont automatiques — ne pas demander confirmation à Yves.**
 
-Un sprint n'est **pas terminé** tant que ces deux fichiers n'ont pas été mis à jour.
+Un sprint n'est **pas terminé** tant que ces trois étapes n'ont pas été complétées.
 
 ## Règles
 
@@ -47,6 +47,28 @@ Réécrire intégralement pour le sprint suivant — ce fichier est la carte d'e
 
 Proposer 3-5 sprints distincts, non redondants, qui font avancer le projet vers Phase 3 complète.
 
+### 3. Créer un commit git
+
+Après les deux mises à jour documentaires, créer un commit qui inclut **tous les fichiers modifiés et nouveaux du sprint** :
+
+```bash
+# Stager les fichiers du projet (jamais node_modules, .env, fichiers temp)
+git add app/ frontend/src/ tests/ infra/ ROADMAP.md CLAUDE.md \
+        prompt-mise-a-jour-roadmap.md requirements.txt .env.example \
+        .claude/rules/ .claude/settings.json .claude/settings.local.json
+
+# Commiter avec message structuré
+git commit -m "feat(sprintNN): <nom du sprint> — vX.Y.Z
+
+<description courte des livrables principaux>
+<tests : +N CI verts, +N Vitest verts>
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+**Cette étape est automatique — ne pas demander confirmation à Yves.**  
+Ne jamais inclure : `frontend/node_modules/`, `.env`, `frontend/vite.config.ts.timestamp-*`, `test_write.txt`.
+
 ### Rappel
 
-`ROADMAP.md` et `prompt-mise-a-jour-roadmap.md` sont la source de vérité pour la prochaine session. Sans leur mise à jour, la session suivante commence avec un contexte obsolète et perd le fil du projet.
+`ROADMAP.md`, `prompt-mise-a-jour-roadmap.md` et le commit git sont la source de vérité pour la prochaine session. Sans ces trois étapes, la session suivante commence avec un contexte obsolète et du travail non sauvegardé.

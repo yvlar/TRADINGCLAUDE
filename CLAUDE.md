@@ -85,7 +85,7 @@ Commandes complètes : [`docs/cheatsheet.md`](docs/cheatsheet.md)
 | [`format-analyses.md`](.claude/rules/format-analyses.md) | `analyses/**` | FR, orienté décision, calculs intermédiaires, structure BNS-2026-05.md |
 | [`comptes-canadiens-fiscalite.md`](.claude/rules/comptes-canadiens-fiscalite.md) | `canadian_tax/**`, `analyses/**` | CELI/REER/CELIAPP, fiscalité QC, Smith Manœuvre, allocation par compte |
 | [`tests-pyramide.md`](.claude/rules/tests-pyramide.md) | `tests/**`, `__tests__/**` | Pyramide 5 niveaux, patch `call_claude_with_retry`, fixture `client` |
-| [`workflow-sprint.md`](.claude/rules/workflow-sprint.md) | universel | Fin de sprint : ROADMAP.md + prompt-mise-a-jour-roadmap.md automatiques |
+| [`workflow-sprint.md`](.claude/rules/workflow-sprint.md) | universel | Fin de sprint : ROADMAP.md + prompt-mise-a-jour-roadmap.md + commit git — 3 étapes automatiques |
 | [`autonomie-confirmations.md`](.claude/rules/autonomie-confirmations.md) | universel | Actions libres vs 5 exceptions à confirmation obligatoire |
 | [`securite.md`](.claude/rules/securite.md) | universel | Clés API dans `.env`, `.env.example` obligatoire, pas de secrets dans les logs |
 | [`base-connaissances-skills.md`](.claude/rules/base-connaissances-skills.md) | universel | 16+2 skills, SKILL.md + references/ à consulter, flag esg_simplified |
