@@ -1,5 +1,12 @@
 # TradingClaude — Copilote Financier IA
 
+[![Backend — pytest](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml/badge.svg?branch=master&job=Backend+—+pytest)](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml)
+[![Frontend — Vitest](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml/badge.svg?branch=master&job=Frontend+—+Vitest)](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
+![Version](https://img.shields.io/badge/version-8.4.0-green)
+
 API d'analyse d'investissement multi-frameworks construite avec FastAPI, Claude (Anthropic),
 PostgreSQL, Redis et un frontend React 18.
 
