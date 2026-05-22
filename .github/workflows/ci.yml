@@ -17,18 +17,19 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: requirements-ci.txt
 
       - name: Installer les dépendances
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-ci.txt
 
-      - name: Lancer les tests backend (sans E2E)
+      - name: Lancer les tests backend (sans E2E ni evals)
         env:
           ANTHROPIC_API_KEY: sk-ant-ci-dummy-key
           API_KEY: ci-test-key
           DATABASE_URL: postgresql://unused:5432/unused
           REDIS_URL: redis://localhost:6379/0
           QDRANT_URL: http://localhost:6333
-        run: pytest tests/ --ignore=tests/e2e -q --tb=short
+        run: pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q --tb=short
 
   frontend:
     name: Frontend — Vitest
