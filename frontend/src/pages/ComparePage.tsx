@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { postCompare } from '../api/compare'
-import { postAnalyze } from '../api/analyze'
+import { postAnalyze, streamAnalyze } from '../api/analyze'
 import { ApiError } from '../api/client'
 import type { CompareResponse, TickerComparison } from '../types'
 
@@ -48,6 +48,8 @@ export default function ComparePage() {
   const [result, setResult] = useState<CompareResponse | null>(null)
   const [analyzingTickers, setAnalyzingTickers] = useState<Set<string>>(new Set())
   const [tickerErrors, setTickerErrors] = useState<Record<string, string>>({})
+  const [streamingEnabled, setStreamingEnabled] = useState(false)
+  const [tickerStreamSkill, setTickerStreamSkill] = useState<Record<string, string>>({})
   const errorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const handleAnalyze = async (ticker: string) => {
@@ -58,12 +60,33 @@ export default function ComparePage() {
     setTickerErrors((prev) => { const n = { ...prev }; delete n[ticker]; return n })
 
     try {
-      await Promise.race([
-        postAnalyze({ ticker, ratios: null, workflow: 'value_graham' }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Délai dépassé (60s)')), 60_000),
-        ),
-      ])
+      if (streamingEnabled) {
+        const streamPromise = (async () => {
+          for await (const event of streamAnalyze({ ticker, ratios: null, workflow: 'value_graham' })) {
+            if (event.type === 'skill_start') {
+              setTickerStreamSkill((prev) => ({ ...prev, [ticker]: event.data.skill_id }))
+            } else if (event.type === 'skill_result') {
+              setTickerStreamSkill((prev) => ({ ...prev, [ticker]: event.data.skill_id }))
+            } else if (event.type === 'error') {
+              throw new Error(event.data.message)
+            }
+          }
+        })()
+        await Promise.race([
+          streamPromise,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Délai dépassé (60s)')), 60_000),
+          ),
+        ])
+      } else {
+        await Promise.race([
+          postAnalyze({ ticker, ratios: null, workflow: 'value_graham' }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Délai dépassé (60s)')), 60_000),
+          ),
+        ])
+      }
+      setTickerStreamSkill((prev) => { const n = { ...prev }; delete n[ticker]; return n })
       const refreshed = await postCompare(result.tickers)
       setResult(refreshed)
     } catch (e) {
@@ -71,6 +94,7 @@ export default function ComparePage() {
       if (e instanceof ApiError) msg = e.message
       else if (e instanceof Error) msg = e.message
       setTickerErrors((prev) => ({ ...prev, [ticker]: msg }))
+      setTickerStreamSkill((prev) => { const n = { ...prev }; delete n[ticker]; return n })
       errorTimers.current[ticker] = setTimeout(() => {
         setTickerErrors((prev) => { const n = { ...prev }; delete n[ticker]; return n })
       }, 5_000)
@@ -130,7 +154,7 @@ export default function ComparePage() {
     <div className="space-y-6">
       <h2 className="text-xl font-bold">Comparaison de tickers</h2>
 
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <Input
           data-testid="compare-ticker-input"
           placeholder="Ex : BNS.TO, TD.TO, RY.TO"
@@ -146,6 +170,16 @@ export default function ComparePage() {
         >
           {loading ? 'Chargement…' : 'Comparer'}
         </Button>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            data-testid="streaming-toggle"
+            checked={streamingEnabled}
+            onChange={(e) => setStreamingEnabled(e.target.checked)}
+            className="h-4 w-4 accent-primary"
+          />
+          Streaming en direct
+        </label>
       </div>
 
       {error && (
@@ -182,6 +216,14 @@ export default function ComparePage() {
                         >
                           {analyzingTickers.has(c.ticker) ? 'Analyse…' : 'Analyser'}
                         </Button>
+                        {analyzingTickers.has(c.ticker) && streamingEnabled && tickerStreamSkill[c.ticker] && (
+                          <span
+                            data-testid={`stream-skill-${c.ticker}`}
+                            className="text-xs text-muted-foreground truncate max-w-[120px] block"
+                          >
+                            {tickerStreamSkill[c.ticker]}
+                          </span>
+                        )}
                         {tickerErrors[c.ticker] && (
                           <p
                             data-testid={`analyze-error-${c.ticker}`}

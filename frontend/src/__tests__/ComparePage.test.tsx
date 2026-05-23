@@ -13,6 +13,7 @@ vi.mock('../api/compare', () => ({
 
 vi.mock('../api/analyze', () => ({
   postAnalyze: vi.fn(),
+  streamAnalyze: vi.fn(),
 }))
 
 function makeResponse(tickers: string[], scores: (number | null)[]): CompareResponse {

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 92 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 93 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.5.0 |
+| **Version** | 8.6.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 93 — Streaming SSE dans ComparePage (opt-in) |
-| **Dernier sprint complété** | Sprint 92 — Annotations dans l'export Excel watchlist ✅ |
+| **Sprint actif** | Sprint 94 — Alerte ESG sur dégradation historique |
+| **Dernier sprint complété** | Sprint 93 — Streaming SSE dans ComparePage (opt-in) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -53,7 +53,7 @@
 - **Section Comparaison multi-tickers** dans DashboardPage — `TickerComparisonChart` recharts, 2-5 tickers côte à côte, saisie CSV, `Promise.all` parallèle sur `/composite-history/` (Sprint 72)
 - **Recherche full-text HistoryPage** — champ `q` ILIKE cross-ticker (ticker partiel, workflow, verdict) + index GIN pg_trgm + notice résultats cross-ticker (Sprint 73)
 - **Filtre par plage de dates HistoryPage** — champs "Du" / "Au" ISO 8601, validation from>to, passés à `GET /history?from_dt=&to_dt=` (Sprint 79)
-- **Page Comparer** — tableau multi-skills côte à côte pour 2-5 tickers, données historiques uniquement (Sprint 80)
+- **Page Comparer** — tableau multi-skills côte à côte pour 2-5 tickers, données historiques uniquement (Sprint 80) ; bouton "Analyser" opt-in par ticker (Sprint 87) ; toggle "Streaming en direct" SSE skill par skill (Sprint 93)
 - **Page ESG** — scores ESG de la watchlist (tableau tritable, badges ESG_FORT/MODERE/FAIBLE, lien Analyser), route `/esg` (Sprint 82)
 - **Seuil ESG configurable** — colonne "Seuil ESG" dans WatchlistTable, édition inline (bouton ✎ + Input 0-15 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/esg-threshold` (Sprint 84)
 - **Seuil Prix configurable** — colonne "Seuil Prix (%)" dans WatchlistTable, édition inline (bouton ✎ + Input 0-100 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/price-threshold`, valeur saisie en % convertie en décimal avant stockage (Sprint 91)
@@ -97,6 +97,20 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 93 — Streaming SSE dans ComparePage (opt-in) ✅
+
+**Objectif :** Ajouter un toggle "Streaming en direct" dans `ComparePage` qui utilise `POST /analyze-stream` (SSE) au lieu de `POST /analyze`, affichant le skill en cours skill par skill pendant l'analyse. Mode non-streaming conservé comme défaut (opt-in sans changement de comportement par défaut).
+
+**Livrables :**
+- `frontend/src/pages/ComparePage.tsx` — import `streamAnalyze` ; états `streamingEnabled` (bool, défaut false) + `tickerStreamSkill` (Record ticker→skill_id) ; toggle checkbox `data-testid="streaming-toggle"` dans la barre de saisie ; `handleAnalyze()` bifurque selon `streamingEnabled` — branche streaming itère `for await` sur `streamAnalyze()` avec `Promise.race 60s`, met à jour `tickerStreamSkill` sur `skill_start`/`skill_result`, lève une erreur sur `error` ; branche non-streaming identique à Sprint 87 ; affichage du skill courant avec `data-testid="stream-skill-{ticker}"` sous le bouton Analyser quand streaming actif
+- `frontend/src/__tests__/CompareStreaming.test.tsx` — 5 tests : toggle présent/désactivé, toggle actif → `streamAnalyze` appelé (pas `postAnalyze`), toggle inactif → `postAnalyze` appelé (rétrocompat), `skill_start` affiché progressivement, erreur SSE affichée inline
+- `frontend/src/__tests__/ComparePage.test.tsx` — mock `../api/analyze` complété avec `streamAnalyze: vi.fn()`
+
+**Version** : 8.6.0
+**Tests** : 1374 CI verts (inchangé) ; 197 Vitest verts — +5 tests Sprint 93
+
+---
 
 ### Sprint 92 — Annotations dans l'export Excel watchlist ✅
 
