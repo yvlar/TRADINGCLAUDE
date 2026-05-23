@@ -8,6 +8,10 @@ vi.mock('../api/watchlist', () => ({
   patchPriceThreshold: vi.fn(),
 }))
 
+vi.mock('../components/CompositeSparkline', () => ({
+  CompositeSparkline: () => null,
+}))
+
 import * as watchlistApi from '../api/watchlist'
 
 const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => ({

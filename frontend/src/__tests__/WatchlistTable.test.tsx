@@ -3,6 +3,10 @@ import { render, screen } from '@testing-library/react'
 import { WatchlistTable } from '../components/WatchlistTable'
 import type { WatchlistEntry } from '../types'
 
+vi.mock('../components/CompositeSparkline', () => ({
+  CompositeSparkline: () => null,
+}))
+
 const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => ({
   id: 'abc-123',
   ticker: 'BNS',

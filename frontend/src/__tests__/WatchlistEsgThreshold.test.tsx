@@ -7,6 +7,10 @@ vi.mock('../api/watchlist', () => ({
   patchEsgThreshold: vi.fn(),
 }))
 
+vi.mock('../components/CompositeSparkline', () => ({
+  CompositeSparkline: () => null,
+}))
+
 import { patchEsgThreshold } from '../api/watchlist'
 
 const makeEntry = (overrides: Partial<WatchlistEntry> = {}): WatchlistEntry => ({

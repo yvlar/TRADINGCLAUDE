@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 96 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 97 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.9.0 |
+| **Version** | 9.0.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 97 — Score composite historique dans WatchlistPage |
-| **Dernier sprint complété** | Sprint 96 — Estimation rapide total_count via pg_class ✅ |
+| **Sprint actif** | Sprint 98 — Professionnalisation GitHub |
+| **Dernier sprint complété** | Sprint 97 — Score composite historique dans WatchlistPage ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -193,6 +193,21 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 8.4.0
 **Tests** : 1371 CI verts (hors e2e et evals) — +3 tests Sprint 91 ; 192 Vitest verts — +5 tests Sprint 91 (+4 bonus PdfDownload restaurés)
+
+---
+
+### Sprint 97 — Score composite historique dans WatchlistPage ✅
+
+**Objectif :** Ajouter un mini-graphique sparkline dans `WatchlistTable` pour chaque ticker, montrant l'évolution du `composite_score` sur 30 jours. Données déjà disponibles via `GET /composite-history/{ticker}?limit=30` (Sprint 57/60) — rendues visibles directement dans la watchlist sans naviguer vers le Dashboard.
+
+**Livrables :**
+- `frontend/src/components/CompositeSparkline.tsx` — composant Sparkline : props `ticker: string`, `height?: number` (défaut 40) ; React Query `['composite-history', ticker]` vers `getCompositeHistory(ticker, 30)` ; `LineChart` recharts 120px × hauteur configurable sans axes/tooltip/légende ; Loading : div `animate-pulse` ; Error/Vide : dash `—`
+- `frontend/src/components/WatchlistTable.tsx` — colonne "Tendance" ajoutée après "Score composite" (avant "ESG") avec `<CompositeSparkline ticker={entry.ticker} />`
+- `frontend/src/__tests__/CompositeSparkline.test.tsx` — 5 tests Vitest : loading, erreur API, 0 points, données présentes (LineChart), prop height
+- `frontend/src/__tests__/Watchlist*.test.tsx` (×4) — mock `CompositeSparkline` ajouté pour conserver la compatibilité sans QueryClientProvider
+
+**Version** : 9.0.0
+**Tests** : 1383 CI verts (inchangé) ; 205 Vitest verts — +5 tests Sprint 97
 
 ---
 

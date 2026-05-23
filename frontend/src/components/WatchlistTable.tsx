@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import type { WatchlistEntry } from '../types'
 import { patchEsgThreshold, patchPriceThreshold } from '../api/watchlist'
+import { CompositeSparkline } from './CompositeSparkline'
 
 interface WatchlistTableProps {
   entries: WatchlistEntry[]
@@ -128,6 +129,7 @@ export function WatchlistTable({
           <TableHead>Prix vérifié</TableHead>
           <TableHead>Alerte</TableHead>
           <TableHead>Score composite</TableHead>
+          <TableHead>Tendance</TableHead>
           <TableHead>ESG</TableHead>
           <TableHead>Seuil ESG</TableHead>
           <TableHead>Seuil Prix (%)</TableHead>
@@ -180,6 +182,9 @@ export function WatchlistTable({
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
+              </TableCell>
+              <TableCell>
+                <CompositeSparkline ticker={entry.ticker} />
               </TableCell>
               <TableCell>
                 <Badge
