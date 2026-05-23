@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { HistoryTable } from '../components/HistoryTable'
-import { getHistoryPaged, downloadTickerPdf } from '../api/analyze'
+import { getHistoryPaged, downloadTickerPdf, deleteAnalysis } from '../api/analyze'
 import { downloadAnnotationsCsv, downloadAnnotationsXlsx } from '../api/annotations'
 import { apiClient, ApiError } from '../api/client'
 
@@ -28,6 +28,8 @@ export default function HistoryPage() {
   const [csvLoading, setCsvLoading] = useState(false)
   const [xlsxLoading, setXlsxLoading] = useState(false)
   const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
 
   const historyQuery = useQuery({
     queryKey: ['history-paged', submitted?.ticker, submitted?.q, submitted?.fromDt, submitted?.toDt, currentPage, pageSize],
@@ -47,7 +49,9 @@ export default function HistoryPage() {
     enabled: submitted !== null,
   })
 
-  const entries = historyQuery.data?.entries ?? []
+  const entries = (historyQuery.data?.entries ?? []).filter(
+    (e) => !deletedIds.has(e.analysis_id),
+  )
   const totalPages = historyQuery.data?.total_pages ?? 1
   const totalCount = historyQuery.data?.total_count ?? 0
 
@@ -128,6 +132,19 @@ export default function HistoryPage() {
       setXlsxLoading(false)
     }
   }
+
+  const handleDeleteAnalysis = useCallback(async (analysisId: string) => {
+    if (!window.confirm('Supprimer cette analyse ? Cette action est irréversible.')) return
+    try {
+      await deleteAnalysis(analysisId)
+      setDeletedIds((prev) => new Set([...prev, analysisId]))
+      setDeleteMessage('Analyse supprimée.')
+    } catch {
+      setDeleteMessage('Erreur lors de la suppression.')
+    } finally {
+      setTimeout(() => setDeleteMessage(null), 3000)
+    }
+  }, [])
 
   const handleDownloadPdf = useCallback(async (analysisId: string, ticker: string) => {
     try {
@@ -266,6 +283,10 @@ export default function HistoryPage() {
         <p className="text-sm text-muted-foreground">{pdfMessage}</p>
       )}
 
+      {deleteMessage && (
+        <p className="text-sm text-muted-foreground" data-testid="delete-analysis-message">{deleteMessage}</p>
+      )}
+
       {isSearchMode && entries.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="search-cross-ticker-notice">
           Resultats cross-ticker pour &laquo; {submitted?.q} &raquo;
@@ -286,6 +307,7 @@ export default function HistoryPage() {
             onLoadMore={() => { /* pagination geree par boutons */ }}
             isLoading={historyQuery.isFetching}
             onDownloadPdf={handleDownloadPdf}
+            onDeleteAnalysis={handleDeleteAnalysis}
           />
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">

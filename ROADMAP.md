@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 94 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 95 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.7.0 |
+| **Version** | 8.8.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 95 — Suppression des analyses obsolètes (DELETE /history) |
-| **Dernier sprint complété** | Sprint 94 — Alerte ESG sur dégradation historique ✅ |
+| **Sprint actif** | Sprint 96 — Estimation rapide total_count via pg_class |
+| **Dernier sprint complété** | Sprint 95 — Suppression des analyses obsolètes ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -27,6 +27,7 @@
 - `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
+- `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
 - `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63)
 - Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
 - RAG Qdrant activé si `OPENAI_API_KEY` présente (collection `investment_knowledge`)
@@ -58,6 +59,7 @@
 - **Seuil ESG configurable** — colonne "Seuil ESG" dans WatchlistTable, édition inline (bouton ✎ + Input 0-15 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/esg-threshold` (Sprint 84)
 - **Seuil Prix configurable** — colonne "Seuil Prix (%)" dans WatchlistTable, édition inline (bouton ✎ + Input 0-100 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/price-threshold`, valeur saisie en % convertie en décimal avant stockage (Sprint 91)
 - **Rapport PDF mensuel enrichi** — section ESG (Ticker / Score ESG / Verdict / Seuil) ajoutée en fin de PDF si au moins un ticker a un `last_esg_score` non-null (Sprint 88)
+- **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
 - **Auth** — Bearer token (localStorage), routes protégées
 
 #### Outillage Claude Code (Sprint 74)
@@ -97,6 +99,24 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 95 — Suppression des analyses obsolètes (DELETE /history) ✅
+
+**Objectif :** Permettre à Yves de supprimer des analyses individuelles de l'historique directement depuis l'interface React, via un bouton "Supprimer" dans `HistoryPage` avec confirmation modale et un endpoint admin `DELETE /history/{analysis_id}`.
+
+**Livrables :**
+- `app/orchestrator/core.py` — méthode `Orchestrator.delete_analysis(analysis_id: str) -> bool` : supprime l'annotation orpheline (pas de FK cascade sur `annotations`) puis `DELETE FROM analysis_history WHERE id = $1::uuid` ; retourne True si 1 ligne supprimée, False sinon ; gère `asyncpg.exceptions.InvalidTextRepresentationError` pour UUID invalide
+- `app/api/main.py` — endpoint `DELETE /history/{analysis_id}` (admin only, `Depends(_require_admin)`) ; `analysis_id: UUID` → FastAPI valide le format (422 auto) ; 204 si supprimée, 404 si introuvable ; imports ajoutés : `UUID`, `Depends`, `Response`, `_require_admin`
+- `frontend/src/api/analyze.ts` — `deleteAnalysis(analysis_id: string): Promise<void>` via `apiClient.requestEmpty` avec méthode DELETE
+- `frontend/src/components/HistoryTable.tsx` — prop `onDeleteAnalysis?: (analysisId: string) => void` + colonne "Supprimer" + bouton icône 🗑 `data-testid="delete-analysis-{analysis_id}"`
+- `frontend/src/pages/HistoryPage.tsx` — state `deletedIds: Set<string>` + filtre entrées supprimées + `handleDeleteAnalysis` (window.confirm → deleteAnalysis → setDeletedIds + notification 3s) + passage `onDeleteAnalysis` à HistoryTable
+- `tests/test_delete_history.py` — 3 tests CI : True si DELETE 1, False si DELETE 0, endpoint 204 confirmé
+- `frontend/src/__tests__/DeleteAnalysis.test.tsx` — 3 tests Vitest : bouton présent, deleteAnalysis appelé avec bon id, entrée retirée du tableau
+
+**Version** : 8.8.0
+**Tests** : 1382 CI verts — +3 tests Sprint 95 ; 200 Vitest verts — +3 tests Sprint 95
+
+---
 
 ### Sprint 94 — Alerte ESG sur dégradation historique ✅
 

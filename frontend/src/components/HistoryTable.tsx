@@ -19,6 +19,7 @@ interface HistoryTableProps {
   onLoadMore: () => void
   isLoading?: boolean
   onDownloadPdf?: (analysisId: string, ticker: string) => void
+  onDeleteAnalysis?: (analysisId: string) => void
 }
 
 export function HistoryTable({
@@ -27,6 +28,7 @@ export function HistoryTable({
   onLoadMore,
   isLoading,
   onDownloadPdf,
+  onDeleteAnalysis,
 }: HistoryTableProps) {
   if (entries.length === 0) {
     return (
@@ -56,6 +58,7 @@ export function HistoryTable({
                 <TableHead>Coût</TableHead>
                 <TableHead>PDF</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead>Supprimer</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -109,6 +112,19 @@ export function HistoryTable({
                   </TableCell>
                   <TableCell className="min-w-[140px]">
                     <AnnotationSection analysisId={entry.analysis_id} />
+                  </TableCell>
+                  <TableCell>
+                    {onDeleteAnalysis && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDeleteAnalysis(entry.analysis_id)}
+                        className="h-7 text-xs text-destructive hover:text-destructive"
+                        data-testid={`delete-analysis-${entry.analysis_id}`}
+                      >
+                        🗑
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

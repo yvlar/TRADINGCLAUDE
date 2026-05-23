@@ -1839,3 +1839,19 @@ class Orchestrator:
             total_count=total_count,
             total_pages=total_pages,
         )
+
+    async def delete_analysis(self, analysis_id: str) -> bool:
+        """Supprime une analyse et son annotation éventuelle ; retourne True si trouvée."""
+        try:
+            # Supprime l'annotation orpheline — pas de FK cascade sur cette table
+            await self._db.execute(
+                "DELETE FROM annotations WHERE analysis_id = $1::uuid",
+                analysis_id,
+            )
+            result = await self._db.execute(
+                "DELETE FROM analysis_history WHERE id = $1::uuid",
+                analysis_id,
+            )
+        except asyncpg.exceptions.InvalidTextRepresentationError:
+            return False
+        return result == "DELETE 1"

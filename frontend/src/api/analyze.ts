@@ -128,6 +128,12 @@ export async function fetchEvalDrift(): Promise<EvalDriftResult[]> {
   }
 }
 
+export async function deleteAnalysis(analysis_id: string): Promise<void> {
+  await apiClient.requestEmpty(`/history/${encodeURIComponent(analysis_id)}`, {
+    method: 'DELETE',
+  })
+}
+
 export async function* streamAnalyze(body: AnalyzeRequest): AsyncGenerator<SSEEvent> {
   const apiKey =
     localStorage.getItem('api_token') ??

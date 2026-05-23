@@ -5,16 +5,18 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator
+from uuid import UUID
 
 import anthropic
 import asyncpg
 import httpx
 import redis.asyncio as aioredis
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.endpoints.admin import router as admin_router
+from app.api.endpoints.admin import router as admin_router, _require_admin
+from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
 from app.api.endpoints.annotations import router as annotations_router
 from app.api.endpoints.compare import router as compare_router
 from app.api.endpoints.monthly_report import router as monthly_report_router
@@ -682,3 +684,25 @@ async def history_paged(
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
     )
+
+
+@app.delete(
+    "/history/{analysis_id}",
+    status_code=204,
+    summary="Supprimer une analyse (admin uniquement)",
+)
+async def delete_history(
+    analysis_id: UUID,
+    request: Request,
+    _admin: _ApiKeyRecord | None = Depends(_require_admin),
+) -> Response:
+    """
+    Supprime une analyse de l'historique et son annotation éventuelle.
+    Retourne 204 si supprimée, 404 si introuvable.
+    L'UUID invalide retourne 422 automatiquement via la validation FastAPI.
+    """
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    deleted = await orchestrator.delete_analysis(str(analysis_id))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Analyse introuvable")
+    return Response(status_code=204)
