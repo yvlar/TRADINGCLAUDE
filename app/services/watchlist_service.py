@@ -132,6 +132,15 @@ class WatchlistService:
             composite_score,
         )
 
+    @staticmethod
+    def check_esg_degradation(
+        entry: WatchlistEntry, previous_score: float | None
+    ) -> bool:
+        """Retourne True si la dégradation ESG dépasse le seuil esg_alert_threshold."""
+        if entry.last_esg_score is None or previous_score is None:
+            return False
+        return (previous_score - entry.last_esg_score) > entry.esg_alert_threshold
+
     async def get_all_with_composite(self) -> list[dict]:
         """Retourne toutes les entrées watchlist enrichies du dernier composite_score et de la dernière annotation."""
         rows = await self._db.fetch(

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 93 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 94 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.6.0 |
+| **Version** | 8.7.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 94 — Alerte ESG sur dégradation historique |
-| **Dernier sprint complété** | Sprint 93 — Streaming SSE dans ComparePage (opt-in) ✅ |
+| **Sprint actif** | Sprint 95 — Suppression des analyses obsolètes (DELETE /history) |
+| **Dernier sprint complété** | Sprint 94 — Alerte ESG sur dégradation historique ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -97,6 +97,24 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 94 — Alerte ESG sur dégradation historique ✅
+
+**Objectif :** Détecter automatiquement une dégradation du score ESG d'un ticker de la watchlist et déclencher une alerte Slack/webhook quand la baisse dépasse le seuil `esg_alert_threshold`. Ferme la boucle "détection → alerte" déjà en place pour le composite_score (Sprint 57).
+
+**Livrables :**
+- `app/services/esg_history_service.py` — méthode `get_latest_previous(ticker: str) -> float | None` : SELECT OFFSET 1 ORDER BY recorded_at DESC — retourne le 2e score le plus récent, None si < 2 entrées
+- `app/services/watchlist_service.py` — méthode statique `check_esg_degradation(entry, previous_score) -> bool` : True si `(previous_score - last_esg_score) > esg_alert_threshold`
+- `app/workers/tasks.py` — `_execute_esg_degradation_check()` + tâche Celery `run_esg_degradation_check()` : itère la watchlist, appelle `get_latest_previous()`, déclenche `webhook_service.send_esg_alert()` + `slack_service.send_esg_alert()` si dégradation détectée ; retourne `{"nb_alertes": N}`
+- `app/workers/celery_app.py` — beat schedule `run-esg-degradation-check` : chaque dimanche à 12h00 UTC (après le screener 11h00)
+- `app/api/endpoints/watchlist.py` — endpoint `POST /watchlist/check-esg-degradation` (admin only, `Depends(_require_admin)`) ; retourne `{"triggered": N}` alertes déclenchées
+- `tests/test_esg_degradation.py` — 5 tests CI : `get_latest_previous` None < 2 entrées, `get_latest_previous` 2e score correct, `check_esg_degradation` False si baisse < seuil, True si baisse > seuil, endpoint 200 `{"triggered": 1}`
+- `tests/test_celery_composite_alert.py` — mise à jour du test count beat schedule (6 → 7 tâches)
+
+**Version** : 8.7.0
+**Tests** : 1379 CI verts — +5 tests Sprint 94 (+1 mis à jour) ; 197 Vitest verts (inchangé)
+
+---
 
 ### Sprint 93 — Streaming SSE dans ComparePage (opt-in) ✅
 

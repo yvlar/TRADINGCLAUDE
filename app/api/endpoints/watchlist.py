@@ -6,13 +6,16 @@ import uuid
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from app.api.endpoints.admin import _require_admin
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
 from app.orchestrator.core import AnalyzeRequest
+from app.services.api_key_service import ApiKeyRecord
 from app.services.email_service import EmailService
+from app.services.esg_history_service import EsgHistoryService
 from app.services.report import ReportService, _composite_alerte, _composite_label
 from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
@@ -281,6 +284,52 @@ async def send_watchlist_report(request: Request) -> dict:
     )
     logger.info("Envoi immédiat rapport watchlist — sent=%s, positions=%d", sent, len(entries))
     return {"sent": sent}
+
+
+@router.post(
+    "/check-esg-degradation",
+    summary="Vérification manuelle des dégradations ESG (admin)",
+)
+async def check_esg_degradation(
+    request: Request,
+    _admin: ApiKeyRecord | None = Depends(_require_admin),
+) -> dict:
+    """Déclenche la vérification de dégradation ESG pour toutes les entrées watchlist."""
+    watchlist_service: WatchlistService = request.app.state.watchlist_service
+    esg_history_service: EsgHistoryService = request.app.state.esg_history_service
+    webhook_service = request.app.state.webhook_service
+    slack_service = request.app.state.slack_service
+
+    entries = await watchlist_service.list_entries()
+    nb_alertes = 0
+
+    for entry in entries:
+        if entry.last_esg_score is None:
+            continue
+        try:
+            previous_score = await esg_history_service.get_latest_previous(entry.ticker)
+            if WatchlistService.check_esg_degradation(entry, previous_score):
+                await webhook_service.send_esg_alert(
+                    ticker=entry.ticker,
+                    esg_score=entry.last_esg_score,
+                    threshold=entry.esg_alert_threshold,
+                )
+                await slack_service.send_esg_alert(
+                    ticker=entry.ticker,
+                    score=entry.last_esg_score,
+                    threshold=entry.esg_alert_threshold,
+                )
+                nb_alertes += 1
+                logger.warning(
+                    "Alerte dégradation ESG (manuel) — %s : score %.1f, seuil %.1f",
+                    entry.ticker,
+                    entry.last_esg_score,
+                    entry.esg_alert_threshold,
+                )
+        except Exception:
+            logger.exception("Erreur vérification dégradation ESG pour %s", entry.ticker)
+
+    return {"triggered": nb_alertes}
 
 
 @router.post("/{entry_id}/analyze", summary="Déclenche une analyse manuelle immédiate")

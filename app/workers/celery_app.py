@@ -52,4 +52,9 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.run_monthly_report",
         "schedule": crontab(hour=8, minute=0, day_of_month=1),
     },
+    # Vérification dégradation ESG — tous les dimanches à 12h00 UTC (après le screener 11h00)
+    "run-esg-degradation-check": {
+        "task": "run_esg_degradation_check",
+        "schedule": crontab(day_of_week="sunday", hour=12, minute=0),
+    },
 }

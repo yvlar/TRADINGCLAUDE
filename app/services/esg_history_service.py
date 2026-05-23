@@ -56,6 +56,25 @@ class EsgHistoryService:
             validated, score, verdict,
         )
 
+    async def get_latest_previous(self, ticker: str) -> float | None:
+        """Retourne le score ESG avant le dernier enregistrement (2e le plus récent).
+
+        Retourne None si moins de 2 entrées pour ce ticker.
+        """
+        validated = sanitize_ticker(ticker)
+        row = await self._db.fetchrow(
+            """
+            SELECT score
+            FROM esg_score_history
+            WHERE ticker = $1
+            ORDER BY recorded_at DESC
+            LIMIT 1
+            OFFSET 1
+            """,
+            validated,
+        )
+        return float(row["score"]) if row else None
+
     async def get_history(
         self, ticker: str, limit: int = 100
     ) -> list[EsgHistoryPoint]:

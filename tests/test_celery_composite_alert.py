@@ -48,9 +48,10 @@ class TestBeatSchedule:
         assert schedule.hour == frozenset({10})
         assert schedule.minute == frozenset({0})
 
-    def test_6_taches_planifiees_au_total(self):
+    def test_7_taches_planifiees_au_total(self):
+        # Sprint 94 : ajout de run_esg_degradation_check — 7 tâches au total
         schedule = celery_app.conf.beat_schedule
-        assert len(schedule) == 6
+        assert len(schedule) == 7
 
     def test_price_alert_toujours_planifiee(self):
         assert "run-price-alert-check-daily" in celery_app.conf.beat_schedule

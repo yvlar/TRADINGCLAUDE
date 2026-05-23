@@ -639,6 +639,68 @@ def run_monthly_report(self) -> None:
     logger.info("Fin rapport mensuel automatisé")
 
 
+async def _execute_esg_degradation_check() -> int:
+    """Vérifie la dégradation ESG pour toutes les entrées watchlist et envoie les alertes."""
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    try:
+        from app.services.esg_history_service import EsgHistoryService
+
+        watchlist_service = WatchlistService(db_pool)
+        esg_history_service = EsgHistoryService(db_pool)
+        webhook_service = WebhookService()
+        slack_service = SlackService()
+        entries = await watchlist_service.list_entries()
+        nb_alertes = 0
+
+        for entry in entries:
+            if entry.last_esg_score is None:
+                continue
+            try:
+                previous_score = await esg_history_service.get_latest_previous(entry.ticker)
+                if WatchlistService.check_esg_degradation(entry, previous_score):
+                    await webhook_service.send_esg_alert(
+                        ticker=entry.ticker,
+                        esg_score=entry.last_esg_score,
+                        threshold=entry.esg_alert_threshold,
+                    )
+                    await slack_service.send_esg_alert(
+                        ticker=entry.ticker,
+                        score=entry.last_esg_score,
+                        threshold=entry.esg_alert_threshold,
+                    )
+                    nb_alertes += 1
+                    logger.warning(
+                        "Alerte dégradation ESG — %s : score actuel %.1f, précédent %.1f, seuil %.1f",
+                        entry.ticker,
+                        entry.last_esg_score,
+                        previous_score,
+                        entry.esg_alert_threshold,
+                    )
+            except Exception:
+                logger.exception("Erreur vérification dégradation ESG pour %s", entry.ticker)
+
+        return nb_alertes
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_esg_degradation_check", bind=True)
+def run_esg_degradation_check(self) -> dict:
+    """
+    Tâche Celery — vérification hebdomadaire des dégradations ESG watchlist.
+    Planifiée chaque dimanche à 12h00 UTC (après le screener 11h00 UTC).
+    """
+    logger.info("Début vérification dégradation ESG watchlist")
+    nb_alertes = asyncio.run(_execute_esg_degradation_check())
+    logger.info(
+        "Fin vérification dégradation ESG — %d alerte(s) déclenchée(s)", nb_alertes
+    )
+    return {"nb_alertes": nb_alertes}
+
+
 @celery_app.task(name="run_scheduled_screener", bind=True)
 def run_scheduled_screener(self) -> dict:
     """
