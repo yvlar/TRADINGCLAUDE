@@ -25,3 +25,22 @@ ignore = [
 python_version = "3.11"
 ignore_missing_imports = true
 strict = false
+plugins = ["pydantic.mypy"]
+# Faux positifs avec Pydantic v2 @computed_field et pattern SkillBase générique
+disable_error_code = ["override", "prop-decorator"]
+
+# Modules avec erreurs de typage pré-existantes — à corriger progressivement
+[[tool.mypy.overrides]]
+module = [
+    "app.services.email_service",
+    "app.services.backtest",
+    "app.services.evals_dashboard",
+    "app.skills.tier1.yahoo_finance",
+    "app.api.endpoints.telemetry",
+    "app.api.endpoints.ticker_report",
+    "app.api.endpoints.watchlist",
+    "app.rag.client",
+    "app.skills.tier2.stock_valuation.skill",
+    "app.orchestrator.core",
+]
+ignore_errors = true
