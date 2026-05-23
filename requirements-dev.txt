@@ -6,4 +6,4 @@ respx>=0.21.0
 fakeredis[aioredis]>=2.20.0
 locust>=2.20.0
 playwright>=1.44
-pytest-playwright>=0.5
+pytest-playwright>=0.8.0
