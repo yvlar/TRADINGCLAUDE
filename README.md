@@ -1,48 +1,188 @@
-# TradingClaude — Copilote Financier IA
+[![CI](https://github.com/yvlar/tradingClaude/actions/workflows/ci.yml/badge.svg)](https://github.com/yvlar/tradingClaude/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Claude API](https://img.shields.io/badge/Claude%20API-Tool%20Use-7C3AED)](https://docs.anthropic.com)
+[![Version](https://img.shields.io/badge/version-v9.4.0-2563EB)](ROADMAP.md)
 
-[![Backend — pytest](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml/badge.svg?branch=master&job=Backend+—+pytest)](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml)
-[![Frontend — Vitest](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml/badge.svg?branch=master&job=Frontend+—+Vitest)](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
-![Version](https://img.shields.io/badge/version-8.4.0-green)
+# TradingClaude — Copilote d'analyse financière IA
 
-API d'analyse d'investissement multi-frameworks construite avec FastAPI, Claude (Anthropic),
-PostgreSQL, Redis et un frontend React 18.
+*18 frameworks d'investissement académiques · FastAPI · React 18 · Claude API Tool Use · RAG Qdrant*
 
-Analyse les actions selon **18 frameworks académiques** (Graham, Buffett, Dorsey, Lynch, ESG, etc.),
-expose une API REST complète avec watchlist, screener, alertes, exports PDF/Excel et un tableau
-de bord en temps réel.
+TradingClaude est un outil d'analyse fondamentale IA — pas un bot de trading algorithmique. Il structure et accélère la recherche sur les actions cotées (TSX, NYSE, NASDAQ) en appliquant simultanément plusieurs grilles d'analyse rigoureuses. Concrètement, une requête `POST /analyze` sur `BNS.TO` déclenche 16 frameworks en parallèle : Graham, Buffett, Dorsey, Klarman, Damodaran, et plus encore. La philosophie du projet est de transformer une discipline value investing reproductible en checklist IA exécutable — inspirée du four-pillar (ETF passif, thématique, valeur, systématique).
 
-**Version :** 8.4.0 — Phase 3 (Pipeline de synthèse)  
-**Tests :** 1 371 CI verts · 192 Vitest verts
+**Version :** 9.4.0 — Phase 3 (Pipeline de synthèse) · **Tests :** 1 401 CI verts · 217 Vitest verts
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph Frontend["Frontend React 18 — port 5173"]
+        AP[AnalyzePage]
+        SP[ScreenerPage]
+        HP[HistoryPage]
+        WP[WatchlistPage]
+        DP[DashboardPage]
+        CP[ComparePage]
+        ESG[EsgPage]
+        ALR[AlertsPage]
+        ADM[AdminPage]
+        AUTH[Login · Register · ForgotPassword]
+    end
+
+    subgraph API["API FastAPI — port 8000"]
+        ANA["POST /analyze"]
+        STR["POST /analyze-stream SSE"]
+        SCR["POST /screen"]
+        HIS["GET /history-paged"]
+        WL["GET·POST /watchlist"]
+        CMP["POST /compare"]
+        AUT["/auth/* — JWT + CSRF"]
+        ALRT["GET /alerts"]
+        PDF["GET /ticker-report · /screener-report · /monthly-report · /watchlist/export.pdf"]
+        XLS["GET /watchlist/export.xlsx · /annotations/export.xlsx"]
+        OBS["GET /healthz · /metrics · /telemetry/*"]
+    end
+
+    subgraph Orch["Orchestrateur"]
+        ORC[16 skills en parallèle]
+        CACHE["Circuit court Redis < 24h"]
+    end
+
+    subgraph Skills["Skills Claude API — Tool Use"]
+        T1["Tier1 : yahoo_finance · sedar_plus"]
+        T2["Tier2 : 16 frameworks académiques\ngraham · buffett · dorsey · klarman · lynch\nfisher · greenblatt · damodaran · marks · pabrai\nearnings_quality · munger · canadian_tax\nstock_valuation · thesis_builder · esg_simplified"]
+    end
+
+    subgraph Infra["Infrastructure Docker Compose — 5 services"]
+        PG[("PostgreSQL 16\nanalyses · watchlist · alertes")]
+        RD[("Redis 7\ncache · broker Celery")]
+        QD[("Qdrant v1.9\nRAG investment_knowledge")]
+        LF["Langfuse\nobservabilité LLM (optionnel)"]
+    end
+
+    subgraph Workers["Celery Beat — tâches planifiées"]
+        W1["run_scheduled_screener\nDim. 11h UTC"]
+        W2["run_monthly_report\n1er du mois 08h UTC"]
+        W3["run_esg_degradation_check\nDim. 12h UTC"]
+        NOTIF["SlackService · WebhookService"]
+    end
+
+    Frontend -->|"proxy Vite → :8000"| API
+    API --> Orch
+    Orch --> CACHE
+    CACHE -->|"miss"| Skills
+    Skills --> T1 & T2
+    T1 & T2 -->|"Anthropic SDK + prompt caching"| Skills
+    Orch --> PG & RD
+    ORC -->|"RAG optionnel"| QD
+    API --> LF
+    Workers --> PG & RD & NOTIF
+```
+
+---
+
+## Fonctionnalités
+
+| Catégorie | Description |
+|-----------|-------------|
+| **Analyse fondamentale** | 16 frameworks académiques en parallèle via Claude API Tool Use + prompt caching |
+| **Screener batch** | Jusqu'à 20 tickers en une requête, classement par composite_score |
+| **RAG Qdrant** | ~67 documents de référence (formules, seuils, tableaux) indexés dans `investment_knowledge` |
+| **Streaming SSE** | `POST /analyze-stream` — résultats skill par skill en temps réel |
+| **Watchlist** | Surveillance de positions, seuils ESG et prix configurables, sparkline composite 30j |
+| **Alertes Celery** | ESG dégradation, composite baisse, prix seuil — centralisées dans `GET /alerts` |
+| **Exports** | PDF (ticker, screener, watchlist, rapport mensuel), Excel/CSV (watchlist, annotations) |
+| **Authentification** | Cookie JWT httpOnly + refresh token rotation + CSRF double-submit + argon2 |
+| **Observabilité** | Langfuse (optionnel), métriques WebSocket live, eval drift Celery |
+| **Multi-users** | Clés API Bearer, gestion admin (`/admin/keys`), rétrocompat variable `API_KEY` env |
+
+---
+
+## Les 18 skills
+
+### Tier 2 — Frameworks d'investissement académiques (16)
+
+| Skill | Framework |
+|-------|-----------|
+| `graham_analysis` | Benjamin Graham — critères défensif/entreprenant, *The Intelligent Investor* |
+| `earnings_quality` | Beneish M-Score, Altman Z-Score, Piotroski F-Score, Montier C-Score, Sloan accruals |
+| `dorsey_moat` | Pat Dorsey — 5 sources de moat (intangibles, switching costs, network effects, cost advantages, efficient scale) |
+| `buffett_quality` | Warren Buffett — 4 filtres, owner earnings, wonderful businesses at fair prices |
+| `stock_valuation_triangulation` | DCF + multiples comparables (EV/EBITDA, P/E forward) + méthode sectorielle (SOTP/NAV/FFO) |
+| `investment_thesis_builder` | Thèse formelle — scénarios bull/base/bear, kill criteria, devil's advocate |
+| `munger_mental_models` | Charlie Munger — 25 biais cognitifs, inversion, lollapalooza effects |
+| `canadian_tax_considerations` | CELI, REER, CELIAPP, fiscalité QC, Norbert's Gambit, règles perte apparente |
+| `lynch_categories` | Peter Lynch — 6 catégories, tenbaggers, ratio PEG, *invest in what you know* |
+| `fisher_scuttlebutt` | Phil Fisher — 15 points, méthode scuttlebutt qualitative |
+| `klarman_margin` | Seth Klarman — préservation du capital, marge de sécurité absolue, situations spéciales |
+| `greenblatt` | Joel Greenblatt — Magic Formula (ROC + earnings yield), spinoffs |
+| `damodaran_narrative` | Aswath Damodaran — alignement narrative/numbers, possible vs probable |
+| `marks_cycles` | Howard Marks — pendule du sentiment, second-level thinking, cycles |
+| `pabrai_dhandho` | Mohnish Pabrai — 9 principes Dhandho, cloning 13F, paris asymétriques |
+| `esg_simplified` | 15 critères proxy (5E + 5S + 5G) — score 0–15, verdict ESG_FORT/MODERE/FAIBLE |
+
+### Tier 1 — Extracteurs de données brutes (2)
+
+| Skill | Source |
+|-------|--------|
+| `yahoo_finance_extractor` | Yahoo Finance via `yfinance` — ratios, prix, bilans |
+| `sedar_plus_extractor` | SEDAR+ — dépôts réglementaires canadiens |
+
+---
+
+## Prérequis
+
+- Docker + Docker Compose
+- Node.js 20+ (frontend uniquement)
+- Python 3.11+ (développement local hors Docker)
+- Clé API Anthropic (`ANTHROPIC_API_KEY`)
+- Optionnel : `OPENAI_API_KEY` (RAG Qdrant), `LANGFUSE_SECRET_KEY` (observabilité), `SLACK_WEBHOOK_URL` (alertes Slack)
 
 ---
 
 ## Démarrage rapide
 
-### Prérequis
-
-- Docker + Docker Compose
-- Node.js 18+ (frontend)
-- Clé API Anthropic (`ANTHROPIC_API_KEY`)
-
-### Installation
+### 1. Cloner et configurer
 
 ```bash
-# 1. Copier et remplir les variables d'environnement
+git clone https://github.com/yvlar/tradingClaude.git
+cd tradingClaude
 cp .env.example .env
-# Éditer .env — au minimum : ANTHROPIC_API_KEY=sk-ant-...
+# Éditer .env — ajouter au minimum ANTHROPIC_API_KEY
+```
 
-# 2. Démarrer l'infrastructure (5 services)
+### 2. Démarrer l'infrastructure (5 services)
+
+```bash
 docker-compose up -d
-
-# 3. Vérifier l'API
 curl localhost:8000/healthz
 # → {"status": "ok", "postgres": "ok", "qdrant": "ok"}
+```
 
-# 4. Démarrer le frontend
-cd frontend && npm install && npm run dev
+### 3. Première analyse
+
+```bash
+# Analyser une action canadienne (TSX)
+curl -X POST localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "BNS.TO"}'
+
+# Screener multi-tickers
+curl -X POST localhost:8000/screen \
+  -H "Content-Type: application/json" \
+  -d '{"tickers": ["BNS.TO", "TD.TO", "RY.TO"]}'
+```
+
+### 4. Frontend React
+
+```bash
+cd frontend
+npm install
+npm run dev
 # → http://localhost:5173
 ```
 
@@ -52,218 +192,176 @@ cd frontend && npm install && npm run dev
 
 | Variable | Obligatoire | Description |
 |----------|-------------|-------------|
-| `ANTHROPIC_API_KEY` | ✅ | Clé API Claude |
+| `ANTHROPIC_API_KEY` | ✅ | Clé API Claude (Anthropic) |
 | `CLAUDE_MODEL` | — | Défaut : `claude-sonnet-4-6` |
 | `DATABASE_URL` | — | PostgreSQL (défaut Docker Compose) |
 | `REDIS_URL` | — | Redis (défaut Docker Compose) |
-| `API_KEY` | — | Bearer token auth (vide = pas d'auth) |
-| `QDRANT_URL` | — | Vector store RAG (optionnel) |
-| `OPENAI_API_KEY` | — | Embeddings RAG (optionnel) |
-| `LANGFUSE_SECRET_KEY` | — | Traces LLM (optionnel) |
-| `WEBHOOK_URL` | — | Notifications webhook (optionnel) |
+| `JWT_SECRET_KEY` | ✅ | Secret signature JWT |
+| `API_SECRET_KEY` | ✅ | Secret CSRF + sessions |
+| `API_KEY` | — | Bearer token legacy (rétrocompat Sprint 62) |
+| `OPENAI_API_KEY` | — | Embeddings RAG Qdrant (optionnel) |
+| `LANGFUSE_SECRET_KEY` | — | Observabilité LLM Langfuse (optionnel) |
 | `SLACK_WEBHOOK_URL` | — | Alertes Slack (optionnel) |
-| `CLAUDE_TIMEOUT_S` | — | Timeout appels Claude, défaut `60` |
+| `WEBHOOK_URL` | — | Notifications webhook (optionnel) |
+| `CLAUDE_TIMEOUT_S` | — | Timeout appels Claude, défaut `120` |
 
-Voir `.env.example` pour la liste complète.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│  Frontend React 18 + TypeScript  :5173       │
-│  9 pages : Analyze · Screener · History      │
-│            Watchlist · Dashboard · Admin     │
-│            Comparer · ESG · Login            │
-└─────────────────┬───────────────────────────┘
-                  │ proxy Vite → :8000
-┌─────────────────▼───────────────────────────┐
-│  FastAPI  :8000                              │
-│  ┌──────────────────────────────────────┐   │
-│  │  Orchestrator (workflows multi-steps) │   │
-│  │  18 Skills : 16 Tier2 + 2 Tier1      │   │
-│  │  Cache Redis · RAG Qdrant (opt.)     │   │
-│  └──────────────────────────────────────┘   │
-│  Celery workers (tâches planifiées)          │
-└──────┬──────────────────────┬───────────────┘
-       │                      │
-┌──────▼──────┐    ┌──────────▼──────┐
-│ PostgreSQL  │    │  Redis + Qdrant  │
-│ (analyses,  │    │  (cache, broker, │
-│  watchlist, │    │   vectors RAG)   │
-│  history…)  │    └─────────────────┘
-└─────────────┘
-```
-
-**Services Docker Compose :** `copilote` · `postgres` · `redis` · `qdrant` · `celery`
+Voir `.env.example` pour la liste complète avec valeurs exemples.
 
 ---
 
-## Les 18 skills d'analyse
+## Pages React (13)
 
-### Tier 2 — Frameworks académiques (appels Claude)
-
-| Skill | Auteur / Source |
-|-------|----------------|
-| `graham_analysis` | Benjamin Graham — *The Intelligent Investor* |
-| `earnings_quality` | Beneish M-Score · Altman Z-Score · Piotroski F-Score |
-| `dorsey_moat` | Pat Dorsey — *The Little Book That Builds Wealth* |
-| `buffett_quality` | Warren Buffett — 4 filtres + owner earnings |
-| `stock_valuation_triangulation` | DCF + multiples comparables + SOTP |
-| `investment_thesis_builder` | Synthèse multi-frameworks + kill criteria |
-| `munger_mental_models` | Charlie Munger — 25 biais + inversion |
-| `canadian_tax_considerations` | CELI · REER · CELIAPP · fiscalité QC/CA |
-| `lynch_categories` | Peter Lynch — 6 catégories + PEG ratio |
-| `fisher_scuttlebutt` | Phil Fisher — 15 points + scuttlebutt |
-| `klarman_margin` | Seth Klarman — marge de sécurité absolue |
-| `greenblatt` | Joel Greenblatt — Magic Formula (ROC + Earnings Yield) |
-| `damodaran_narrative` | Aswath Damodaran — narrative vs numbers |
-| `marks_cycles` | Howard Marks — pendule sentiment + cycles |
-| `pabrai_dhandho` | Mohnish Pabrai — 9 principes Dhandho |
-| `esg_simplified` | 15 critères ESG proxy (5E + 5S + 5G) |
-
-### Tier 1 — Extracteurs de données (sans Claude)
-
-| Skill | Source |
-|-------|--------|
-| `yahoo_finance_extractor` | Yahoo Finance (yfinance) |
-| `sedar_plus_extractor` | SEDAR+ (documents canadiens) |
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | AnalyzePage | Saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill |
+| `/screener` | ScreenerPage | Batch 2–20 tickers, tableau trié composite_score, export PDF |
+| `/history` | HistoryPage | Historique paginé, recherche full-text, filtre dates, PDF, annotations, suppression |
+| `/watchlist` | WatchlistPage | Positions surveillées, seuils ESG/prix inline, sparkline 30j, exports PDF/Excel |
+| `/dashboard` | DashboardPage | Métriques WebSocket live, comparaison multi-tickers recharts, eval drift |
+| `/compare` | ComparePage | Tableau multi-skills côte à côte, bouton Analyser opt-in, toggle streaming SSE |
+| `/esg` | EsgPage | Scores ESG watchlist, badges FORT/MODERE/FAIBLE, tableau tritable |
+| `/alerts` | AlertsPage | Alertes Celery récentes (ESG · composite · prix), tableau horodaté |
+| `/admin` | AdminPage | Gestion clés API Bearer (créer · lister · révoquer) |
+| `/login` | LoginPage | Authentification cookie JWT httpOnly + CSRF |
+| `/register` | RegisterPage | Inscription email/mot de passe |
+| `/forgot-password` | ForgotPasswordPage | Demande réinitialisation mot de passe |
+| `/reset-password` | ResetPasswordPage | Réinitialisation via token signé (itsdangerous) |
 
 ---
 
-## Endpoints principaux
+## API — Endpoints principaux
 
-### Analyse
-
-```bash
-POST /analyze          # Analyse complète (sync)
-POST /analyze-stream   # Analyse en streaming SSE skill par skill
-POST /screen           # Screener multi-tickers (2–20 tickers)
-GET  /extract?ticker=  # Extraction automatique ratios Yahoo Finance
 ```
+# Analyse
+POST   /analyze                         Analyse complète 16 skills (sync)
+POST   /analyze-stream                  Streaming SSE skill par skill
+POST   /screen                          Screener batch 2–20 tickers
+GET    /extract?ticker=                 Auto-remplissage ratios Yahoo Finance
 
-### Watchlist
+# Watchlist
+GET    /watchlist                        Lister les positions surveillées
+POST   /watchlist                        Ajouter un ticker
+DELETE /watchlist/{id}                   Supprimer
+PATCH  /watchlist/{id}/esg-threshold     Configurer seuil ESG (0–15)
+PATCH  /watchlist/{id}/price-threshold   Configurer seuil de prix (%)
+GET    /watchlist/esg-scores             Scores ESG triables
+GET    /watchlist/export.xlsx            Export Excel enrichi (composite + ESG + annotations)
+GET    /watchlist/export.pdf             Export PDF composite_score + verdicts
 
-```bash
-GET    /watchlist                           # Lister les positions
-POST   /watchlist                           # Ajouter un ticker
-DELETE /watchlist/{id}                      # Supprimer
-PATCH  /watchlist/{id}/esg-threshold        # Configurer seuil ESG
-PATCH  /watchlist/{id}/price-threshold      # Configurer seuil de prix (%)
-GET    /watchlist/esg-scores                # Scores ESG triés
-GET    /watchlist/export.xlsx               # Export Excel enrichi
-GET    /watchlist/export.pdf                # Export PDF
-```
+# Historique et annotations
+GET    /history                          Curseur (rétrocompat)
+GET    /history-paged                    Pagination offset/limit + total_count + recherche + dates
+DELETE /history/{analysis_id}            Supprimer une analyse (admin)
+POST   /annotations                      Annoter une analyse
+GET    /annotations                      Lire annotations par ticker
+GET    /annotations/export.csv           Export CSV
+GET    /annotations/export.xlsx          Export Excel
 
-### Historique et annotations
+# Comparaison et rapports
+POST   /compare                          Comparer 2–5 tickers sans appel Claude
+GET    /composite-history/{ticker}       Évolution composite_score dans le temps
+GET    /esg-history/{ticker}             Historique scores ESG
+GET    /alerts?limit=50                  Alertes Celery récentes (ESG + composite + prix)
+GET    /ticker-report/{ticker}           Rapport PDF multi-pages par ticker (90 jours)
+GET    /screener-report                  Rapport PDF screener
+GET    /monthly-report                   Rapport PDF mensuel enrichi (section ESG incluse)
 
-```bash
-GET  /history                    # Historique cursor (rétrocompat)
-GET  /history-paged              # Pagination offset/limit + total_count
-POST /annotations                # Annoter une analyse
-GET  /annotations                # Lire annotations par ticker
-GET  /annotations/export.csv     # Export CSV
-GET  /annotations/export.xlsx    # Export Excel
-```
+# Auth
+POST   /auth/register                    Inscription
+POST   /auth/login                       Connexion cookie JWT httpOnly + CSRF
+POST   /auth/logout                      Blacklist JWT + invalidation refresh
+POST   /auth/refresh                     Rotation refresh token (détection vol)
+GET    /auth/me                          Profil depuis cookie access_token
+POST   /auth/forgot-password             Token réinitialisation (anti-énumération)
+POST   /auth/reset-password              Réinitialisation avec token signé
 
-### Comparaison et ESG
+# Administration
+POST   /admin/keys                       Créer une clé API
+GET    /admin/keys                       Lister les clés
+DELETE /admin/keys/{id}                  Révoquer une clé
 
-```bash
-POST /compare                    # Comparer 2–5 tickers (sans appel Claude)
-GET  /esg-history/{ticker}       # Historique scores ESG
-GET  /monthly-report             # Rapport PDF mensuel
-GET  /screener-report            # Rapport PDF screener
-GET  /ticker-report/{ticker}     # Rapport PDF par ticker (90 jours)
-```
-
-### Observabilité
-
-```bash
-GET /healthz
-GET /telemetry/summary|costs|cache|latency
-GET /telemetry/eval-drift
-GET /metrics?days=30
-```
-
-### Administration
-
-```bash
-POST   /admin/keys      # Créer une clé API
-GET    /admin/keys      # Lister les clés
-DELETE /admin/keys/{id} # Révoquer une clé
+# Observabilité
+GET    /healthz                          Processus + PostgreSQL + Qdrant
+GET    /metrics?days=30                  Coûts cumulés, cache hit rate, top tickers
+GET    /telemetry/summary|costs|cache|latency
+GET    /telemetry/eval-drift             Dérive des evals vs golden dataset
 ```
 
 ---
 
-## Tâches planifiées (Celery beat)
+## Tâches Celery planifiées
 
-| Tâche | Fréquence | Description |
-|-------|-----------|-------------|
-| Screener watchlist | Dimanche 11h00 UTC | Analyse tous les tickers + webhook |
-| Rapport mensuel PDF | 1er du mois 08h00 UTC | PDF global + section ESG + Slack |
-| Alerte prix | En continu | Alerte si écart > `price_alert_threshold_pct` |
-| Alerte ESG | En continu | Alerte si baisse > `esg_alert_threshold` |
-
----
-
-## Frontend React
-
-**SPA React 18 + TypeScript strict** — port 5173
-
-| Page | Fonctionnalité |
-|------|---------------|
-| Analyze | Saisie ticker, auto-fill Yahoo Finance, streaming SSE skill par skill |
-| Screener | Batch 2–20 tickers, tableau trié par composite score |
-| History | Historique paginé, filtre dates, recherche full-text, export PDF |
-| Watchlist | Positions surveillées, seuils ESG/Prix configurables inline, exports |
-| Dashboard | Métriques WebSocket, graphique composite multi-tickers, eval drift |
-| ESG | Scores ESG watchlist, graphique historique par ticker |
-| Comparer | Tableau multi-skills côte à côte pour 2–5 tickers |
-| Admin | Gestion clés API |
-| Login | Auth Bearer token |
-
-```bash
-cd frontend
-npm install
-npm run dev      # dev :5173
-npm run build    # production
-npx vitest run   # 192 tests
-```
+| Tâche | Schedule | Action |
+|-------|----------|--------|
+| `run_scheduled_screener` | Dimanche 11h00 UTC | Screener watchlist complet → webhook PDF + Slack si tickers FORT |
+| `run_esg_degradation_check` | Dimanche 12h00 UTC | Détecte dégradation ESG → `alert_history` + Slack |
+| `run_monthly_report` | 1er du mois 08h00 UTC | Rapport PDF mensuel (composite + section ESG) → webhook + Slack |
 
 ---
 
-## Développement et tests
+## Tests
 
 ```bash
-# Tests backend (sans Docker, sans clé Claude)
-python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q
-# → 1 371 passed
+# Backend — aucun token Claude consommé
+python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals
+# → 1 401 passed
 
-# Tests frontend
-cd frontend && npx vitest run
-# → 192 passed
+# Frontend
+cd frontend && npm run test
+# → 217 passed
 
-# Logs Docker
-docker-compose logs -f copilote
-
-# Rebuild après modification
-docker-compose up -d --build copilote
+# Lint + typecheck
+ruff check app/
+mypy app/
+cd frontend && npm run lint && npm run typecheck
 ```
+
+### CI GitHub Actions — 4 jobs
+
+| Job | Outil |
+|-----|-------|
+| `test-backend` | `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` |
+| `test-frontend` | `vitest run` |
+| `lint` | `ruff check app/` + `eslint frontend/src/` |
+| `typecheck` | `mypy app/` + `tsc --noEmit` |
 
 ---
 
-## Authentification
+## Structure du projet
 
-Si `API_KEY` est défini dans `.env`, toutes les routes (sauf `/healthz`, `/docs`, `/telemetry/*`)
-nécessitent :
-
-```bash
-curl -H "Authorization: Bearer <api_key>" -X POST localhost:8000/analyze ...
 ```
-
-Multi-utilisateurs supporté via `POST /admin/keys` (Sprint 62).  
-Rétrocompatibilité : la variable `API_KEY` env reste fonctionnelle.
+tradingClaude/
+├── app/
+│   ├── api/
+│   │   ├── main.py             # FastAPI lifespan, tables idempotentes, app.state
+│   │   └── endpoints/          # Un module par groupe d'endpoints
+│   ├── orchestrator/           # Orchestrateur 16 skills parallèles + cache Redis
+│   ├── skills/
+│   │   ├── tier1/              # yahoo_finance, sedar_plus
+│   │   └── tier2/              # 16 frameworks (SkillBase + Tool Use + prompt caching)
+│   ├── services/               # AlertHistoryService, WatchlistService, SlackService, etc.
+│   ├── workers/
+│   │   ├── celery_app.py       # Config Celery + beat schedule
+│   │   └── tasks.py            # Tâches planifiées (screener, ESG, rapport mensuel)
+│   ├── rag/                    # Client Qdrant + embeddings OpenAI
+│   └── utils/                  # retry.py, ticker_sanitizer.py, esg_utils.py
+├── frontend/
+│   └── src/
+│       ├── pages/              # 13 pages React
+│       ├── components/         # Composants partagés (shadcn/ui + custom)
+│       ├── api/                # Fonctions fetch par domaine
+│       └── types/index.ts      # Types TypeScript synchronisés avec Pydantic backend
+├── tests/                      # Pyramide pytest (unit → integration → e2e → evals)
+├── .claude/
+│   ├── rules/                  # 16 fichiers de règles path-scoped
+│   └── skills/                 # 16 SKILL.md + ~67 documents références RAG
+├── infra/postgres/init.sql     # DDL idempotent — toutes les tables
+├── docker-compose.yml          # 5 services : copilote, worker, postgres, qdrant, redis
+├── pyproject.toml              # ruff + mypy
+└── .github/
+    ├── workflows/ci.yml        # 4 jobs CI
+    └── dependabot.yml          # pip + npm weekly
+```
 
 ---
 
@@ -273,10 +371,41 @@ Si `OPENAI_API_KEY` est présent, le service active la recherche vectorielle dan
 Le corpus contient ~67 documents de référence couvrant les 16 frameworks Tier 2.
 
 ```bash
-# Ingestion des documents
+# Ingestion des documents de référence
 python scripts/ingest_rag.py --path .claude/skills/
 ```
 
 ---
 
-*Dernière mise à jour : 2026-05-22 — Yves Larivière / TradingClaude — v8.4.0*
+## Sécurité
+
+Voir [SECURITY.md](SECURITY.md) pour signaler une vulnérabilité.
+
+- Clés API uniquement via variables d'environnement (`.env` jamais commité)
+- Cookie JWT httpOnly (15 min) + refresh token rotation + détection de vol par famille (Redis)
+- CSRF double-submit cookie sur toutes les mutations
+- Rate limiting login : 5 tentatives / 15 minutes (Redis)
+- Argon2 pour le hachage des mots de passe
+- Rétrocompatibilité Bearer API key pour intégrations existantes
+
+---
+
+## Contribuer
+
+Voir [CONTRIBUTING.md](CONTRIBUTING.md). En résumé :
+
+1. Forker → branche feature (`git checkout -b feat/nom-feature`)
+2. Respecter les conventions `.claude/rules/conventions-code-base.md` (bilingue FR/EN, typage strict, async/await)
+3. Tout nouveau skill tier2 requiert son `SKILL.md` + `references/` pour la cohérence RAG
+4. `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` doit passer sans token Claude
+5. Pull request avec le template fourni
+
+---
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE).
+
+---
+
+*TradingClaude — Yves Larivière, Québec · v9.4.0 · Phase 3 active · Dernière mise à jour : 2026-05-23*
