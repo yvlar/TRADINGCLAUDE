@@ -30,7 +30,7 @@ function makeResponse(tickers: string[], scores: (number | null)[]): CompareResp
 }
 
 describe('ComparePage — Streaming SSE (Sprint 93)', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('le toggle Streaming est présent et initialement désactivé', () => {
     render(<ComparePage />)
