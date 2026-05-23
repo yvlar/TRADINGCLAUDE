@@ -149,6 +149,29 @@ montrant l'evolution du composite_score sur 30 jours, en utilisant `GET /composi
 **Justification** : Les donnees existent deja (Sprint 57/60) -- les rendre visibles directement dans
 la watchlist sans naviguer vers le Dashboard.
 
+### Sprint 98 -- Professionnalisation GitHub (CI complet + qualite code)
+
+**Objectif** : Rendre le depot GitHub professionnel et pret pour des contributeurs exterieurs :
+linting/formatage automatique, type-checking CI, templates GitHub, fichiers de gouvernance.
+
+**Livrables concrets :**
+- `.github/ISSUE_TEMPLATE/` -- 2 templates : `bug_report.yml` et `feature_request.yml`
+- `.github/pull_request_template.md` -- checklist PR standard (tests, types, CLAUDE.md)
+- `CONTRIBUTING.md` -- guide de contribution (setup local, conventions, pyramide de tests)
+- `LICENSE` -- MIT (projet portfolio public)
+- `.github/workflows/ci.yml` -- ajouter 2 jobs supplementaires :
+  - `lint` : `ruff check app/ tests/` + `ruff format --check` (Python) ; `npm run lint` (frontend)
+  - `typecheck` : `mypy app/ --ignore-missing-imports` (Python) ; `npx tsc --noEmit` (frontend)
+- `pyproject.toml` -- configuration ruff (line-length 100, select E/W/F/I) + mypy (strict=False)
+- `.github/dependabot.yml` -- mises a jour auto pip + npm (weekly)
+- `SECURITY.md` -- politique de divulgation responsable (contact ivess49@gmail.com)
+
+**Complexite** : Moyenne
+**Justification** : Le depot est maintenant public (fait en session Sprint 91). Sans ces fichiers,
+le projet parait abandonne ou non maintenu. Ces artefacts sont la norme pour tout depot open-source
+serieux et ameliorent la confiance des recruteurs/contributeurs. Le linting CI catch les regressions
+de style avant merge -- valeur immediate, effort faible.
+
 ---
 
 # CONTRAINTES ABSOLUES (rappel)
@@ -188,4 +211,4 @@ la watchlist sans naviguer vers le Dashboard.
 
 _Roadmap mise a jour le 2026-05-22 -- Yves / TradingClaude_
 _Sprint 91 complete : Seuil de prix configurable par ticker -- update_price_threshold() WatchlistService + PriceThresholdUpdate schema + PATCH /watchlist/{id}/price-threshold (422 si hors 0-100, division par 100 pour stockage NUMERIC(5,4)) + colonne "Seuil Prix (%)" WatchlistTable (edition inline, etats independants du seuil ESG) + patchPriceThreshold() API + 3 CI + 5 Vitest + bonus correction corruption OneDrive types/index.ts + accents HistoryPage.tsx + mock getHistoryPaged PdfDownload.test.tsx -- 1371 CI verts + 192 Vitest verts -- version 8.4.0_
-_Sprints 92-97 suggeres : Annotations watchlist export -> Streaming SSE ComparePage -> Alerte degradation ESG -> DELETE /history -> Estimation rapide total_count -> Sparkline composite watchlist_
+_Sprints 92-98 suggeres : Annotations watchlist export -> Streaming SSE ComparePage -> Alerte degradation ESG -> DELETE /history -> Estimation rapide total_count -> Sparkline composite watchlist -> Professionnalisation GitHub (CI lint/typecheck, templates, LICENSE, CONTRIBUTING, Dependabot)_

@@ -116,6 +116,25 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 ---
 
+### Sprint 98 — Professionnalisation GitHub 🔜
+
+**Objectif :** Rendre le dépôt GitHub public professionnel et prêt pour des contributeurs : linting/formatage automatique dans le CI, type-checking, templates GitHub, fichiers de gouvernance (LICENSE, CONTRIBUTING, SECURITY).
+
+**Livrables :**
+- `.github/ISSUE_TEMPLATE/bug_report.yml` + `feature_request.yml` — templates structurés pour les issues
+- `.github/pull_request_template.md` — checklist PR (tests, types, CLAUDE.md, `.env.example` à jour)
+- `CONTRIBUTING.md` — setup local, conventions bilingues FR/EN, pyramide de tests, workflow sprint
+- `LICENSE` — MIT
+- `SECURITY.md` — politique de divulgation responsable (contact ivess49@gmail.com)
+- `.github/workflows/ci.yml` — 2 jobs supplémentaires : `lint` (`ruff check` + `ruff format --check` Python, `npm run lint` frontend) et `typecheck` (`mypy app/` Python, `npx tsc --noEmit` frontend)
+- `pyproject.toml` — configuration ruff (line-length 100, select E/W/F/I) + mypy (strict=False, ignore-missing-imports)
+- `.github/dependabot.yml` — mises à jour automatiques pip + npm (weekly)
+
+**Version** : 8.5.0
+**Tests** : aucun test CI/Vitest ajouté — sprint infrastructure uniquement
+
+---
+
 ### Sprint 90 — Pagination avancée historique ✅
 
 **Objectif :** Remplacer la pagination cursor (`before=ISO8601`) par une pagination offset/limit avec `total_count`. Interface paginée numérotée dans `HistoryPage.tsx` avec boutons Précédent/Suivant et label "Page X sur Y", plus sélecteur de taille de page (10/25/50).
