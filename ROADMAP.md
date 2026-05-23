@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 98 complété**
+**Dernière mise à jour : 2026-05-23 — Sprint Login complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.1.0 |
+| **Version** | 9.3.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
 | **Sprint actif** | Sprint 99 — Tableau de bord alertes (AlertsPage) |
-| **Dernier sprint complété** | Sprint 98 — Professionnalisation GitHub ✅ |
+| **Dernier sprint complété** | Sprint Login — Authentification cookie JWT + CSRF ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -24,6 +24,13 @@
 - `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
 - `GET /performance/{ticker}` — rendement rétrospectif par analyse (Sprint 39)
+- `POST /auth/register` — inscription email/mot de passe, cookies JWT httpOnly + CSRF (Sprint Login)
+- `POST /auth/login` — authentification cookie, rate limiting Redis 5/15 min (Sprint Login)
+- `POST /auth/logout` — blacklist JWT jti + invalidation refresh token (Sprint Login)
+- `POST /auth/refresh` — rotation refresh token avec détection de vol par famille (Sprint Login)
+- `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login)
+- `POST /auth/forgot-password` — token réinitialisation itsdangerous 1h (anti-énumération) (Sprint Login)
+- `POST /auth/reset-password` — réinitialisation mot de passe avec token signé (Sprint Login)
 - `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
@@ -60,7 +67,7 @@
 - **Seuil Prix configurable** — colonne "Seuil Prix (%)" dans WatchlistTable, édition inline (bouton ✎ + Input 0-100 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/price-threshold`, valeur saisie en % convertie en décimal avant stockage (Sprint 91)
 - **Rapport PDF mensuel enrichi** — section ESG (Ticker / Score ESG / Verdict / Seuil) ajoutée en fin de PDF si au moins un ticker a un `last_esg_score` non-null (Sprint 88)
 - **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
-- **Auth** — Bearer token (localStorage), routes protégées
+- **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -230,6 +237,40 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 9.1.0
 **Tests** : 1383 CI verts (inchangé) ; 205 Vitest verts (inchangé) — sprint infrastructure uniquement
+
+---
+
+### Sprint Login — Authentification complète (cookie JWT + CSRF) — parallèle ✅
+
+**Objectif :** Implémenter un système d'authentification complet avec inscription, connexion par cookies httpOnly, rotation de refresh tokens, CSRF double-submit, rate limiting, réinitialisation de mot de passe par email, et les pages React correspondantes. Sprint développé en parallèle du processus principal.
+
+**Livrables :**
+- `app/models/auth.py` — `RegisterRequest` (force mdp : 12+ cars, maj, min, chiffre, spécial), `LoginRequest`, `ForgotPasswordRequest`, `ResetPasswordRequest`, `UserPublic`, `AuthResponse`
+- `app/services/user_service.py` — `UserService` : `create_user`, `authenticate` (argon2 timing-safe, toujours vérifié), `get_by_id`, `update_last_login`, `update_password` ; `EmailAlreadyExistsError` ; argon2 `time_cost=2, memory_cost=65536, parallelism=2`
+- `app/services/auth_token_service.py` — JWT HS256 TTL 15 min + jti blacklist Redis `SETEX` ; refresh tokens UUID hachés SHA-256 en DB, rotation par famille (vol → invalidation totale) ; 6 méthodes async
+- `app/services/password_reset_service.py` — tokens `URLSafeTimedSerializer` itsdangerous TTL 1h, salt fixe `password-reset-v1` ; `send_reset_email` via SendGrid ou log dev
+- `app/middleware/csrf.py` — `CSRFMiddleware` : double-submit cookie ; exempt pré-auth (`/auth/login`, `/auth/register`, etc.) + Bearer + dev mode (`API_KEY` vide) ; 403 si csrf_cookie ≠ X-CSRF-Token
+- `app/middleware/auth.py` — extension `BearerTokenMiddleware` : Path 2 cookie `access_token` → AuthTokenService JWT ; rétrocompatibilité Bearer API key complète
+- `app/api/endpoints/auth.py` — router `/auth` : 9 endpoints (register/login/logout/refresh/me/forgot-password/reset-password/mfa-setup-stub/mfa-verify-stub) ; `_set_auth_cookies()` (SameSite=lax, Secure=env) ; `_clear_auth_cookies()`
+- `app/api/main.py` — tables `users` + `refresh_tokens` (idempotentes lifespan) ; instanciation UserService/AuthTokenService/PasswordResetService/CSRFMiddleware ; CORS `allow_credentials=True` + `X-CSRF-Token` ; proxy `/auth` ajouté
+- `.env.example` — `JWT_SECRET_KEY`, `SENDGRID_FROM_EMAIL`, `FRONTEND_URL`, `SECURE_COOKIES`
+- `requirements.txt` — `python-jose[cryptography]>=3.3.0`, `argon2-cffi>=23.1.0`, `itsdangerous>=2.2.0`, `email-validator>=2.1.0`
+- `frontend/src/api/auth.ts` — `authRegister/authLogin/authLogout/authMe/authRefresh/authForgotPassword/authResetPassword` ; `getCsrfToken()` via `document.cookie` ; `AuthApiError`
+- `frontend/src/api/client.ts` — `credentials: 'include'` + `X-CSRF-Token` sur mutations ; Bearer localStorage toujours rétrocompat
+- `frontend/src/contexts/AuthContext.tsx` — `authMe()` au montage → restaure session cookie ; `isLoading` state (true jusqu'à résolution)
+- `frontend/src/components/ProtectedRoute.tsx` — attend `isLoading` avant de rediriger (évite flash de /login)
+- `frontend/src/pages/LoginPage.tsx` — réécriture : remember me, visibilité mdp, liens register/forgot-password
+- `frontend/src/pages/RegisterPage.tsx` — indicateur force mdp 4 niveaux (Tailwind) ; redirige vers /login
+- `frontend/src/pages/ForgotPasswordPage.tsx` — succès sans révéler si email connu
+- `frontend/src/pages/ResetPasswordPage.tsx` — lit `?token=` URL, redirige /login après 2s
+- `frontend/vite.config.ts` — proxy `/auth` + 12 autres routes avec `changeOrigin: true`
+- `frontend/src/setupTests.ts` — mock global `fetch` pour `/auth/me` → 401 (isLoading résolu dans tests)
+- `tests/test_auth_endpoints.py` — 13 tests CI : register (succès/dupliqué/faible), login (succès/mauvais mdp/rate limit), logout, me (sans cookie/avec cookie), forgot-password (connu/inconnu), reset-password (valide/invalide)
+- `frontend/src/__tests__/RegisterPage.test.tsx` — 6 tests Vitest : rendu, erreur vide, indicateur force, appel authRegister + redirect, erreur API, lien login
+- `frontend/src/__tests__/LoginPage.test.tsx` — 6 tests Vitest réécrits : rendu, erreur vide, appel authLogin + redirect, erreur API, lien register, lien forgot-password
+
+**Version** : 9.3.0 (9.2.0 = migration Vite 8 + Tailwind 4 en parallèle — cf. commit cf5a7a36)
+**Tests** : 1396 CI verts (hors e2e et evals) — +13 tests Sprint Login ; 212 Vitest verts — +7 tests (6 RegisterPage + 1 LoginPage net)
 
 ---
 

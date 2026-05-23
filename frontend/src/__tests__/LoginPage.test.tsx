@@ -1,10 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { AuthProvider, useAuth } from '../contexts/AuthContext'
+import { AuthProvider } from '../contexts/AuthContext'
 import { ProtectedRoute } from '../components/ProtectedRoute'
 import LoginPage from '../pages/LoginPage'
+
+vi.mock('../api/auth', () => ({
+  authMe: vi.fn().mockRejectedValue(new Error('401')),
+  authLogin: vi.fn(),
+  authLogout: vi.fn().mockResolvedValue(undefined),
+}))
+
+import * as authApi from '../api/auth'
 
 function wrap(ui: React.ReactElement, { initialEntries = ['/login'] } = {}) {
   return render(
@@ -15,41 +23,79 @@ function wrap(ui: React.ReactElement, { initialEntries = ['/login'] } = {}) {
 }
 
 beforeEach(() => {
-  localStorage.clear()
-})
-
-afterEach(() => {
-  localStorage.clear()
+  vi.mocked(authApi.authMe).mockRejectedValue(new Error('401'))
+  vi.mocked(authApi.authLogin).mockReset()
 })
 
 describe('LoginPage', () => {
-  it('rend le formulaire avec input Clé API et bouton Se connecter', () => {
+  it('rend le formulaire email, mot de passe et bouton Se connecter', async () => {
     wrap(<LoginPage />)
-    expect(screen.getByLabelText('Clé API')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Se connecter' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Adresse email')).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Mot de passe')).toBeInTheDocument()
+    expect(screen.getByTestId('submit-button')).toBeInTheDocument()
   })
 
-  it('stocke le token dans localStorage après soumission valide', async () => {
-    wrap(<Routes><Route path="/login" element={<LoginPage />} /><Route path="/" element={<div>Accueil</div>} /></Routes>)
-    const input = screen.getByLabelText('Clé API')
-    await userEvent.type(input, 'ma-cle-secrete')
-    await userEvent.click(screen.getByRole('button', { name: 'Se connecter' }))
+  it('affiche le message d\'erreur si les champs sont vides', async () => {
+    wrap(<LoginPage />)
+    await waitFor(() => expect(screen.getByTestId('submit-button')).toBeInTheDocument())
+    await userEvent.click(screen.getByTestId('submit-button'))
     await waitFor(() => {
-      expect(localStorage.getItem('api_token')).toBe('ma-cle-secrete')
+      expect(screen.getByTestId('error-message')).toBeInTheDocument()
     })
   })
 
-  it('affiche le message d\'erreur si la clé est vide', async () => {
-    wrap(<LoginPage />)
-    await userEvent.click(screen.getByRole('button', { name: 'Se connecter' }))
-    await waitFor(() => {
-      expect(screen.getByText('La clé API est requise')).toBeInTheDocument()
+  it('appelle authLogin avec email et mot de passe et redirige', async () => {
+    vi.mocked(authApi.authLogin).mockResolvedValue({
+      user: { id: 'uuid-1', email: 'test@test.com', role: 'reader', created_at: '2026-01-01T00:00:00Z' },
+      message: 'Connexion réussie',
     })
+
+    wrap(
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<div>Accueil</div>} />
+      </Routes>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('email-input')).toBeInTheDocument())
+    await userEvent.type(screen.getByTestId('email-input'), 'test@test.com')
+    await userEvent.type(screen.getByTestId('password-input'), 'MonMotDePasse123!')
+    await userEvent.click(screen.getByTestId('submit-button'))
+
+    await waitFor(() => {
+      expect(authApi.authLogin).toHaveBeenCalledWith({
+        email: 'test@test.com',
+        password: 'MonMotDePasse123!',
+        remember_me: false,
+      })
+    })
+  })
+
+  it('affiche une erreur si authLogin rejette', async () => {
+    vi.mocked(authApi.authLogin).mockRejectedValue(new Error('Email ou mot de passe incorrect'))
+
+    wrap(<LoginPage />)
+    await waitFor(() => expect(screen.getByTestId('email-input')).toBeInTheDocument())
+    await userEvent.type(screen.getByTestId('email-input'), 'bad@test.com')
+    await userEvent.type(screen.getByTestId('password-input'), 'WrongPass123!')
+    await userEvent.click(screen.getByTestId('submit-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error-message')).toHaveTextContent('Email ou mot de passe incorrect')
+    })
+  })
+
+  it('affiche les liens vers /register et /forgot-password', async () => {
+    wrap(<LoginPage />)
+    await waitFor(() => expect(screen.getByTestId('register-link')).toBeInTheDocument())
+    expect(screen.getByTestId('forgot-password-link')).toBeInTheDocument()
   })
 })
 
 describe('ProtectedRoute', () => {
-  it('redirige vers /login si non authentifié', () => {
+  it('redirige vers /login si non authentifié (après résolution async)', async () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <AuthProvider>
@@ -67,34 +113,9 @@ describe('ProtectedRoute', () => {
         </AuthProvider>
       </MemoryRouter>,
     )
-    expect(screen.getByText('Page login')).toBeInTheDocument()
-    expect(screen.queryByText('Contenu protégé')).not.toBeInTheDocument()
-  })
-})
-
-describe('useAuth logout', () => {
-  it('efface le token localStorage après logout', async () => {
-    localStorage.setItem('api_token', 'token-existant')
-
-    function LogoutButton() {
-      const { logout } = useAuth()
-      return <button onClick={logout}>Déconnexion</button>
-    }
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AuthProvider>
-          <Routes>
-            <Route path="/" element={<LogoutButton />} />
-            <Route path="/login" element={<div>Login</div>} />
-          </Routes>
-        </AuthProvider>
-      </MemoryRouter>,
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: 'Déconnexion' }))
     await waitFor(() => {
-      expect(localStorage.getItem('api_token')).toBeNull()
+      expect(screen.getByText('Page login')).toBeInTheDocument()
     })
+    expect(screen.queryByText('Contenu protégé')).not.toBeInTheDocument()
   })
 })

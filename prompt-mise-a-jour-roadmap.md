@@ -20,37 +20,49 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 4. `.github/workflows/ci.yml` -- 4 jobs CI (test-backend, test-frontend, lint, typecheck)
 5. `pyproject.toml` -- configuration ruff + mypy (Sprint 98)
 6. `app/workers/tasks.py` -- taches Celery existantes (alertes ESG, screener, degradation)
+7. `app/api/main.py` -- lifespan, tables existantes, services app.state
 
 ---
 
 # ETAT DU PROJET A CE JOUR
 
-| Champ                   | Valeur                                                              |
-| ----------------------- | ------------------------------------------------------------------- |
-| Version                 | 9.1.0                                                               |
-| Phase active            | Phase 3 -- Pipeline de synthese                                     |
-| Sprint actif            | **Sprint 99 -- Tableau de bord alertes (AlertsPage)**               |
-| Dernier sprint complete | Sprint 98 -- Professionnalisation GitHub ✅                         |
+| Champ                   | Valeur                                                                  |
+| ----------------------- | ----------------------------------------------------------------------- |
+| Version                 | 9.3.0                                                                   |
+| Phase active            | Phase 3 -- Pipeline de synthese                                         |
+| Sprint actif            | **Sprint 99 -- Tableau de bord alertes (AlertsPage)**                   |
+| Dernier sprint complete | Sprint Login -- Authentification cookie JWT + CSRF ✅                   |
 
 ## Infrastructure backend (operationnelle)
 
 - 18 skills en production (16 Tier2 + 2 Tier1) -- tous documentes dans `.claude/skills/`
-- `GET /composite-history/{ticker}?limit=30` -- historique composite_score (Sprint 57/60)
+- Systeme d'authentification complet (Sprint Login) :
+  - `POST /auth/register|login|logout|refresh|forgot-password|reset-password`
+  - `GET /auth/me` -- profil depuis cookie httpOnly JWT
+  - Refresh token rotation + detection vol par famille (Redis + DB)
+  - `CSRFMiddleware` double-submit cookie ; rate limiting login 5/15 min Redis
+  - Services : `UserService`, `AuthTokenService`, `PasswordResetService` dans `app.state`
+  - Tables : `users` + `refresh_tokens` (idempotentes lifespan)
+  - Retro-compat Bearer API key complete
+- `GET /composite-history/{ticker}?limit=30` -- historique composite_score
 - `GET /history-paged?fast_count=true` -- estimation rapide total_count pg_class (Sprint 96)
 - `DELETE /history/{analysis_id}` -- suppression admin individuelle (Sprint 95)
-- `POST /analyze-stream` -- streaming SSE skill par skill (Sprint 93)
-- `GET /history-paged?ticker=&q=&page=1&page_size=10` -- pagination offset/limit (Sprint 90)
-- `SlackService` -- send_text/send_esg_alert/send_screener_summary/send_monthly_report_summary (Sprint 86)
-- CI : 4 jobs (pytest + vitest + ruff/eslint lint + mypy/tsc typecheck) -- Sprint 98
-- 1383 tests CI verts (hors e2e et evals)
+- `POST /analyze-stream` -- streaming SSE skill par skill
+- `GET /history-paged?ticker=&q=&page=1&page_size=10` -- pagination offset/limit
+- `SlackService` -- send_text/send_esg_alert/send_screener_summary/send_monthly_report_summary
+- CI : 4 jobs (pytest + vitest + ruff/eslint lint + mypy/tsc typecheck)
+- 1396 tests CI verts (hors e2e et evals)
 
 ## Frontend React (operationnel)
 
 - SPA React 18 + TypeScript strict -- port 5173
-- 9 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG
+- 12 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG,
+  Register, ForgotPassword, ResetPassword
+- Auth par cookie httpOnly JWT -- `authMe()` au montage pour restaurer la session
+- CSRF double-submit cookie -- `X-CSRF-Token` dans `api/client.ts`
+- `ProtectedRoute` attend `isLoading` avant de rediriger
 - **WatchlistPage** -- colonne "Tendance" sparkline composite_score 30j (Sprint 97)
-- **CompositeSparkline** -- `frontend/src/components/CompositeSparkline.tsx`
-- 205 tests Vitest verts
+- 212 tests Vitest verts
 
 ## Infrastructure CI/qualite code (Sprint 98)
 
@@ -133,7 +145,7 @@ async def get_alerts(limit: int = Query(50, ge=1, le=200), request: Request):
 
 ## Tests attendus
 
-+3 tests CI (backend) + 5 tests Vitest (frontend) = 1386 CI verts, 210 Vitest verts.
++3 tests CI (backend) + 5 tests Vitest (frontend) = 1399 CI verts, 217 Vitest verts.
 
 ---
 
@@ -216,11 +228,12 @@ visible sans cliquer vers le detail de chaque ticker.
 - **Fast count Sprint 96** : `Orchestrator.get_history_paged()` accepte `fast_count: bool = False` ; `GET /history-paged?fast_count=true` -- ne pas modifier
 - **Sparkline Sprint 97** : `CompositeSparkline` dans `frontend/src/components/CompositeSparkline.tsx` ; colonne "Tendance" dans `WatchlistTable.tsx` entre "Score composite" et "ESG" -- ne pas modifier ; tests Watchlist* mockent `CompositeSparkline` pour eviter QueryClientProvider
 - **CI Sprint 98** : 4 jobs (test-backend, test-frontend, lint, typecheck) -- `.github/workflows/ci.yml` -- ne pas modifier ; `pyproject.toml` ruff+mypy + `frontend/.eslintrc.cjs` ESLint -- ne pas modifier
+- **Auth Sprint Login** : `UserService/AuthTokenService/PasswordResetService` dans `app.state` ; tables `users` + `refresh_tokens` ; `CSRFMiddleware` ; proxy `/auth` dans `vite.config.ts` ; `authMe()` dans `AuthContext` ; `isLoading` dans `ProtectedRoute` -- ne pas modifier ; retro-compat Bearer API key obligatoire
 - **AlertsPage Sprint 99** (ce sprint) : `alert_history` table + `AlertHistoryService` dans `app.state.alert_history_service` + `GET /alerts` + `AlertsPage.tsx` + route `/alerts`
 - **Robustesse OneDrive** : si la synchro OneDrive coupe une edition (fichier tronque a mi-contenu), restaurer en appendant la queue manquante via `python3 ... open(path, 'ab')` en chunks de ~600 bytes maximum ; toujours verifier `wc -l` + balance braces/parens apres une edition critique
 
 ---
 
-_Roadmap mise a jour le 2026-05-22 -- Yves / TradingClaude_
-_Sprint 98 complete : Professionnalisation GitHub -- LICENSE + CONTRIBUTING.md + SECURITY.md + templates GitHub + pyproject.toml ruff/mypy + ESLint frontend + CI 4 jobs + dependabot -- 1383 CI verts, 205 Vitest verts -- version 9.1.0_
-_Sprints 99-104 suggeres : AlertsPage → Export PDF analyse → Recherche watchlist → Web Push alertes → Sparkline ESG → Score Graham screener_
+_Roadmap mise a jour le 2026-05-23 -- Yves / TradingClaude_
+_Sprint Login complete : Authentification cookie JWT + CSRF -- UserService/AuthTokenService/PasswordResetService + CSRFMiddleware + 7 endpoints /auth + 4 pages React + 13 CI + 7 Vitest -- version 9.3.0_
+_Sprints 99-104 suggeres : AlertsPage -> Export PDF analyse -> Recherche watchlist -> Web Push alertes -> Sparkline ESG -> Score Graham screener_

@@ -10,6 +10,9 @@ import AdminPage from './pages/AdminPage'
 import ComparePage from './pages/ComparePage'
 import EsgPage from './pages/EsgPage'
 import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import { Button } from './components/ui/button'
 
 function NavItem({ to, label }: { to: string; label: string }) {
@@ -57,6 +60,9 @@ function AppShell() {
       <main className="max-w-5xl mx-auto px-6 py-6">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/"
             element={

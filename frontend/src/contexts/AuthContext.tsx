@@ -1,34 +1,67 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authLogin, authLogout, authMe, AuthApiError } from '../api/auth'
+import type { LoginRequest, User } from '../types'
 
 interface AuthContextValue {
-  token: string | null
-  login: (key: string) => void
-  logout: () => void
+  user: User | null
   isAuthenticated: boolean
+  isLoading: boolean
+  login: (data: LoginRequest) => Promise<void>
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem('api_token'),
-  )
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const navigate = useNavigate()
 
-  const login = useCallback((key: string) => {
-    localStorage.setItem('api_token', key)
-    setToken(key)
+  // Restaure la session depuis le cookie httpOnly au montage
+  useEffect(() => {
+    let cancelled = false
+    authMe()
+      .then((u) => {
+        if (!cancelled) setUser(u)
+      })
+      .catch(() => {
+        // 401 = pas de session active → pas d'erreur à afficher
+        if (!cancelled) setUser(null)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('api_token')
-    setToken(null)
+  const login = useCallback(async (data: LoginRequest): Promise<void> => {
+    const response = await authLogin(data)
+    setUser(response.user)
+  }, [])
+
+  const logout = useCallback(async (): Promise<void> => {
+    try {
+      await authLogout()
+    } catch {
+      // Ignore les erreurs de logout (token déjà expiré, etc.)
+    }
+    setUser(null)
     navigate('/login', { replace: true })
   }, [navigate])
 
   return (
-    <AuthContext.Provider value={{ token, login, logout, isAuthenticated: token !== null && token !== '' }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: user !== null,
+        isLoading,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
@@ -39,3 +72,5 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error('useAuth doit être utilisé dans un AuthProvider')
   return ctx
 }
+
+export { AuthApiError }

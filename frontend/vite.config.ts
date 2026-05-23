@@ -11,6 +11,21 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/auth': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/admin': 'http://localhost:8000',
+      '/annotations': 'http://localhost:8000',
+      '/composite-history': 'http://localhost:8000',
+      '/esg-history': 'http://localhost:8000',
+      '/compare': 'http://localhost:8000',
+      '/monthly-report': 'http://localhost:8000',
+      '/screener-report': 'http://localhost:8000',
+      '/ticker-report': 'http://localhost:8000',
+      '/backtest': 'http://localhost:8000',
+      '/evals': 'http://localhost:8000',
+      '/performance': 'http://localhost:8000',
       '/analyze': 'http://localhost:8000',
       '/screen': {
         target: 'http://localhost:8000',

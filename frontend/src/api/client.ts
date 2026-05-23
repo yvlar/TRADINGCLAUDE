@@ -10,23 +10,41 @@ class ApiError extends Error {
   }
 }
 
+/** Lit le token CSRF depuis le cookie non-httpOnly (double-submit pattern). */
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${BASE_URL}${path}`
+  const method = (options.method ?? 'GET').toUpperCase()
+  const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+
+  // Clé API programmatique (rétrocompatibilité) — priorité sur cookie auth
   const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers ?? {}),
+    ...(options.headers as Record<string, string> | undefined ?? {}),
   }
 
   if (apiKey) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${apiKey}`
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else if (isMutation) {
+    // Cookie auth : inclure le CSRF token sur les mutations
+    const csrf = getCsrfToken()
+    if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
-  const response = await fetch(url, { ...options, headers })
+  const response = await fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+  })
 
   if (!response.ok) {
     let message: string
@@ -56,16 +74,19 @@ async function requestBlob(path: string, options: RequestInit = {}): Promise<Blo
   const url = `${BASE_URL}${path}`
   const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers ?? {}),
+    ...(options.headers as Record<string, string> | undefined ?? {}),
   }
 
   if (apiKey) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${apiKey}`
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else {
+    const csrf = getCsrfToken()
+    if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
-  const response = await fetch(url, { ...options, headers })
+  const response = await fetch(url, { ...options, headers, credentials: 'include' })
 
   if (!response.ok) {
     const message = response.statusText
@@ -79,16 +100,19 @@ async function requestEmpty(path: string, options: RequestInit = {}): Promise<vo
   const url = `${BASE_URL}${path}`
   const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers ?? {}),
+    ...(options.headers as Record<string, string> | undefined ?? {}),
   }
 
   if (apiKey) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${apiKey}`
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else {
+    const csrf = getCsrfToken()
+    if (csrf) headers['X-CSRF-Token'] = csrf
   }
 
-  const response = await fetch(url, { ...options, headers })
+  const response = await fetch(url, { ...options, headers, credentials: 'include' })
 
   if (!response.ok) {
     let message: string

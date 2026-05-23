@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.endpoints.admin import _require_admin
 from app.api.endpoints.admin import router as admin_router
+from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.analyze_stream import router as analyze_stream_router
 from app.api.endpoints.annotations import router as annotations_router
 from app.api.endpoints.backtest import router as backtest_router
@@ -38,6 +39,7 @@ from app.api.endpoints.watchlist import router as watchlist_router
 from app.api.endpoints.ws_metrics import router as ws_metrics_router
 from app.logging_config import configure_logging
 from app.middleware.auth import BearerTokenMiddleware
+from app.middleware.csrf import CSRFMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import (
@@ -66,6 +68,9 @@ from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
 from app.services.watchlist_pdf_service import WatchlistPdfService
+from app.services.auth_token_service import AuthTokenService
+from app.services.password_reset_service import PasswordResetService
+from app.services.user_service import UserService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
@@ -205,6 +210,56 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_pool.execute(
         "CREATE INDEX IF NOT EXISTS idx_esg_hist_ticker_recorded "
         "ON esg_score_history (ticker, recorded_at DESC)"
+    )
+
+    # Sprint auth — table utilisateurs avec colonnes OAuth et MFA (architecture future)
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            email             TEXT        NOT NULL,
+            hashed_password   TEXT        NOT NULL,
+            role              TEXT        NOT NULL DEFAULT 'reader',
+            is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
+            is_email_verified BOOLEAN     NOT NULL DEFAULT FALSE,
+            mfa_secret        TEXT,
+            mfa_enabled       BOOLEAN     NOT NULL DEFAULT FALSE,
+            oauth_provider    TEXT,
+            oauth_id          TEXT,
+            created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_login_at     TIMESTAMPTZ
+        )
+        """
+    )
+    await db_pool.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (LOWER(email))"
+    )
+    await db_pool.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider TEXT"
+    )
+    await db_pool.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_id TEXT"
+    )
+
+    # Refresh tokens avec détection de vol par famille
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+            id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash  TEXT        NOT NULL UNIQUE,
+            family      UUID        NOT NULL,
+            used        BOOLEAN     NOT NULL DEFAULT FALSE,
+            expires_at  TIMESTAMPTZ NOT NULL,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens (token_hash)"
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens (family)"
     )
 
     anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -402,6 +457,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     screener_pdf_service = ScreenerPdfService()
     watchlist_pdf_service = WatchlistPdfService()
     monthly_report_service = MonthlyReportService()
+    user_service = UserService(db_pool=db_pool)
+    auth_token_service = AuthTokenService(db_pool=db_pool, redis_client=redis_pool)
+    password_reset_service = PasswordResetService()
 
     app.state.annotation_service = annotation_service
     app.state.compare_service = compare_service
@@ -425,6 +483,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.screener_pdf_service = screener_pdf_service
     app.state.watchlist_pdf_service = watchlist_pdf_service
     app.state.monthly_report_service = monthly_report_service
+    app.state.user_service = user_service
+    app.state.auth_token_service = auth_token_service
+    app.state.password_reset_service = password_reset_service
 
     logger.info("Copilote financier démarré — version %s", _VERSION)
     yield
@@ -446,6 +507,7 @@ app = FastAPI(
 _api_key_env = os.environ.get("API_KEY", "")
 _redis_url_env = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 
+app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(annotations_router)
 app.include_router(compare_router)
@@ -467,14 +529,21 @@ app.include_router(telemetry_router)
 app.include_router(watchlist_router)
 app.include_router(ws_metrics_router)
 
-# Ordre inversé d'exécution : BearerToken s'exécute avant RateLimit dans le pipeline
+# Ordre inversé d'exécution : CSRF → BearerToken → RateLimit dans le pipeline
 app.add_middleware(RateLimitMiddleware, redis_url=_redis_url_env)
 app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env)
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Accept"],
 )
 
 

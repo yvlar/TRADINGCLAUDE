@@ -433,6 +433,39 @@ export interface WorkflowOption {
   description: string
 }
 
+// ---- Auth utilisateurs (Sprint login) ----
+export interface User {
+  id: string
+  email: string
+  role: string
+  created_at: string
+}
+
+export interface LoginRequest {
+  email: string
+  password: string
+  remember_me?: boolean
+}
+
+export interface RegisterRequest {
+  email: string
+  password: string
+}
+
+export interface ForgotPasswordRequest {
+  email: string
+}
+
+export interface ResetPasswordRequest {
+  token: string
+  new_password: string
+}
+
+export interface AuthResponse {
+  user: User
+  message: string
+}
+
 export const WORKFLOWS: WorkflowOption[] = [
   {
     value: 'value_graham',
