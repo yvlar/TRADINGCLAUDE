@@ -42,5 +42,6 @@ module = [
     "app.rag.client",
     "app.skills.tier2.stock_valuation.skill",
     "app.orchestrator.core",
+    "app.observability.langfuse_client",
 ]
 ignore_errors = true

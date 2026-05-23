@@ -122,10 +122,9 @@ describe('ComparePage — bouton Analyser (Sprint 87)', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('compare-table')).toBeInTheDocument()
+      expect(screen.getByTestId('analyze-btn-FAKE.TO')).toBeInTheDocument()
+      expect(screen.queryByTestId('analyze-btn-BNS.TO')).not.toBeInTheDocument()
     })
-
-    expect(screen.getByTestId('analyze-btn-FAKE.TO')).toBeInTheDocument()
-    expect(screen.queryByTestId('analyze-btn-BNS.TO')).not.toBeInTheDocument()
   })
 
   it("n'affiche pas le bouton Analyser si tous les analysis_id sont définis", async () => {
