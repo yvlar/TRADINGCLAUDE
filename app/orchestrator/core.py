@@ -1765,10 +1765,12 @@ class Orchestrator:
         page_size: int = 10,
         from_dt: "datetime | None" = None,
         to_dt: "datetime | None" = None,
+        fast_count: bool = False,
     ) -> "PagedHistoryResponse":
         """
         Pagination offset/limit avec total_count (Sprint 90).
         Execute deux requetes en parallele : SELECT LIMIT/OFFSET et SELECT COUNT(*).
+        fast_count=True : estimation rapide via pg_class.reltuples (sans filtre uniquement).
         """
         offset = (page - 1) * page_size
 
@@ -1793,6 +1795,11 @@ class Orchestrator:
             )
 
         async def _fetch_count():
+            # fast_count uniquement sans filtre : pg_class donne un total global, pas filtré
+            if fast_count and not any([ticker, q, from_dt, to_dt]):
+                return await self._db.fetchval(
+                    "SELECT reltuples::bigint FROM pg_class WHERE relname = 'analysis_history'"
+                )
             return await self._db.fetchval(
                 """
                 SELECT COUNT(*)

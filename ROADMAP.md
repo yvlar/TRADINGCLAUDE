@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 95 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 96 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.8.0 |
+| **Version** | 8.9.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 96 — Estimation rapide total_count via pg_class |
-| **Dernier sprint complété** | Sprint 95 — Suppression des analyses obsolètes ✅ |
+| **Sprint actif** | Sprint 97 — Score composite historique dans WatchlistPage |
+| **Dernier sprint complété** | Sprint 96 — Estimation rapide total_count via pg_class ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -99,6 +99,20 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 96 — Estimation rapide total_count via pg_class ✅
+
+**Objectif :** Ajouter un paramètre optionnel `?fast_count=true` à `GET /history-paged` qui remplace le `SELECT COUNT(*)` exact par une estimation rapide via `pg_class.reltuples`. Sans filtre, évite un goulot d'étranglement quand `analysis_history` dépasse 100k lignes.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `Orchestrator.get_history_paged()` accepte `fast_count: bool = False` ; quand True et sans filtre (ticker/q/from_dt/to_dt tous None), `_fetch_count()` appelle `SELECT reltuples::bigint FROM pg_class WHERE relname = 'analysis_history'` au lieu de `SELECT COUNT(*)` ; retombe sur COUNT(*) exact dès qu'un filtre est présent
+- `app/api/main.py` — endpoint `GET /history-paged` accepte `fast_count: bool = False` comme query parameter, passé à `orchestrator.get_history_paged()`
+- `tests/test_history_paged_fast_count.py` — 3 tests CI : `fast_count=False` appelle COUNT(*), `fast_count=True` sans filtre appelle pg_class (pas COUNT*), `fast_count=True` avec ticker retombe sur COUNT(*)
+
+**Version** : 8.9.0
+**Tests** : 1385 tests au total (1383 CI verts hors e2e et evals) — +3 tests Sprint 96 ; 200 Vitest verts (inchangé)
+
+---
 
 ### Sprint 95 — Suppression des analyses obsolètes (DELETE /history) ✅
 

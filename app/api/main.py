@@ -645,6 +645,7 @@ async def history_paged(
     page_size: int = 10,
     from_dt: str | None = None,
     to_dt: str | None = None,
+    fast_count: bool = False,
 ) -> PagedHistoryResponse:
     """
     Retourne les analyses passees avec pagination par numero de page.
@@ -683,6 +684,7 @@ async def history_paged(
         page_size=page_size,
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
+        fast_count=fast_count,
     )
 
 
