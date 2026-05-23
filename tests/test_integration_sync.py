@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
-from app.api.main import app, _VERSION
+from app.api.main import _VERSION, app
 from app.orchestrator.core import HistoryEntry, HistoryResponse, MetricsResponse
 
 TICKER_TEST = "TEST"

@@ -122,21 +122,21 @@ def _reconstruct_response(row) -> AnalyzeResponse:
     created_at_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
 
     # Import ici pour éviter les imports circulaires au niveau module
-    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
-    from app.skills.tier2.earnings_quality.schemas import EarningsQualityOutput
-    from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput
     from app.skills.tier2.buffett_quality.schemas import BuffettQualityOutput
+    from app.skills.tier2.canadian_tax.schemas import CanadianTaxOutput
+    from app.skills.tier2.damodaran_narrative.schemas import DamodararOutput
+    from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput
+    from app.skills.tier2.earnings_quality.schemas import EarningsQualityOutput
+    from app.skills.tier2.fisher_scuttlebutt.schemas import FisherOutput
+    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
+    from app.skills.tier2.greenblatt.schemas import GreenblattOutput
+    from app.skills.tier2.klarman_margin.schemas import KlarmanOutput
+    from app.skills.tier2.lynch_categories.schemas import LynchOutput
+    from app.skills.tier2.marks_cycles.schemas import MarksOutput
+    from app.skills.tier2.munger_mental.schemas import MungerOutput
+    from app.skills.tier2.pabrai_dhandho.schemas import PabraiOutput
     from app.skills.tier2.stock_valuation.schemas import StockValuationOutput
     from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput
-    from app.skills.tier2.munger_mental.schemas import MungerOutput
-    from app.skills.tier2.canadian_tax.schemas import CanadianTaxOutput
-    from app.skills.tier2.lynch_categories.schemas import LynchOutput
-    from app.skills.tier2.fisher_scuttlebutt.schemas import FisherOutput
-    from app.skills.tier2.klarman_margin.schemas import KlarmanOutput
-    from app.skills.tier2.greenblatt.schemas import GreenblattOutput
-    from app.skills.tier2.damodaran_narrative.schemas import DamodararOutput
-    from app.skills.tier2.marks_cycles.schemas import MarksOutput
-    from app.skills.tier2.pabrai_dhandho.schemas import PabraiOutput
 
     def _try_parse(model_cls, key: str):
         data = result.get(key)

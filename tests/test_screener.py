@@ -2,23 +2,22 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.api.endpoints.screen import ScreenEntry, ScreenRequest, ScreenResult
+from app.api.endpoints.screen import ScreenRequest
 from app.orchestrator.core import AnalyzeResponse
 from app.services.screener import ScreenerService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _make_graham_output(ticker: str, score: int, verdict: str):
-    from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
     from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
+    from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
 
     ent_score = min(score, 5)
     return GrahamAnalysisOutput(

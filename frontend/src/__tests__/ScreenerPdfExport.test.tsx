@@ -47,8 +47,8 @@ describe('ScreenerPage — Exporter PDF', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Simuler URL.createObjectURL et revokeObjectURL (non dispo dans jsdom)
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
-    global.URL.revokeObjectURL = vi.fn()
+    window.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    window.URL.revokeObjectURL = vi.fn()
   })
 
   it("le bouton Exporter PDF n'apparaît pas avant un résultat", () => {

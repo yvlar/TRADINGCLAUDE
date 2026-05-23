@@ -6,11 +6,6 @@ Ils garantissent que le fichier JSON est bien forme avant d'executer les evals r
 """
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
-import pytest
-
 from app.skills.tier2.earnings_quality.schemas import (
     EarningsQualityInput,
     EarningsQualityRatios,

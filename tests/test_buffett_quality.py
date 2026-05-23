@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
-from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
+from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.skills.base import UsageDetail
 from app.skills.tier2.buffett_quality.schemas import (
     BuffettFiltre,
@@ -23,8 +23,6 @@ from app.skills.tier2.dorsey_moat.schemas import (
     DorseyRatios,
     MoatSource,
 )
-from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
-
 
 # ---------------------------------------------------------------------------
 # Helpers

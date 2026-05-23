@@ -420,6 +420,7 @@ async def _execute_eval_drift_check(dataset: str) -> dict:
     """Lance EvalDriftService.run_eval() et persist le résultat dans Redis."""
     redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
     import redis.asyncio as aioredis
+
     from app.services.eval_drift_service import EvalDriftService
 
     redis_client = aioredis.from_url(redis_url, decode_responses=True)

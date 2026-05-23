@@ -1,4 +1,4 @@
-# Sprint 98 -- Professionnalisation GitHub (CI complet + qualite code)
+# Sprint 99 -- Tableau de bord alertes (AlertsPage)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
@@ -17,9 +17,9 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 1. `CLAUDE.md` -- index slim (pointe vers `.claude/rules/`)
 2. `.claude/rules/base-connaissances-skills.md` -- catalogue 16+2 skills
 3. `ROADMAP.md` -- etat courant, sprint actif, historique des decisions
-4. `.github/workflows/` (si present) -- workflows CI existants a ne pas ecraser
-5. `pyproject.toml` (si present) -- configuration Python existante
-6. `package.json` dans `frontend/` -- scripts npm existants (lint, typecheck)
+4. `.github/workflows/ci.yml` -- 4 jobs CI (test-backend, test-frontend, lint, typecheck)
+5. `pyproject.toml` -- configuration ruff + mypy (Sprint 98)
+6. `app/workers/tasks.py` -- taches Celery existantes (alertes ESG, screener, degradation)
 
 ---
 
@@ -27,10 +27,10 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 
 | Champ                   | Valeur                                                              |
 | ----------------------- | ------------------------------------------------------------------- |
-| Version                 | 9.0.0                                                               |
+| Version                 | 9.1.0                                                               |
 | Phase active            | Phase 3 -- Pipeline de synthese                                     |
-| Sprint actif            | **Sprint 98 -- Professionnalisation GitHub (CI complet + qualite code)** |
-| Dernier sprint complete | Sprint 97 -- Score composite historique dans WatchlistPage ✅      |
+| Sprint actif            | **Sprint 99 -- Tableau de bord alertes (AlertsPage)**               |
+| Dernier sprint complete | Sprint 98 -- Professionnalisation GitHub ✅                         |
 
 ## Infrastructure backend (operationnelle)
 
@@ -41,79 +41,103 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 - `POST /analyze-stream` -- streaming SSE skill par skill (Sprint 93)
 - `GET /history-paged?ticker=&q=&page=1&page_size=10` -- pagination offset/limit (Sprint 90)
 - `SlackService` -- send_text/send_esg_alert/send_screener_summary/send_monthly_report_summary (Sprint 86)
+- CI : 4 jobs (pytest + vitest + ruff/eslint lint + mypy/tsc typecheck) -- Sprint 98
 - 1383 tests CI verts (hors e2e et evals)
 
 ## Frontend React (operationnel)
 
 - SPA React 18 + TypeScript strict -- port 5173
 - 9 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG
-- **WatchlistPage** -- WatchlistTable avec colonne "Tendance" sparkline composite_score 30j (Sprint 97)
-- **CompositeSparkline** -- `frontend/src/components/CompositeSparkline.tsx` -- recharts 120px sans axes
+- **WatchlistPage** -- colonne "Tendance" sparkline composite_score 30j (Sprint 97)
+- **CompositeSparkline** -- `frontend/src/components/CompositeSparkline.tsx`
 - 205 tests Vitest verts
+
+## Infrastructure CI/qualite code (Sprint 98)
+
+- `LICENSE` MIT + `CONTRIBUTING.md` + `SECURITY.md`
+- `.github/ISSUE_TEMPLATE/` bug_report.yml + feature_request.yml
+- `.github/pull_request_template.md`
+- `pyproject.toml` -- ruff (line-length 100, E/W/F/I/N) + mypy (python_version 3.11)
+- `frontend/.eslintrc.cjs` -- ESLint + @typescript-eslint + react-hooks
+- `frontend/package.json` -- scripts `lint` + `typecheck`
+- `.github/dependabot.yml` -- pip + npm weekly
 
 ---
 
-# TACHE -- SPRINT 98
+# TACHE -- SPRINT 99
 
 ## Objectif
 
-Rendre le depot GitHub public professionnel et pret pour des contributeurs exterieurs :
-linting/formatage automatique dans le CI, type-checking, templates GitHub, fichiers de gouvernance.
+Creer une page `/alerts` dans le frontend React listant les alertes recentes generees par Celery
+(ESG + composite + prix), avec persistance dans une nouvelle table `alert_history` PostgreSQL.
+Yves ne voit actuellement les alertes que via Slack ou webhook -- la page centralise tout.
 
 ## Livrables attendus
 
-### 1. Fichiers de gouvernance
+### 1. Table PostgreSQL `alert_history`
 
-- `LICENSE` -- MIT (2026, Yves Lariviere)
-- `CONTRIBUTING.md` -- setup local (Docker Compose + npm), conventions bilingues FR/EN,
-  pyramide de tests (5 niveaux), workflow sprint, commandes essentielles
-- `SECURITY.md` -- politique de divulgation responsable, contact ivess49@gmail.com
+Migration idempotente dans `app/api/main.py` (lifespan) :
+```sql
+CREATE TABLE IF NOT EXISTS alert_history (
+    id        BIGSERIAL PRIMARY KEY,
+    ticker    TEXT        NOT NULL,
+    type      TEXT        NOT NULL,  -- 'ESG_DEGRADATION' | 'COMPOSITE_BAISSE' | 'PRIX_SEUIL'
+    valeur    DOUBLE PRECISION,      -- score ESG, composite_score, ou prix
+    seuil     DOUBLE PRECISION,      -- seuil qui a declenche l'alerte
+    message   TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_alert_history_ticker_created
+    ON alert_history (ticker, created_at DESC);
+```
+Egalement dans `infra/postgres/init.sql`.
 
-### 2. Templates GitHub
+### 2. `AlertHistoryService` (`app/services/alert_history_service.py`)
 
-- `.github/ISSUE_TEMPLATE/bug_report.yml` -- template structure : titre, version, etapes
-  de reproduction, comportement attendu/observe, logs
-- `.github/ISSUE_TEMPLATE/feature_request.yml` -- template : titre, probleme, solution proposee,
-  alternatives envisagees
-- `.github/pull_request_template.md` -- checklist : tests verts, types stricts, CLAUDE.md a jour,
-  `.env.example` a jour, pas de secret commite
+Deux methodes async :
+- `record(ticker, type, valeur, seuil, message)` -- INSERT, retourne l'id
+- `get_recent(limit=50)` -- SELECT ORDER BY created_at DESC LIMIT $1, retourne liste de dicts
 
-### 3. Configuration qualite code
+### 3. Persistance dans les workers Celery existants
 
-- `pyproject.toml` -- configuration `ruff` (line-length 100, select E/W/F/I/N, per-file-ignores
-  pour tests) + `mypy` (python_version 3.11, ignore_missing_imports = true, strict = false)
-- `frontend/package.json` -- verifier que les scripts `lint` et `typecheck` existent
-  (ajouter si absents : `"lint": "eslint src"`, `"typecheck": "tsc --noEmit"`)
+Modifier `app/workers/tasks.py` : quand une alerte est declenchee (ESG degradation, screener FORT),
+appeler `await app_state.alert_history_service.record(...)` en best-effort (try/except + logger.warning).
 
-### 4. Workflow CI GitHub Actions
+### 4. Endpoint `GET /alerts` (`app/api/main.py`)
 
-- `.github/workflows/ci.yml` -- 3 jobs :
-  1. `test-backend` : `pip install -r requirements.txt && pytest tests/ --ignore=tests/e2e --ignore=tests/evals`
-  2. `lint` : `pip install ruff && ruff check app/ tests/` + `cd frontend && npm ci && npm run lint`
-  3. `typecheck` : `pip install mypy && mypy app/ --ignore-missing-imports` + `cd frontend && npx tsc --noEmit`
-- Declenchement : `push` sur `master`/`main` et `pull_request`
-- Python 3.11, Node.js 20
+```python
+@app.get("/alerts")
+async def get_alerts(limit: int = Query(50, ge=1, le=200), request: Request):
+    service = request.app.state.alert_history_service
+    return {"alerts": await service.get_recent(limit)}
+```
 
-### 5. Dependabot
+### 5. Frontend -- Types, API, Page
 
-- `.github/dependabot.yml` -- mise a jour automatique pip (weekly, lundi) + npm (weekly, lundi)
-  cible `master`
+- `frontend/src/types/index.ts` -- interface `AlertEntry { id: number; ticker: string; type: string; valeur: number | null; seuil: number | null; message: string | null; created_at: string }`
+  + interface `AlertsResponse { alerts: AlertEntry[] }`
+- `frontend/src/api/alerts.ts` -- `fetchAlerts(limit=50): Promise<AlertsResponse>` via `apiClient.request`
+- `frontend/src/pages/AlertsPage.tsx` -- React Query `['alerts']`, tableau avec colonnes
+  Horodatage / Ticker / Type (badge colore) / Valeur / Seuil / Message ; state de chargement ;
+  message "Aucune alerte" si vide ; `data-testid="alerts-table"`
+- `frontend/src/App.tsx` -- route `/alerts` + lien dans la nav
+- `frontend/src/__tests__/AlertsPage.test.tsx` -- 5 tests : rendu vide, rendu avec 2 alertes,
+  badge type colore, chargement spinner, erreur API
+
+### 6. Tests backend
+
+- `tests/test_alert_history_service.py` -- 3 tests CI :
+  1. `record()` -- SQL params corrects (ticker, type, valeur, seuil, message)
+  2. `get_recent()` -- tri DESC + respect limit
+  3. endpoint `GET /alerts?limit=2` retourne 200 + liste
 
 ## Tests attendus
 
-Pas de nouveaux tests CI/Vitest -- sprint infrastructure uniquement.
-Verifier que le CI passe en local : `ruff check app/` + `cd frontend && npm run lint` (si applicable).
++3 tests CI (backend) + 5 tests Vitest (frontend) = 1386 CI verts, 210 Vitest verts.
 
 ---
 
-# SPRINTS SUGGERES (99-103)
-
-### Sprint 99 -- Tableau de bord alertes (AlertsPage)
-
-**Objectif** : Nouvelle page `/alerts` listant les alertes recentes (ESG + composite + prix) avec
-horodatage, ticker, type d'alerte et valeur. Persistance dans une nouvelle table `alert_history`.
-**Complexite** : Moyenne-Elevee
-**Justification** : Yves ne voit pas les alertes sans consulter Slack/webhook.
+# SPRINTS SUGGERES (100-104)
 
 ### Sprint 100 -- Export analyse individuelle en PDF enrichi
 
@@ -143,6 +167,14 @@ alerte ESG ou composite, sans dependance a Slack ni webhook externe.
 en miroir du sparkline composite_score (Sprint 97). Donnees via `GET /esg-history/{ticker}`.
 **Complexite** : Faible
 **Justification** : Coherence visuelle avec le sparkline composite_score ; donnees deja disponibles.
+
+### Sprint 104 -- Score Graham dans le screener batch
+
+**Objectif** : Afficher le score Graham (defensive_score / enterprising_score) directement dans
+le tableau du ScreenerPage en plus du composite_score, pour une lecture comparative immediate.
+**Complexite** : Faible
+**Justification** : La colonne Graham est la plus utilisee dans les decisions d'achat ; la rendre
+visible sans cliquer vers le detail de chaque ticker.
 
 ---
 
@@ -183,10 +215,12 @@ en miroir du sparkline composite_score (Sprint 97). Donnees via `GET /esg-histor
 - **Suppression analyses Sprint 95** : `Orchestrator.delete_analysis()` + `DELETE /history/{analysis_id}` (admin, 204/404/422) + `deleteAnalysis()` frontend + bouton 🗑 HistoryPage `data-testid="delete-analysis-{id}"` -- ne pas modifier
 - **Fast count Sprint 96** : `Orchestrator.get_history_paged()` accepte `fast_count: bool = False` ; `GET /history-paged?fast_count=true` -- ne pas modifier
 - **Sparkline Sprint 97** : `CompositeSparkline` dans `frontend/src/components/CompositeSparkline.tsx` ; colonne "Tendance" dans `WatchlistTable.tsx` entre "Score composite" et "ESG" -- ne pas modifier ; tests Watchlist* mockent `CompositeSparkline` pour eviter QueryClientProvider
+- **CI Sprint 98** : 4 jobs (test-backend, test-frontend, lint, typecheck) -- `.github/workflows/ci.yml` -- ne pas modifier ; `pyproject.toml` ruff+mypy + `frontend/.eslintrc.cjs` ESLint -- ne pas modifier
+- **AlertsPage Sprint 99** (ce sprint) : `alert_history` table + `AlertHistoryService` dans `app.state.alert_history_service` + `GET /alerts` + `AlertsPage.tsx` + route `/alerts`
 - **Robustesse OneDrive** : si la synchro OneDrive coupe une edition (fichier tronque a mi-contenu), restaurer en appendant la queue manquante via `python3 ... open(path, 'ab')` en chunks de ~600 bytes maximum ; toujours verifier `wc -l` + balance braces/parens apres une edition critique
 
 ---
 
 _Roadmap mise a jour le 2026-05-22 -- Yves / TradingClaude_
-_Sprint 97 complete : Score composite historique dans WatchlistPage -- CompositeSparkline recharts 120px + colonne "Tendance" WatchlistTable + 5 tests Vitest -- 1383 CI verts, 205 Vitest verts -- version 9.0.0_
-_Sprints 98-103 suggeres : Professionnalisation GitHub → AlertsPage → Export PDF analyse → Recherche watchlist → Web Push alertes → Sparkline ESG_
+_Sprint 98 complete : Professionnalisation GitHub -- LICENSE + CONTRIBUTING.md + SECURITY.md + templates GitHub + pyproject.toml ruff/mypy + ESLint frontend + CI 4 jobs + dependabot -- 1383 CI verts, 205 Vitest verts -- version 9.1.0_
+_Sprints 99-104 suggeres : AlertsPage → Export PDF analyse → Recherche watchlist → Web Push alertes → Sparkline ESG → Score Graham screener_

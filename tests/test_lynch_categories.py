@@ -17,7 +17,6 @@ from app.skills.tier2.lynch_categories.schemas import (
 )
 from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

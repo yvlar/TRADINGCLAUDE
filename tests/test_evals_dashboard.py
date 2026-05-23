@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.models.evals import EvalRunRecord, EvalSkillInfo, EvalsSummary
-from app.services.evals_dashboard import EvalsDashboardService, _SKILL_CATALOGUE
-
+from app.models.evals import EvalRunRecord
+from app.services.evals_dashboard import _SKILL_CATALOGUE, EvalsDashboardService
 
 # ---------------------------------------------------------------------------
 # Helpers

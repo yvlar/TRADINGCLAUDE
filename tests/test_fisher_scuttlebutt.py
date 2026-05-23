@@ -14,10 +14,8 @@ from app.skills.tier2.fisher_scuttlebutt.schemas import (
     FisherAnswer,
     FisherInput,
     FisherOutput,
-    FisherPoint,
 )
 from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
-
 
 # ---------------------------------------------------------------------------
 # Helpers

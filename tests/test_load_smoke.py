@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pytest
 
-
 GRAHAM_PAYLOAD = {
     "ticker": "BNS",
     "ratios": {

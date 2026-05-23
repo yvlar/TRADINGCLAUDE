@@ -1,0 +1,67 @@
+name: Rapport de bug / Bug Report
+description: Signaler un comportement inattendu
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de remplir ce formulaire pour nous aider à reproduire et corriger le problème.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version du projet (voir ROADMAP.md ou le dernier tag git)
+      placeholder: "ex: 9.0.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes de reproduction / Steps to reproduce
+      description: Liste numérotée des actions menant au bug
+      placeholder: |
+        1. Lancer `POST /analyze` avec ticker "BNS.TO"
+        2. Observer la réponse
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu / Expected behavior
+      description: Ce qui devrait se passer
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportement observé / Actual behavior
+      description: Ce qui se passe réellement
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error output
+      description: Coller les logs pertinents (masquer les clés API)
+      render: text
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant affecté / Affected component
+      options:
+        - Backend FastAPI
+        - Frontend React
+        - Celery worker
+        - Base de données PostgreSQL
+        - Skill d'analyse
+        - Autre
+    validations:
+      required: true

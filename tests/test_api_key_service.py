@@ -6,21 +6,17 @@ CI standard : pytest -m "not e2e and not evals"
 from __future__ import annotations
 
 import hashlib
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from app.api.endpoints.admin import router as admin_router
 from app.services.api_key_service import ApiKeyRecord, ApiKeyService
-
 
 # ---------------------------------------------------------------------------
 # Helpers

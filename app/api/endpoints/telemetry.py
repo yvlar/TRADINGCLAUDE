@@ -6,10 +6,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
-from app.services.eval_drift_service import EvalDriftResult, EvalDriftService, SUPPORTED_DATASETS
+from app.services.eval_drift_service import SUPPORTED_DATASETS, EvalDriftResult, EvalDriftService
 from app.services.observability import (
     CacheStats,
-    CostSummary,
     DailyCost,
     LatencyStats,
     ObservabilityService,

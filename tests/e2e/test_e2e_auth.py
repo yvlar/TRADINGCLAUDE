@@ -8,7 +8,6 @@ pytestmark = pytest.mark.e2e
 def test_redirect_login_sans_token(backend_server, browser_context):
     """Sans api_token dans localStorage, / redirige vers /login."""
     # Contexte sans init_script pour cette session
-    import playwright.sync_api as pw_sync
 
     with browser_context.browser.new_context(base_url="http://localhost:5173") as ctx:
         p = ctx.new_page()

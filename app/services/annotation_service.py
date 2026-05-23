@@ -4,7 +4,7 @@ import logging
 
 import asyncpg
 
-from app.models.annotation import Annotation, AnnotationCreate
+from app.models.annotation import Annotation
 
 logger = logging.getLogger(__name__)
 

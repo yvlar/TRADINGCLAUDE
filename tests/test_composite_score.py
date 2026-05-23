@@ -1,6 +1,6 @@
 """Tests unitaires pour compute_composite_score()."""
-import pytest
-from app.services.composite_score import CompositeScore, compute_composite_score, WEIGHTS
+
+from app.services.composite_score import WEIGHTS, compute_composite_score
 
 
 class TestComputeCompositeScoreBasique:

@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models.evals import EvalRunRecord, EvalsSummary
-from app.services.evals_dashboard import EvalsDashboardService, _SKILL_CATALOGUE
+from app.services.evals_dashboard import _SKILL_CATALOGUE, EvalsDashboardService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/evals", tags=["evals"])

@@ -27,8 +27,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('AnnotationsExport — boutons dans HistoryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    global.URL.createObjectURL = vi.fn().mockReturnValue('blob:test')
-    global.URL.revokeObjectURL = vi.fn()
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test')
+    window.URL.revokeObjectURL = vi.fn()
   })
 
   it('affiche le bouton "Exporter CSV"', () => {

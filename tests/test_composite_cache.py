@@ -9,17 +9,16 @@ Couvre :
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
+from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.services.composite_history_service import (
     CompositeHistoryPoint,
     CompositeHistoryService,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

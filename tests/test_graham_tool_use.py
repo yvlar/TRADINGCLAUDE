@@ -21,15 +21,18 @@ from app.skills.tier2.earnings_quality.schemas import (
     EarningsQualityRatios,
 )
 from app.skills.tier2.earnings_quality.skill import (
-    EarningsQualitySkill,
     _EARNINGS_TOOL_SCHEMA,
+    EarningsQualitySkill,
 )
-from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisInput, GrahamAnalysisOutput, GrahamRatios
+from app.skills.tier2.graham_analysis.schemas import (
+    GrahamAnalysisInput,
+    GrahamAnalysisOutput,
+    GrahamRatios,
+)
 from app.skills.tier2.graham_analysis.skill import (
-    GrahamAnalysisSkill,
     _GRAHAM_TOOL_SCHEMA,
+    GrahamAnalysisSkill,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

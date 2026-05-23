@@ -17,7 +17,6 @@ from app.skills.tier2.klarman_margin.schemas import (
 )
 from app.skills.tier2.klarman_margin.skill import KlarmanMarginSkill
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

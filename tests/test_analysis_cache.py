@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse
+from app.orchestrator.core import AnalyzeResponse
 from app.services.analysis_cache import AnalysisCacheService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
-
 
 # ---------------------------------------------------------------------------
 # Fixtures locales
@@ -63,11 +62,11 @@ def cache(mock_redis: AsyncMock) -> AnalysisCacheService:
 @pytest.fixture
 def analyze_response_bns(ratios_bns: GrahamRatios) -> AnalyzeResponse:
     """AnalyzeResponse minimale valide pour BNS."""
+    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
     from tests.conftest import (
         _make_criteria_defensif,
         _make_criteria_entreprenant,
     )
-    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
 
     graham = GrahamAnalysisOutput(
         ticker="BNS",
@@ -198,7 +197,7 @@ async def test_orchestrator_utilise_cache_si_present(
     mock_graham_skill = AsyncMock()
     mock_graham_skill.execute = AsyncMock()
 
-    from app.orchestrator.core import Orchestrator, AnalyzeRequest
+    from app.orchestrator.core import AnalyzeRequest, Orchestrator
     from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
 
     mock_earnings_skill = AsyncMock(spec=EarningsQualitySkill)
@@ -224,12 +223,11 @@ async def test_orchestrator_bypass_cache_si_absent(
     analyze_response_bns: AnalyzeResponse,
 ):
     """Avec cache=None, l'analyse normale s'exécute (graham_skill.execute est appelé)."""
-    from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
-    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
-    from app.skills.base import UsageDetail
-    from app.orchestrator.core import Orchestrator, AnalyzeRequest
-    from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
     import uuid
+
+    from app.orchestrator.core import AnalyzeRequest, Orchestrator
+    from app.skills.base import UsageDetail
+    from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
 
     graham_out = analyze_response_bns.graham
     usage = UsageDetail(

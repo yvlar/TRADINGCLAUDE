@@ -5,6 +5,10 @@ from datetime import datetime, timezone
 from io import BytesIO
 
 import asyncpg
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.services.report import _composite_alerte, _composite_label
 from app.services.screener_pdf_service import (
@@ -16,11 +20,6 @@ from app.services.screener_pdf_service import (
     _hr,
     _label_color,
 )
-
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 logger = logging.getLogger(__name__)
 

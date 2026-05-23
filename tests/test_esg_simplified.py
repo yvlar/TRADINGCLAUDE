@@ -16,9 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.skills.tier2.esg_simplified.schemas import EsgCritere, EsgInput, EsgOutput
-from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill, _ESG_TOOL_SCHEMA
-
+from app.skills.tier2.esg_simplified.schemas import EsgInput, EsgOutput
+from app.skills.tier2.esg_simplified.skill import _ESG_TOOL_SCHEMA, EsgSimplifiedSkill
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -278,7 +277,6 @@ async def test_esg_execute_passe_tools_et_tool_choice():
 @pytest.mark.asyncio
 async def test_esg_endpoint_integration(client):
     """POST /analyze avec esg_input → champ esg présent dans la réponse (orchestrateur mocké)."""
-    from app.orchestrator.core import AnalyzeResponse as CoreAnalyzeResponse
     from app.skills.tier2.esg_simplified.schemas import EsgOutput as CoreEsgOutput
 
     esg_data = _make_valid_esg_output_dict(ticker="BNS", e_pass=4, s_pass=3, g_pass=3)

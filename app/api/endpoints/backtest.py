@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from typing import Literal
 
 from app.models.backtest import BacktestResult
 from app.services.backtest import BacktestService

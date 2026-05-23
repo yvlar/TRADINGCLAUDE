@@ -13,7 +13,6 @@ IMPORTANT : ne jamais patcher call_claude_with_retry dans ce module.
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -29,6 +28,7 @@ HAIKU_MODEL = "claude-haiku-4-5-20251001"
 async def earnings_skill():
     """EarningsQualitySkill avec client Anthropic reel -- necessite ANTHROPIC_API_KEY."""
     import anthropic
+
     from app.skills.base import SkillConfig
     from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
 

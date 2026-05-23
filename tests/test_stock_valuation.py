@@ -1,7 +1,6 @@
 """Tests du skill stock_valuation_triangulation — schemas, skill, orchestrateur."""
 from __future__ import annotations
 
-import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -26,7 +25,6 @@ from app.skills.tier2.stock_valuation.schemas import (
     ValuationRatios,
 )
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
-
 
 # ---------------------------------------------------------------------------
 # Helpers

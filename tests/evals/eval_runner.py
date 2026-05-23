@@ -127,7 +127,9 @@ class EvalRunner:
         case: dict[str, Any],
     ) -> EvalResult:
         """Lance un cas de test et retourne EvalResult."""
-        from tests.evals.fixtures import load_graham_golden  # noqa: F401 — import local intentionnel
+        from tests.evals.fixtures import (
+            load_graham_golden,  # noqa: F401 — import local intentionnel
+        )
 
         t0 = time.perf_counter()
         response = await client.post(

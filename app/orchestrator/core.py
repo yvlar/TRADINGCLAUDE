@@ -30,6 +30,8 @@ from app.skills.tier2.buffett_quality.schemas import (
     BuffettQualityInput,
     BuffettQualityOutput,
     BuffettRatios,
+)
+from app.skills.tier2.buffett_quality.schemas import (
     DorseyContext as BuffettDorseyContext,
 )
 from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
@@ -38,10 +40,17 @@ from app.skills.tier2.canadian_tax.schemas import (
     CanadianTaxOutput,
 )
 from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
+from app.skills.tier2.damodaran_narrative.schemas import (
+    DamodararInput,
+    DamodararOutput,
+)
+from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
 from app.skills.tier2.dorsey_moat.schemas import (
     DorseyMoatInput,
     DorseyMoatOutput,
     DorseyRatios,
+)
+from app.skills.tier2.dorsey_moat.schemas import (
     EarningsContext as DorseyEarningsContext,
 )
 from app.skills.tier2.dorsey_moat.skill import DorseyMoatSkill
@@ -52,46 +61,27 @@ from app.skills.tier2.earnings_quality.schemas import (
     GrahamContext,
 )
 from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
+from app.skills.tier2.esg_simplified.schemas import (
+    EsgInput,
+    EsgOutput,
+)
+from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
+from app.skills.tier2.fisher_scuttlebutt.schemas import (
+    FisherInput,
+    FisherOutput,
+)
+from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
 from app.skills.tier2.graham_analysis.schemas import (
     GrahamAnalysisInput,
     GrahamAnalysisOutput,
     GrahamRatios,
 )
 from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
-from app.skills.tier2.fisher_scuttlebutt.schemas import (
-    FisherInput,
-    FisherOutput,
-)
-from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
 from app.skills.tier2.greenblatt.schemas import (
     GreenblattInput,
     GreenblattOutput,
-    GreenblattRatios,
 )
 from app.skills.tier2.greenblatt.skill import GreenblattSkill
-from app.skills.tier2.damodaran_narrative.schemas import (
-    DamodararInput,
-    DamodararOutput,
-    DamodararRatios,
-)
-from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
-from app.skills.tier2.marks_cycles.schemas import (
-    MarksInput,
-    MarksOutput,
-    MarksRatios,
-)
-from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
-from app.skills.tier2.pabrai_dhandho.schemas import (
-    PabraiInput,
-    PabraiOutput,
-    PabraiRatios,
-)
-from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
-from app.skills.tier2.esg_simplified.schemas import (
-    EsgInput,
-    EsgOutput,
-)
-from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
 from app.skills.tier2.klarman_margin.schemas import (
     KlarmanInput,
     KlarmanOutput,
@@ -103,17 +93,35 @@ from app.skills.tier2.lynch_categories.schemas import (
     LynchRatios,
 )
 from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
+from app.skills.tier2.marks_cycles.schemas import (
+    MarksInput,
+    MarksOutput,
+)
+from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
 from app.skills.tier2.munger_mental.schemas import (
     MungerInput,
     MungerOutput,
     ThesisContext,
 )
 from app.skills.tier2.munger_mental.skill import MungerMentalSkill
+from app.skills.tier2.pabrai_dhandho.schemas import (
+    PabraiInput,
+    PabraiOutput,
+)
+from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
 from app.skills.tier2.stock_valuation.schemas import (
     BuffettContext as ValuationBuffettContext,
+)
+from app.skills.tier2.stock_valuation.schemas import (
     DorseyContext as ValuationDorseyContext,
+)
+from app.skills.tier2.stock_valuation.schemas import (
     EarningsContext as ValuationEarningsContext,
+)
+from app.skills.tier2.stock_valuation.schemas import (
     GrahamContext as ValuationGrahamContext,
+)
+from app.skills.tier2.stock_valuation.schemas import (
     StockValuationInput,
     StockValuationOutput,
     ValuationRatios,

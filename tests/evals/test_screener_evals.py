@@ -16,7 +16,6 @@ from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse
 from app.services.composite_score import compute_composite_score
 from app.services.screener import ScreenerService
 from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput, GrahamRatios
-
 from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
 from tests.evals.fixtures import load_screener_golden
 

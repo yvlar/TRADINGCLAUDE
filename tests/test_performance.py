@@ -10,7 +10,6 @@ import pytest
 from app.api.endpoints.performance import _compute_rendement, _extract_composite_score
 from app.api.main import app
 
-
 # ---------------------------------------------------------------------------
 # Tests unitaires — _compute_rendement (logique pure, pas de mock nécessaire)
 # ---------------------------------------------------------------------------

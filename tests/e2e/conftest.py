@@ -8,13 +8,11 @@ import time
 import uuid
 from contextlib import ExitStack
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis
 import pytest
 import uvicorn
-
 from fastapi import HTTPException
 
 from app.api.main import app
@@ -38,7 +36,6 @@ from tests.e2e.fixtures.claude_stubs import (
     thesis_stub,
     valuation_stub,
 )
-
 
 # ---------------------------------------------------------------------------
 # Paths à patcher (identiques au conftest parent)

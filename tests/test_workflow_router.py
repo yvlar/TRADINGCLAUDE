@@ -1,12 +1,12 @@
 """Tests Sprint 21 — WorkflowRouter + WebSocket /ws/metrics."""
 from __future__ import annotations
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.orchestrator.router import WORKFLOWS, SkillStep, WorkflowRouter
+import pytest
 
+from app.orchestrator.router import WorkflowRouter
 
 # ---------------------------------------------------------------------------
 # Tests WorkflowRouter — pure unit, 0 appel réseau
@@ -143,6 +143,7 @@ async def test_ws_metrics_payload_structure():
 async def test_ws_metrics_connect_disconnect():
     """ws_metrics se ferme proprement quand le client se déconnecte (WebSocketDisconnect)."""
     from fastapi import WebSocketDisconnect
+
     from app.api.endpoints.ws_metrics import ws_metrics
 
     mock_redis = AsyncMock()

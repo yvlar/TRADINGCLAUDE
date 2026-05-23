@@ -8,16 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
-from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
+from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.skills.base import UsageDetail
 from app.skills.tier2.pabrai_dhandho.schemas import (
-    DhandhoPrincipe,
     PabraiInput,
     PabraiOutput,
     PabraiRatios,
 )
 from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
-
 
 # ---------------------------------------------------------------------------
 # Helpers

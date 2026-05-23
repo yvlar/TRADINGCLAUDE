@@ -157,8 +157,8 @@ def _real_watchlist_pdf_bytes() -> bytes:
     from io import BytesIO
 
     from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import Paragraph, SimpleDocTemplate
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -189,6 +189,7 @@ async def test_monthly_report_pdf_contient_esg_quand_score_present():
     assert watchlist_pdf[:4] == b"%PDF"
     # Section ESG insérée — vérification via extraction texte pypdf
     from io import BytesIO
+
     from pypdf import PdfReader
 
     text = "".join(page.extract_text() or "" for page in PdfReader(BytesIO(watchlist_pdf)).pages)
@@ -220,9 +221,9 @@ async def test_monthly_report_pdf_sans_esg_quand_aucun_score():
 
 def test_esg_verdict_helper_importable():
     """Le helper esg_verdict est accessible depuis app.utils.esg_utils."""
-    from app.utils.esg_utils import esg_verdict
     # Alias retro-compatible exposé depuis l'endpoint watchlist
     from app.api.endpoints.watchlist import _esg_verdict
+    from app.utils.esg_utils import esg_verdict
 
     assert esg_verdict(12.0) == "ESG_FORT"
     assert esg_verdict(7.5) == "ESG_MODERE"

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 97 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 98 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.0.0 |
+| **Version** | 9.1.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 98 — Professionnalisation GitHub |
-| **Dernier sprint complété** | Sprint 97 — Score composite historique dans WatchlistPage ✅ |
+| **Sprint actif** | Sprint 99 — Tableau de bord alertes (AlertsPage) |
+| **Dernier sprint complété** | Sprint 98 — Professionnalisation GitHub ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -211,22 +211,31 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 ---
 
-### Sprint 98 — Professionnalisation GitHub 🔜
+### Sprint 98 — Professionnalisation GitHub ✅
 
 **Objectif :** Rendre le dépôt GitHub public professionnel et prêt pour des contributeurs : linting/formatage automatique dans le CI, type-checking, templates GitHub, fichiers de gouvernance (LICENSE, CONTRIBUTING, SECURITY).
 
 **Livrables :**
-- `.github/ISSUE_TEMPLATE/bug_report.yml` + `feature_request.yml` — templates structurés pour les issues
-- `.github/pull_request_template.md` — checklist PR (tests, types, CLAUDE.md, `.env.example` à jour)
-- `CONTRIBUTING.md` — setup local, conventions bilingues FR/EN, pyramide de tests, workflow sprint
-- `LICENSE` — MIT
-- `SECURITY.md` — politique de divulgation responsable (contact ivess49@gmail.com)
-- `.github/workflows/ci.yml` — 2 jobs supplémentaires : `lint` (`ruff check` + `ruff format --check` Python, `npm run lint` frontend) et `typecheck` (`mypy app/` Python, `npx tsc --noEmit` frontend)
-- `pyproject.toml` — configuration ruff (line-length 100, select E/W/F/I) + mypy (strict=False, ignore-missing-imports)
-- `.github/dependabot.yml` — mises à jour automatiques pip + npm (weekly)
+- `LICENSE` — MIT (2026, Yves Larivière)
+- `CONTRIBUTING.md` — setup local Docker+npm, conventions bilingues FR/EN, pyramide 5 niveaux, workflow sprint, commandes essentielles
+- `SECURITY.md` — politique de divulgation responsable, contact ivess49@gmail.com
+- `.github/ISSUE_TEMPLATE/bug_report.yml` + `feature_request.yml` — templates structurés (version, étapes, comportement attendu/observé, composant)
+- `.github/pull_request_template.md` — checklist PR (tests, types stricts, CLAUDE.md, `.env.example`, pas de secret)
+- `pyproject.toml` — configuration `ruff` (line-length 100, select E/W/F/I/N, ignores E402/E741/E741/F821) + `mypy` (python_version 3.11, ignore_missing_imports, strict=false)
+- `frontend/.eslintrc.cjs` — config ESLint (`eslint:recommended` + `@typescript-eslint/recommended` + `react-hooks/recommended`, `no-explicit-any: error`)
+- `frontend/package.json` — scripts `"lint": "eslint src --ext .ts,.tsx"` + `"typecheck": "tsc --noEmit"` ; devDependencies ESLint ajoutées
+- `.github/workflows/ci.yml` — 4 jobs : `test-backend` (pytest), `test-frontend` (vitest), `lint` (ruff + eslint), `typecheck` (mypy + tsc)
+- `.github/dependabot.yml` — mises à jour automatiques pip + npm (weekly, lundi, cible master)
+- **Bonus** : auto-fix 197 erreurs ruff (92 imports non triés + 105 imports inutilisés) ; correction bug `F601` clé `"MODERE"` dupliquée dans `app/services/export.py` ; correction typecheck tests (`esg: null` manquant dans 2 mocks, `global.URL` → `window.URL` dans 2 fichiers de test)
 
-**Version** : 8.5.0
-**Tests** : aucun test CI/Vitest ajouté — sprint infrastructure uniquement
+**Version** : 9.1.0
+**Tests** : 1383 CI verts (inchangé) ; 205 Vitest verts (inchangé) — sprint infrastructure uniquement
+
+---
+
+### Sprint 99 — Tableau de bord alertes (AlertsPage) 🔜
+
+**Objectif :** Nouvelle page `/alerts` listant les alertes récentes (ESG + composite + prix) avec horodatage, ticker, type d'alerte et valeur. Persistance dans une nouvelle table `alert_history`.
 
 ---
 

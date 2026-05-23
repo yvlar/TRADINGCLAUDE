@@ -1,7 +1,7 @@
 """Tests Sprint 79 — filtre par plage de dates GET /history."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest

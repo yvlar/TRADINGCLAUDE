@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.main import app, _VERSION
+from app.api.main import _VERSION, app
 from app.orchestrator.core import HistoryEntry, HistoryResponse
 
 

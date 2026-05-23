@@ -15,25 +15,25 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.endpoints.admin import router as admin_router, _require_admin
-from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
-from app.api.endpoints.annotations import router as annotations_router
-from app.api.endpoints.compare import router as compare_router
-from app.api.endpoints.monthly_report import router as monthly_report_router
-from app.api.endpoints.screener_report import router as screener_report_router
-from app.api.endpoints.ticker_report import router as ticker_report_router
+from app.api.endpoints.admin import _require_admin
+from app.api.endpoints.admin import router as admin_router
 from app.api.endpoints.analyze_stream import router as analyze_stream_router
+from app.api.endpoints.annotations import router as annotations_router
+from app.api.endpoints.backtest import router as backtest_router
+from app.api.endpoints.compare import router as compare_router
 from app.api.endpoints.composite_history import router as composite_history_router
 from app.api.endpoints.esg_history import router as esg_history_router
-from app.api.endpoints.backtest import router as backtest_router
 from app.api.endpoints.evals import router as evals_router
 from app.api.endpoints.export import router as export_router
-from app.api.endpoints.performance import router as performance_router
 from app.api.endpoints.extract import router as extract_router
 from app.api.endpoints.jobs import router as jobs_router
+from app.api.endpoints.monthly_report import router as monthly_report_router
+from app.api.endpoints.performance import router as performance_router
 from app.api.endpoints.report import router as report_router
 from app.api.endpoints.screen import router as screen_router
+from app.api.endpoints.screener_report import router as screener_report_router
 from app.api.endpoints.telemetry import router as telemetry_router
+from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.watchlist import router as watchlist_router
 from app.api.endpoints.ws_metrics import router as ws_metrics_router
 from app.logging_config import configure_logging
@@ -51,41 +51,42 @@ from app.orchestrator.core import (
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
 from app.rag.service import RagService
+from app.services.analysis_cache import AnalysisCacheService
+from app.services.annotation_service import AnnotationService
+from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
+from app.services.api_key_service import ApiKeyService
+from app.services.compare_service import CompareService
+from app.services.composite_history_service import CompositeHistoryService
+from app.services.esg_history_service import EsgHistoryService
+from app.services.eval_drift_service import EvalDriftService
+from app.services.monthly_report_service import MonthlyReportService
+from app.services.observability import ObservabilityService
+from app.services.pdf_report_service import PdfReportService
+from app.services.screener import ScreenerService
+from app.services.screener_pdf_service import ScreenerPdfService
+from app.services.slack_service import SlackService
+from app.services.watchlist_pdf_service import WatchlistPdfService
+from app.services.watchlist_service import WatchlistService
+from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
 from app.skills.tier1.sedar_plus import SedarPlusExtractor
 from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
 from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
 from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
+from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
 from app.skills.tier2.dorsey_moat.skill import DorseyMoatSkill
 from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
+from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
 from app.skills.tier2.fisher_scuttlebutt.skill import FisherScuttlebuttSkill
 from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
 from app.skills.tier2.greenblatt.skill import GreenblattSkill
-from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
-from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
-from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
 from app.skills.tier2.klarman_margin.skill import KlarmanMarginSkill
 from app.skills.tier2.lynch_categories.skill import LynchCategoriesSkill
+from app.skills.tier2.marks_cycles.skill import MarksCyclesSkill
 from app.skills.tier2.munger_mental.skill import MungerMentalSkill
+from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
-from app.skills.tier2.esg_simplified.skill import EsgSimplifiedSkill
-from app.services.analysis_cache import AnalysisCacheService
-from app.services.pdf_report_service import PdfReportService
-from app.services.screener_pdf_service import ScreenerPdfService
-from app.services.watchlist_pdf_service import WatchlistPdfService
-from app.services.api_key_service import ApiKeyService
-from app.services.composite_history_service import CompositeHistoryService
-from app.services.esg_history_service import EsgHistoryService
-from app.services.eval_drift_service import EvalDriftService
-from app.services.observability import ObservabilityService
-from app.services.screener import ScreenerService
-from app.services.annotation_service import AnnotationService
-from app.services.compare_service import CompareService
-from app.services.monthly_report_service import MonthlyReportService
-from app.services.slack_service import SlackService
-from app.services.watchlist_service import WatchlistService
-from app.services.webhook_service import WebhookService
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
 
 configure_logging()

@@ -5,16 +5,14 @@ CI standard : pytest -m "not e2e and not evals"
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 
 from app.api.main import app
-from app.services.eval_drift_service import EvalDriftResult, EvalDriftService, SUPPORTED_DATASETS
-
+from app.services.eval_drift_service import EvalDriftResult, EvalDriftService
 
 # ---------------------------------------------------------------------------
 # Helpers

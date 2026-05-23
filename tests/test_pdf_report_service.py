@@ -16,7 +16,6 @@ from app.api.main import app
 from app.services.composite_history_service import CompositeHistoryPoint
 from app.services.pdf_report_service import PdfReportService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

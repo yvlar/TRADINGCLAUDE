@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -13,7 +13,6 @@ from app.services.composite_history_service import (
     CompositeHistoryPoint,
     CompositeHistoryService,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

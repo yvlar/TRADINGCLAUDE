@@ -1,14 +1,12 @@
 """Tests CI pour WebhookService — aucun appel HTTP réel (httpx mocké)."""
 from __future__ import annotations
 
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
 from app.services.webhook_service import WebhookService
-
 
 # ---------------------------------------------------------------------------
 # Helpers

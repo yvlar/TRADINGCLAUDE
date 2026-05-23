@@ -34,7 +34,6 @@ _EXCEL_HEADER_STYLE = {
 _LABEL_COLORS = {
     "FORT": "90EE90",
     "MODERE": "FFD700",
-    "MODERE": "FFD700",
     "FAIBLE": "FF6B6B",
 }
 

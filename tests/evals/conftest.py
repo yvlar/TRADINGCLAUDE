@@ -38,7 +38,9 @@ async def eval_client() -> AsyncClient:
         ) as client:
             yield client
     else:
-        from app.api.main import app  # import tardif pour éviter side-effects si EVAL_API_URL fourni
+        from app.api.main import (
+            app,  # import tardif pour éviter side-effects si EVAL_API_URL fourni
+        )
 
         async with AsyncClient(
             transport=ASGITransport(app=app),

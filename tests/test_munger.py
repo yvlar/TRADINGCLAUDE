@@ -1,7 +1,6 @@
 """Tests du skill munger_mental_models — schemas, skill, orchestrateur."""
 from __future__ import annotations
 
-import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -12,13 +11,11 @@ from pydantic import ValidationError
 from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
 from app.skills.base import UsageDetail
 from app.skills.tier2.munger_mental.schemas import (
-    BiaisCognitif,
     MungerInput,
     MungerOutput,
     ThesisContext,
 )
 from app.skills.tier2.munger_mental.skill import MungerMentalSkill
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -484,7 +481,9 @@ class TestOrchestratorMunger:
 
 
 # Dépendance de conftest pour thesis_output_bns
-from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput, ThesisScenario  # noqa: E402
+from app.skills.tier2.thesis_builder.schemas import (  # noqa: E402
+    ThesisBuilderOutput,
+)
 
 
 @pytest.fixture

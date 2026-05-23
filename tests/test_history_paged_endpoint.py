@@ -8,7 +8,6 @@ import pytest
 from app.api.main import app
 from app.orchestrator.core import HistoryEntry, PagedHistoryResponse
 
-
 _ENTRY = HistoryEntry(
     analysis_id="aaaaaaaa-0000-0000-0000-000000000001",
     ticker="BNS",

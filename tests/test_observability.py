@@ -3,10 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-import pytest
-
 from app.services.observability import ObservabilityService, SkillTrace
-
 
 # ---------------------------------------------------------------------------
 # Helpers

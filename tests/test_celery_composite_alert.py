@@ -1,14 +1,12 @@
 """Tests pour la tache Celery run_composite_alert_check (Sprint 52)."""
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.composite_alert import CompositeAlertResult, CompositeAlertService
+from app.services.composite_alert import CompositeAlertResult
 from app.workers.celery_app import celery_app
-
 
 # ---------------------------------------------------------------------------
 # Helpers

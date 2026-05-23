@@ -16,7 +16,6 @@ from app.skills.tier2.canadian_tax.schemas import (
 )
 from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

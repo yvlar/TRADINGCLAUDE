@@ -1,10 +1,10 @@
 """Tests unitaires de app/utils/retry.py — aucun appel réseau réel."""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
+import pytest
 
 from app.utils.retry import call_claude_with_retry
 

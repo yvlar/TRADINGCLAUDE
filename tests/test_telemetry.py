@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-import pytest
 import pytest_asyncio
 
 from app.api.main import app
@@ -14,7 +13,6 @@ from app.services.observability import (
     LatencyStats,
     ObservabilityService,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixture — client avec ObservabilityService mocké dans app.state

@@ -36,6 +36,7 @@ const BASE_RESPONSE: AnalyzeResponse = {
   damodaran: null,
   marks: null,
   pabrai: null,
+  esg: null,
   cost_usd: 0.001,
   created_at: '2026-05-16T00:00:00+00:00',
   inter_skill_conflicts: [],

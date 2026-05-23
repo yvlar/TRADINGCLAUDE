@@ -1,7 +1,6 @@
 """Tests du skill investment_thesis_builder — schemas, skill, orchestrateur."""
 from __future__ import annotations
 
-import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -34,7 +33,6 @@ from app.skills.tier2.thesis_builder.schemas import (
     ThesisScenario,
 )
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
-
 
 # ---------------------------------------------------------------------------
 # Helpers

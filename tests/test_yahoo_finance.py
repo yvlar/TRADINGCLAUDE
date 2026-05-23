@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -22,7 +21,6 @@ from app.skills.tier1.yahoo_finance import (
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
-
 
 # ─── DataFrames mock pour extract_earnings_quality ─────────────────────────────
 

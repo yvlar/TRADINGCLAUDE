@@ -5,7 +5,6 @@ import io
 from datetime import datetime, timezone
 
 import openpyxl
-import pytest
 
 from app.api.endpoints.watchlist import _esg_verdict, _generate_watchlist_xlsx
 

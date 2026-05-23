@@ -4,8 +4,6 @@ Aucun appel Claude -- verifie uniquement la structure des fixtures.
 """
 from __future__ import annotations
 
-import pytest
-
 from tests.evals.fixtures import load_buffett_golden, load_damodaran_golden, load_dorsey_golden
 
 # ---------------------------------------------------------------------------

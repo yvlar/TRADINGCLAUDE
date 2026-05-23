@@ -27,6 +27,7 @@ SONNET_MODEL = "claude-sonnet-4-6"
 async def damodaran_skill():
     """DamodararNarrativeSkill avec client Anthropic reel -- necessite ANTHROPIC_API_KEY."""
     import anthropic
+
     from app.skills.base import SkillConfig
     from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
 

@@ -28,17 +28,10 @@ def _earnings_tool_use_response(output: "EarningsQualityOutput", **usage_overrid
 
 from app.skills.base import UsageDetail
 from app.skills.tier2.earnings_quality.schemas import (
-    CScoreDetail,
-    CScoreSignal,
     EarningsQualityInput,
     EarningsQualityOutput,
     EarningsQualityRatios,
-    FScoreCriterion,
-    FScoreDetail,
     GrahamContext,
-    MScoreDetail,
-    SloanDetail,
-    ZScoreDetail,
 )
 from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
 

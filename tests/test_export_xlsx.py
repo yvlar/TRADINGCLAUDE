@@ -8,10 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from app.api.main import app as fastapi_app
 from app.api.endpoints.watchlist import _generate_watchlist_xlsx
+from app.api.main import app as fastapi_app
 from app.services.watchlist_service import WatchlistService
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -3,14 +3,11 @@ from __future__ import annotations
 
 import csv
 import io
-import uuid
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.api.endpoints.screen import ScreenEntry, ScreenResult
 from app.services.export import export_to_csv, export_to_excel
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

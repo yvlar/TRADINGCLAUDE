@@ -1,0 +1,54 @@
+name: Demande de fonctionnalité / Feature Request
+description: Proposer une nouvelle fonctionnalité ou une amélioration
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de décrire la fonctionnalité souhaitée.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème / Problem
+      description: Quel problème cette fonctionnalité résout-elle ? Quel besoin comble-t-elle ?
+      placeholder: "En tant qu'utilisateur, je ne peux pas voir... ce qui m'oblige à..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution proposée / Proposed solution
+      description: Description claire de la fonctionnalité souhaitée
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives envisagées / Alternatives considered
+      description: Autres approches ou solutions existantes déjà considérées
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant cible / Target component
+      options:
+        - Backend FastAPI (nouvel endpoint)
+        - Frontend React (nouvelle page / composant)
+        - Skill d'analyse (nouveau framework)
+        - Infrastructure (CI, Docker, DB)
+        - Autre
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Complexité estimée / Estimated complexity
+      options:
+        - Faible (< 1 jour)
+        - Moyenne (1-3 jours)
+        - Élevée (> 3 jours)

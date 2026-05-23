@@ -8,10 +8,9 @@ from app.skills.base import Citation
 from app.skills.tier2.buffett_quality.schemas import (
     BuffettFiltre,
     BuffettQualityOutput,
-    BuffettRatios,
 )
 from app.skills.tier2.canadian_tax.schemas import CanadianTaxInput, CanadianTaxOutput
-from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput, DorseyRatios, MoatSource
+from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput, MoatSource
 from app.skills.tier2.earnings_quality.schemas import (
     CScoreDetail,
     CScoreSignal,
@@ -35,7 +34,6 @@ from app.skills.tier2.stock_valuation.schemas import (
     ValuationMethod,
 )
 from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput, ThesisScenario
-
 
 # ---------------------------------------------------------------------------
 # Helpers locaux
@@ -938,8 +936,8 @@ class TestInterSkillConflicts:
 
     def test_detect_conflict_graham_rejeter_buffett_compounder(self):
         from app.orchestrator.core import _detect_inter_skill_conflicts
-        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
         from app.skills.tier2.buffett_quality.schemas import BuffettFiltre, BuffettQualityOutput
+        from tests.conftest import _make_criteria_defensif, _make_criteria_entreprenant
 
         # Graham REJETER : tous critères passe=False → defensive_score=0 → REJETER
         graham = GrahamAnalysisOutput(

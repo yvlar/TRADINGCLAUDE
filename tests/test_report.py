@@ -3,12 +3,8 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-import pytest_asyncio
-
 from app.orchestrator.core import AnalyzeResponse
 from app.services.report import ReportService
-
 
 # ---------------------------------------------------------------------------
 # Helpers — construction d'AnalyzeResponse de test
@@ -183,6 +179,7 @@ async def test_post_report_ratios_invalides_422(client) -> None:
 async def test_get_report_analysis_inconnu_404(client) -> None:
     """GET /report/{uuid-inexistant} → 404 Not Found."""
     from unittest.mock import AsyncMock
+
     from app.api.main import app
 
     # fetchrow retourne None pour simuler un analysis_id introuvable en DB

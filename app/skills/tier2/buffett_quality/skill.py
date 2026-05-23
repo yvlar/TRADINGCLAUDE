@@ -12,6 +12,7 @@ from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
 from app.utils.tool_schema import build_tool_schema
+
 from .schemas import BuffettQualityInput, BuffettQualityOutput
 
 logger = logging.getLogger(__name__)

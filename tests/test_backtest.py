@@ -7,9 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.backtest import BacktestRequest, BacktestResult, BucketResult
+from app.models.backtest import BacktestRequest
 from app.services.backtest import BacktestService, _classify_score
-
 
 # ---------------------------------------------------------------------------
 # Helpers

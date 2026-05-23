@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.composite_alert import CompositeAlertResult, CompositeAlertService
-
+from app.services.composite_alert import CompositeAlertService
 
 # ---------------------------------------------------------------------------
 # Helpers
