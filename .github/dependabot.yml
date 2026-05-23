@@ -19,3 +19,22 @@ updates:
     labels:
       - dependencies
       - javascript
+    groups:
+      react-ecosystem:
+        # @types/react et @types/react-dom doivent bouger ensemble (même major)
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@vitejs/plugin-react"
+    ignore:
+      # Rester sur React 18 — la migration React 19 est un changement délibéré
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
