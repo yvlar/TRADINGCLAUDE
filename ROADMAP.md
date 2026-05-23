@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-23 — Sprint Login complété**
+**Dernière mise à jour : 2026-05-23 — Sprint 99 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.3.0 |
+| **Version** | 9.4.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 99 — Tableau de bord alertes (AlertsPage) |
-| **Dernier sprint complété** | Sprint Login — Authentification cookie JWT + CSRF ✅ |
+| **Sprint actif** | Sprint 100 — Export analyse individuelle en PDF enrichi |
+| **Dernier sprint complété** | Sprint 99 — Tableau de bord alertes (AlertsPage) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -29,6 +29,7 @@
 - `POST /auth/logout` — blacklist JWT jti + invalidation refresh token (Sprint Login)
 - `POST /auth/refresh` — rotation refresh token avec détection de vol par famille (Sprint Login)
 - `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login)
+- `GET /alerts?limit=50` — historique des alertes Celery (ESG + composite + prix) (Sprint 99)
 - `POST /auth/forgot-password` — token réinitialisation itsdangerous 1h (anti-énumération) (Sprint Login)
 - `POST /auth/reset-password` — réinitialisation mot de passe avec token signé (Sprint Login)
 - `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
@@ -68,6 +69,7 @@
 - **Rapport PDF mensuel enrichi** — section ESG (Ticker / Score ESG / Verdict / Seuil) ajoutée en fin de PDF si au moins un ticker a un `last_esg_score` non-null (Sprint 88)
 - **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
 - **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
+- **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -274,9 +276,24 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 ---
 
-### Sprint 99 — Tableau de bord alertes (AlertsPage) 🔜
+### Sprint 99 — Tableau de bord alertes (AlertsPage) ✅
 
-**Objectif :** Nouvelle page `/alerts` listant les alertes récentes (ESG + composite + prix) avec horodatage, ticker, type d'alerte et valeur. Persistance dans une nouvelle table `alert_history`.
+**Objectif :** Nouvelle page `/alerts` listant les alertes récentes générées par Celery (ESG + composite + prix) avec horodatage, ticker, type d'alerte et valeur. Persistance dans une nouvelle table `alert_history`.
+
+**Livrables :**
+- `app/services/alert_history_service.py` — `AlertHistoryService` : `record(ticker, type, valeur, seuil, message)` INSERT + retourne id, `get_recent(limit=50)` SELECT ORDER BY created_at DESC
+- `app/api/main.py` — migration idempotente `CREATE TABLE IF NOT EXISTS alert_history (id BIGSERIAL PRIMARY KEY, ticker TEXT, type TEXT, valeur DOUBLE PRECISION, seuil DOUBLE PRECISION, message TEXT, created_at TIMESTAMPTZ DEFAULT NOW())` + index `idx_alert_history_ticker_created` ; service instancié + `app.state.alert_history_service` ; endpoint `GET /alerts?limit=50`
+- `infra/postgres/init.sql` — table + index ajoutés pour les nouveaux volumes PG
+- `app/workers/tasks.py` — persistance best-effort (try/except + logger.warning) dans `_execute_esg_degradation_check()` (type `ESG_DEGRADATION`) et `_execute_scheduled_screener()` (type `SCREENER_FORT`)
+- `frontend/src/types/index.ts` — interfaces `AlertEntry` + `AlertsResponse`
+- `frontend/src/api/alerts.ts` — `fetchAlerts(limit=50): Promise<AlertsResponse>`
+- `frontend/src/pages/AlertsPage.tsx` — React Query `['alerts']`, tableau Horodatage/Ticker/Type badge coloré/Valeur/Seuil/Message, états vide/chargement/erreur, `data-testid="alerts-table"`
+- `frontend/src/App.tsx` — route `/alerts` + lien "Alertes" dans la nav
+- `tests/test_alert_history_service.py` — 3 tests CI : `record()` params SQL, `get_recent()` tri + limit, endpoint 200 + liste
+- `frontend/src/__tests__/AlertsPage.test.tsx` — 5 tests Vitest : rendu vide, 2 alertes, badge type, spinner chargement, erreur API
+
+**Version** : 9.4.0
+**Tests** : 1401 CI verts (hors e2e et evals) — +3 tests Sprint 99 ; 217 Vitest verts — +5 tests Sprint 99
 
 ---
 

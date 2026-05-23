@@ -7,6 +7,7 @@ import HistoryPage from './pages/HistoryPage'
 import DashboardPage from './pages/DashboardPage'
 import WatchlistPage from './pages/WatchlistPage'
 import AdminPage from './pages/AdminPage'
+import AlertsPage from './pages/AlertsPage'
 import ComparePage from './pages/ComparePage'
 import EsgPage from './pages/EsgPage'
 import LoginPage from './pages/LoginPage'
@@ -48,6 +49,7 @@ function AppShell() {
             <NavItem to="/watchlist" label="Watchlist" />
             <NavItem to="/compare" label="Comparer" />
             <NavItem to="/esg" label="ESG" />
+            <NavItem to="/alerts" label="Alertes" />
             <NavItem to="/admin" label="Admin" />
           </nav>
         )}
@@ -116,6 +118,14 @@ function AppShell() {
             element={
               <ProtectedRoute>
                 <EsgPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <AlertsPage />
               </ProtectedRoute>
             }
           />

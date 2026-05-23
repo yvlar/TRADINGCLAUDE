@@ -466,6 +466,21 @@ export interface AuthResponse {
   message: string
 }
 
+// ---- Alertes Celery (Sprint 99) ----
+export interface AlertEntry {
+  id: number
+  ticker: string
+  type: string
+  valeur: number | null
+  seuil: number | null
+  message: string | null
+  created_at: string
+}
+
+export interface AlertsResponse {
+  alerts: AlertEntry[]
+}
+
 export const WORKFLOWS: WorkflowOption[] = [
   {
     value: 'value_graham',

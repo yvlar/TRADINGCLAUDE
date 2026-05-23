@@ -1,4 +1,4 @@
-# Sprint 99 -- Tableau de bord alertes (AlertsPage)
+# Sprint 100 — Export analyse individuelle en PDF enrichi
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
@@ -19,8 +19,8 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 3. `ROADMAP.md` -- etat courant, sprint actif, historique des decisions
 4. `.github/workflows/ci.yml` -- 4 jobs CI (test-backend, test-frontend, lint, typecheck)
 5. `pyproject.toml` -- configuration ruff + mypy (Sprint 98)
-6. `app/workers/tasks.py` -- taches Celery existantes (alertes ESG, screener, degradation)
-7. `app/api/main.py` -- lifespan, tables existantes, services app.state
+6. `app/services/pdf_report_service.py` -- PdfReportService existant (Sprint 63)
+7. `app/api/endpoints/ticker_report.py` -- endpoint GET /ticker-report/{ticker} existant
 
 ---
 
@@ -28,10 +28,10 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 
 | Champ                   | Valeur                                                                  |
 | ----------------------- | ----------------------------------------------------------------------- |
-| Version                 | 9.3.0                                                                   |
+| Version                 | 9.4.0                                                                   |
 | Phase active            | Phase 3 -- Pipeline de synthese                                         |
-| Sprint actif            | **Sprint 99 -- Tableau de bord alertes (AlertsPage)**                   |
-| Dernier sprint complete | Sprint Login -- Authentification cookie JWT + CSRF ✅                   |
+| Sprint actif            | **Sprint 100 -- Export analyse individuelle en PDF enrichi**            |
+| Dernier sprint complete | Sprint 99 -- Tableau de bord alertes (AlertsPage) ✅                   |
 
 ## Infrastructure backend (operationnelle)
 
@@ -44,25 +44,28 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
   - Services : `UserService`, `AuthTokenService`, `PasswordResetService` dans `app.state`
   - Tables : `users` + `refresh_tokens` (idempotentes lifespan)
   - Retro-compat Bearer API key complete
+- `GET /alerts?limit=50` -- historique alertes Celery (ESG_DEGRADATION, SCREENER_FORT, PRIX_SEUIL) (Sprint 99)
 - `GET /composite-history/{ticker}?limit=30` -- historique composite_score
 - `GET /history-paged?fast_count=true` -- estimation rapide total_count pg_class (Sprint 96)
 - `DELETE /history/{analysis_id}` -- suppression admin individuelle (Sprint 95)
 - `POST /analyze-stream` -- streaming SSE skill par skill
 - `GET /history-paged?ticker=&q=&page=1&page_size=10` -- pagination offset/limit
+- `GET /ticker-report/{ticker}?days=90` -- rapport PDF multi-pages par ticker (Sprint 63)
 - `SlackService` -- send_text/send_esg_alert/send_screener_summary/send_monthly_report_summary
 - CI : 4 jobs (pytest + vitest + ruff/eslint lint + mypy/tsc typecheck)
-- 1396 tests CI verts (hors e2e et evals)
+- 1401 tests CI verts (hors e2e et evals)
 
 ## Frontend React (operationnel)
 
 - SPA React 18 + TypeScript strict -- port 5173
-- 12 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG,
-  Register, ForgotPassword, ResetPassword
+- 13 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG,
+  Alerts, Register, ForgotPassword, ResetPassword
 - Auth par cookie httpOnly JWT -- `authMe()` au montage pour restaurer la session
 - CSRF double-submit cookie -- `X-CSRF-Token` dans `api/client.ts`
 - `ProtectedRoute` attend `isLoading` avant de rediriger
+- **AlertsPage** -- tableau alertes Celery (Sprint 99) -- route `/alerts`
 - **WatchlistPage** -- colonne "Tendance" sparkline composite_score 30j (Sprint 97)
-- 212 tests Vitest verts
+- 217 tests Vitest verts
 
 ## Infrastructure CI/qualite code (Sprint 98)
 
@@ -76,88 +79,62 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 
 ---
 
-# TACHE -- SPRINT 99
+# TACHE -- SPRINT 100
 
 ## Objectif
 
-Creer une page `/alerts` dans le frontend React listant les alertes recentes generees par Celery
-(ESG + composite + prix), avec persistance dans une nouvelle table `alert_history` PostgreSQL.
-Yves ne voit actuellement les alertes que via Slack ou webhook -- la page centralise tout.
+Ajouter un bouton "Exporter PDF" dans HistoryPage qui permet de telecharger le PDF d'une analyse
+individuelle sans relancer l'analyse. Les donnees sont deja dans la base (result JSONB dans
+`analysis_history`) -- les rendre exportables via `GET /history/{analysis_id}/pdf`.
 
 ## Livrables attendus
 
-### 1. Table PostgreSQL `alert_history`
+### 1. `Orchestrator.get_analysis_by_id(analysis_id: str)` (`app/orchestrator/core.py`)
 
-Migration idempotente dans `app/api/main.py` (lifespan) :
-```sql
-CREATE TABLE IF NOT EXISTS alert_history (
-    id        BIGSERIAL PRIMARY KEY,
-    ticker    TEXT        NOT NULL,
-    type      TEXT        NOT NULL,  -- 'ESG_DEGRADATION' | 'COMPOSITE_BAISSE' | 'PRIX_SEUIL'
-    valeur    DOUBLE PRECISION,      -- score ESG, composite_score, ou prix
-    seuil     DOUBLE PRECISION,      -- seuil qui a declenche l'alerte
-    message   TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_alert_history_ticker_created
-    ON alert_history (ticker, created_at DESC);
-```
-Egalement dans `infra/postgres/init.sql`.
-
-### 2. `AlertHistoryService` (`app/services/alert_history_service.py`)
-
-Deux methodes async :
-- `record(ticker, type, valeur, seuil, message)` -- INSERT, retourne l'id
-- `get_recent(limit=50)` -- SELECT ORDER BY created_at DESC LIMIT $1, retourne liste de dicts
-
-### 3. Persistance dans les workers Celery existants
-
-Modifier `app/workers/tasks.py` : quand une alerte est declenchee (ESG degradation, screener FORT),
-appeler `await app_state.alert_history_service.record(...)` en best-effort (try/except + logger.warning).
-
-### 4. Endpoint `GET /alerts` (`app/api/main.py`)
-
+Nouvelle methode :
 ```python
-@app.get("/alerts")
-async def get_alerts(limit: int = Query(50, ge=1, le=200), request: Request):
-    service = request.app.state.alert_history_service
-    return {"alerts": await service.get_recent(limit)}
+async def get_analysis_by_id(self, analysis_id: str) -> AnalyzeResponse | None:
+    """Retourne une analyse complete depuis analysis_history par son UUID."""
 ```
+Recupere la ligne `result JSONB` et reconstruit un `AnalyzeResponse` via `model_validate`.
+Retourne None si l'UUID n'existe pas (ou InvalidTextRepresentationError asyncpg).
 
-### 5. Frontend -- Types, API, Page
+### 2. Endpoint `GET /history/{analysis_id}/pdf` (`app/api/main.py`)
 
-- `frontend/src/types/index.ts` -- interface `AlertEntry { id: number; ticker: string; type: string; valeur: number | null; seuil: number | null; message: string | null; created_at: string }`
-  + interface `AlertsResponse { alerts: AlertEntry[] }`
-- `frontend/src/api/alerts.ts` -- `fetchAlerts(limit=50): Promise<AlertsResponse>` via `apiClient.request`
-- `frontend/src/pages/AlertsPage.tsx` -- React Query `['alerts']`, tableau avec colonnes
-  Horodatage / Ticker / Type (badge colore) / Valeur / Seuil / Message ; state de chargement ;
-  message "Aucune alerte" si vide ; `data-testid="alerts-table"`
-- `frontend/src/App.tsx` -- route `/alerts` + lien dans la nav
-- `frontend/src/__tests__/AlertsPage.test.tsx` -- 5 tests : rendu vide, rendu avec 2 alertes,
-  badge type colore, chargement spinner, erreur API
+- Appelle `orchestrator.get_analysis_by_id(analysis_id)`
+- 404 si introuvable, 422 si UUID invalide (automatique FastAPI via `UUID` param)
+- Instancie `PdfReportService` (deja dans `app.state.pdf_report_service`)
+- Genere un PDF via `PdfReportService.generate_ticker_report()` (Sprint 63)
+- Retourne `Response(content=pdf_bytes, media_type="application/pdf")`
+- Header : `Content-Disposition: attachment; filename="{ticker}-{date}.pdf"`
 
-### 6. Tests backend
+### 3. Frontend -- couche API + bouton HistoryPage
 
-- `tests/test_alert_history_service.py` -- 3 tests CI :
-  1. `record()` -- SQL params corrects (ticker, type, valeur, seuil, message)
-  2. `get_recent()` -- tri DESC + respect limit
-  3. endpoint `GET /alerts?limit=2` retourne 200 + liste
+- `frontend/src/api/analyze.ts` -- `downloadAnalysisPdf(analysisId: string): Promise<void>`
+  via `apiClient.requestBlob` + creation `<a>` temporaire pour telechargement
+- `frontend/src/pages/HistoryPage.tsx` -- bouton "PDF" par analyse dans le tableau
+  (data-testid="download-analysis-pdf-{analysis_id}") ; etat loading par id + gestion 404
+
+### 4. Tests backend
+
+- `tests/test_analysis_pdf_endpoint.py` -- 3 tests CI :
+  1. `get_analysis_by_id()` retourne None si UUID inconnu
+  2. `get_analysis_by_id()` reconstruit un `AnalyzeResponse` valide depuis le JSONB
+  3. endpoint `GET /history/{id}/pdf` retourne 200 + content-type application/pdf
+
+### 5. Tests frontend
+
+- `frontend/src/__tests__/AnalysisPdf.test.tsx` -- 5 tests Vitest :
+  bouton present, telechargement appele avec bon id, etat loading pendant le telechargement,
+  bouton desactive pendant loading, gestion erreur 404
 
 ## Tests attendus
 
-+3 tests CI (backend) + 5 tests Vitest (frontend) = 1399 CI verts, 217 Vitest verts.
++3 tests CI (backend) + 5 tests Vitest (frontend) = 1404 CI verts, 222 Vitest verts.
 
 ---
 
-# SPRINTS SUGGERES (100-104)
-
-### Sprint 100 -- Export analyse individuelle en PDF enrichi
-
-**Objectif** : Bouton "Exporter cette analyse" dans la vue detail d'une analyse historique
-(HistoryPage), generant un PDF complet avec tous les skills, verdicts et recommandations.
-Reutilise `PdfReportService` (Sprint 63).
-**Complexite** : Moyenne
-**Justification** : Les donnees existent deja ; les rendre exportables sans re-executer.
+# SPRINTS SUGGERES (101-105)
 
 ### Sprint 101 -- Recherche full-text dans WatchlistPage
 
@@ -187,6 +164,14 @@ le tableau du ScreenerPage en plus du composite_score, pour une lecture comparat
 **Complexite** : Faible
 **Justification** : La colonne Graham est la plus utilisee dans les decisions d'achat ; la rendre
 visible sans cliquer vers le detail de chaque ticker.
+
+### Sprint 105 -- Graphique distribution des alertes dans AlertsPage
+
+**Objectif** : Ajouter un mini-graphique en barres recharts dans AlertsPage montrant la
+distribution des alertes par type (ESG_DEGRADATION / SCREENER_FORT / PRIX_SEUIL) sur les 30
+derniers jours. Les donnees viennent du meme endpoint `GET /alerts`.
+**Complexite** : Faible
+**Justification** : Rendre le tableau de bord alertes actionnable d'un coup d'oeil.
 
 ---
 
@@ -229,11 +214,11 @@ visible sans cliquer vers le detail de chaque ticker.
 - **Sparkline Sprint 97** : `CompositeSparkline` dans `frontend/src/components/CompositeSparkline.tsx` ; colonne "Tendance" dans `WatchlistTable.tsx` entre "Score composite" et "ESG" -- ne pas modifier ; tests Watchlist* mockent `CompositeSparkline` pour eviter QueryClientProvider
 - **CI Sprint 98** : 4 jobs (test-backend, test-frontend, lint, typecheck) -- `.github/workflows/ci.yml` -- ne pas modifier ; `pyproject.toml` ruff+mypy + `frontend/.eslintrc.cjs` ESLint -- ne pas modifier
 - **Auth Sprint Login** : `UserService/AuthTokenService/PasswordResetService` dans `app.state` ; tables `users` + `refresh_tokens` ; `CSRFMiddleware` ; proxy `/auth` dans `vite.config.ts` ; `authMe()` dans `AuthContext` ; `isLoading` dans `ProtectedRoute` -- ne pas modifier ; retro-compat Bearer API key obligatoire
-- **AlertsPage Sprint 99** (ce sprint) : `alert_history` table + `AlertHistoryService` dans `app.state.alert_history_service` + `GET /alerts` + `AlertsPage.tsx` + route `/alerts`
+- **AlertsPage Sprint 99** : `alert_history` table + `AlertHistoryService` dans `app.state.alert_history_service` + `GET /alerts?limit=50` + `AlertsPage.tsx` + route `/alerts` + lien "Alertes" nav -- ne pas modifier ; `tasks.py` persiste en best-effort (ESG_DEGRADATION dans `_execute_esg_degradation_check`, SCREENER_FORT dans `_execute_scheduled_screener`)
 - **Robustesse OneDrive** : si la synchro OneDrive coupe une edition (fichier tronque a mi-contenu), restaurer en appendant la queue manquante via `python3 ... open(path, 'ab')` en chunks de ~600 bytes maximum ; toujours verifier `wc -l` + balance braces/parens apres une edition critique
 
 ---
 
 _Roadmap mise a jour le 2026-05-23 -- Yves / TradingClaude_
-_Sprint Login complete : Authentification cookie JWT + CSRF -- UserService/AuthTokenService/PasswordResetService + CSRFMiddleware + 7 endpoints /auth + 4 pages React + 13 CI + 7 Vitest -- version 9.3.0_
-_Sprints 99-104 suggeres : AlertsPage -> Export PDF analyse -> Recherche watchlist -> Web Push alertes -> Sparkline ESG -> Score Graham screener_
+_Sprint 99 complete : Tableau de bord alertes -- AlertHistoryService + table alert_history + GET /alerts + AlertsPage.tsx + route /alerts + lien nav + persistance Celery ESG/screener -- +3 CI + 5 Vitest -- version 9.4.0_
+_Sprints 100-105 suggeres : Export PDF analyse -> Recherche watchlist -> Web Push alertes -> Sparkline ESG -> Score Graham screener -> Distribution alertes_

@@ -11,7 +11,7 @@ import anthropic
 import asyncpg
 import httpx
 import redis.asyncio as aioredis
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -53,6 +53,7 @@ from app.orchestrator.core import (
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
 from app.rag.service import RagService
+from app.services.alert_history_service import AlertHistoryService
 from app.services.analysis_cache import AnalysisCacheService
 from app.services.annotation_service import AnnotationService
 from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
@@ -210,6 +211,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_pool.execute(
         "CREATE INDEX IF NOT EXISTS idx_esg_hist_ticker_recorded "
         "ON esg_score_history (ticker, recorded_at DESC)"
+    )
+
+    # Sprint 99 — historique des alertes Celery
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS alert_history (
+            id         BIGSERIAL    PRIMARY KEY,
+            ticker     TEXT         NOT NULL,
+            type       TEXT         NOT NULL,
+            valeur     DOUBLE PRECISION,
+            seuil      DOUBLE PRECISION,
+            message    TEXT,
+            created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_alert_history_ticker_created "
+        "ON alert_history (ticker, created_at DESC)"
     )
 
     # Sprint auth — table utilisateurs avec colonnes OAuth et MFA (architecture future)
@@ -444,6 +464,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         daily_threshold_usd=float(os.getenv("COST_ALERT_THRESHOLD_USD", "1.0")),
     )
 
+    alert_history_service = AlertHistoryService(db_pool=db_pool)
     annotation_service = AnnotationService(db_pool=db_pool)
     compare_service = CompareService(db_pool=db_pool)
     watchlist_service = WatchlistService(db_pool=db_pool)
@@ -461,6 +482,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     auth_token_service = AuthTokenService(db_pool=db_pool, redis_client=redis_pool)
     password_reset_service = PasswordResetService()
 
+    app.state.alert_history_service = alert_history_service
     app.state.annotation_service = annotation_service
     app.state.compare_service = compare_service
     app.state.orchestrator = orchestrator
@@ -778,3 +800,13 @@ async def delete_history(
     if not deleted:
         raise HTTPException(status_code=404, detail="Analyse introuvable")
     return Response(status_code=204)
+
+
+@app.get("/alerts", summary="Historique des alertes Celery (Sprint 99)")
+async def get_alerts(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """Retourne les N dernières alertes enregistrées par les workers Celery."""
+    service = request.app.state.alert_history_service
+    return {"alerts": await service.get_recent(limit)}

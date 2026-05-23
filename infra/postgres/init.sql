@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_active   ON api_keys (active);
 
+-- Historique des alertes Celery — Sprint 99
+CREATE TABLE IF NOT EXISTS alert_history (
+    id         BIGSERIAL    PRIMARY KEY,
+    ticker     TEXT         NOT NULL,
+    type       TEXT         NOT NULL,
+    valeur     DOUBLE PRECISION,
+    seuil      DOUBLE PRECISION,
+    message    TEXT,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_alert_history_ticker_created
+    ON alert_history (ticker, created_at DESC);
+
 -- Recherche full-text dans l'historique — Sprint 73
 -- pg_trgm permet les index GIN pour les requêtes ILIKE '%term%'
 CREATE EXTENSION IF NOT EXISTS pg_trgm;

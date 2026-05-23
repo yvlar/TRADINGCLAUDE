@@ -17,6 +17,7 @@ from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
 from app.rag.service import RagService
+from app.services.alert_history_service import AlertHistoryService
 from app.services.composite_alert import CompositeAlertService
 from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
@@ -523,6 +524,7 @@ async def _execute_scheduled_screener() -> dict:
         )
 
         webhook_service = WebhookService()
+        alert_history_service = AlertHistoryService(db_pool)
         if tickers_fort:
             await webhook_service.send_screener_report(
                 nb_tickers_screenes=len(tickers),
@@ -532,6 +534,20 @@ async def _execute_scheduled_screener() -> dict:
                 "Screener planifié — %d opportunité(s) FORT notifiée(s) par webhook JSON",
                 len(tickers_fort),
             )
+            for e in fort_entries:
+                try:
+                    await alert_history_service.record(
+                        ticker=e.ticker,
+                        type="SCREENER_FORT",
+                        valeur=float(e.composite_score) if e.composite_score is not None else None,
+                        seuil=70.0,
+                        message=f"Screener hebdomadaire — composite_label={e.composite_label}",
+                    )
+                except Exception:
+                    logger.warning(
+                        "Impossible d'enregistrer l'alerte screener FORT dans alert_history pour %s",
+                        e.ticker,
+                    )
 
         # Envoi du rapport PDF en plus du JSON (optionnel — no-op si WEBHOOK_URL absent)
         await webhook_service.send_screener_pdf_report(screen_result)
@@ -651,6 +667,7 @@ async def _execute_esg_degradation_check() -> int:
 
         watchlist_service = WatchlistService(db_pool)
         esg_history_service = EsgHistoryService(db_pool)
+        alert_history_service = AlertHistoryService(db_pool)
         webhook_service = WebhookService()
         slack_service = SlackService()
         entries = await watchlist_service.list_entries()
@@ -680,6 +697,23 @@ async def _execute_esg_degradation_check() -> int:
                         previous_score,
                         entry.esg_alert_threshold,
                     )
+                    try:
+                        await alert_history_service.record(
+                            ticker=entry.ticker,
+                            type="ESG_DEGRADATION",
+                            valeur=entry.last_esg_score,
+                            seuil=entry.esg_alert_threshold,
+                            message=(
+                                f"Score ESG passé de {previous_score:.1f} à {entry.last_esg_score:.1f}"
+                                if previous_score is not None
+                                else f"Score ESG {entry.last_esg_score:.1f} sous le seuil {entry.esg_alert_threshold:.1f}"
+                            ),
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Impossible d'enregistrer l'alerte ESG dans alert_history pour %s",
+                            entry.ticker,
+                        )
             except Exception:
                 logger.exception("Erreur vérification dégradation ESG pour %s", entry.ticker)
 
