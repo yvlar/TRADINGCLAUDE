@@ -25,7 +25,7 @@ et la gestion des dependances npm/pip avec leurs breaking changes entre versions
 
 ---
 
-# ETAT DE REFERENCE CI (apres sprint 98 + hotfixes)
+# ETAT DE REFERENCE CI (apres sprint 98 + migration Vite 8 / Tailwind 4)
 
 | Job CI | Etat | Commande locale |
 |--------|------|-----------------|
@@ -36,7 +36,7 @@ et la gestion des dependances npm/pip avec leurs breaking changes entre versions
 
 **Packages integres (a ne pas regresser) :**
 - Python : asyncpg>=0.31, fastapi>=0.136.1, langfuse>=4.6.1, fakeredis>=2.35.1, respx>=0.23.1, pytest-playwright>=0.8.0
-- npm : typescript ^6.0.3, @typescript-eslint/{plugin,parser} ^8.59.4, jsdom ^29.1.1
+- npm : typescript ^6.0.3, @typescript-eslint/{plugin,parser} ^8.59.4, jsdom ^29.1.1, vite ^8.0.14, @vitejs/plugin-react ^6.0.2, vitest ^4.1.7, tailwindcss ^4.3.0, @tailwindcss/postcss ^4.3.0
 
 ---
 
@@ -111,59 +111,18 @@ pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q --tb=short
 
 # ITEMS DIFFERES — A TRAITER DANS CE SPRINT
 
-Ces deux migrations ont ete differees lors du sprint precedent car elles forment un ensemble coherent.
-**Elles doivent etre traitees ensemble dans le meme commit.**
+Aucun item differe — tous les items precedents ont ete traites (2026-05-23).
 
-## Item 1 — Vite 6 + @vitejs/plugin-react 6
+## ✅ Item 1 — Vite 8 + @vitejs/plugin-react 6 (integre 2026-05-23)
 
-**Pourquoi ensemble :** `@vitejs/plugin-react@6` requiert `vite@6`. Vite 5 n'est pas compatible.
+Note : `@vitejs/plugin-react@6` requiert `vite@^8.0.0` (pas v6 comme attendu initialement).
+Migration zero-friction : build OK, 205 tests verts, typecheck + lint clean.
 
-**Changements attendus dans `frontend/package.json` :**
-```json
-"@vitejs/plugin-react": "^6.0.2",
-"vite": "^6.x.x"
-```
+## ✅ Item 2 — Tailwind CSS 4 (integre 2026-05-23)
 
-**Points de rupture connus Vite 6 :**
-- `vite.config.ts` : verifier la syntaxe `defineConfig` (identique)
-- `tsconfig.node.json` : le champ `include` peut changer
-- Proxy config : `server.proxy` — API inchangee
-
-**Procedure :**
-1. Mettre a jour `package.json` (plugin-react 6 + vite 6)
-2. `npm install`
-3. `npm run build` — corriger les erreurs eventuelles
-4. `npm test` — corriger les tests brises
-5. `npm run typecheck` + `npm run lint`
-
-## Item 2 — Tailwind CSS 4
-
-**Pourquoi differe :** Tailwind 4 remplace `tailwind.config.js` par une configuration CSS-first.
-C'est une migration de surface importante mais previsible.
-
-**Changements majeurs Tailwind 4 :**
-- `tailwind.config.js` est remplace par une directive `@import "tailwindcss"` dans le CSS principal
-- Le fichier `postcss.config.js` change (plugin `@tailwindcss/postcss` a la place de `tailwindcss`)
-- Les classes utilitaires restent identiques pour la plupart
-
-**Procedure :**
-1. Mettre a jour `package.json` : `"tailwindcss": "^4.3.0"` + `"@tailwindcss/postcss": "^4.x.x"`
-2. `npm install`
-3. Remplacer dans `frontend/src/index.css` ou equivalent :
-   ```css
-   /* avant */
-   @tailwind base;
-   @tailwind components;
-   @tailwind utilities;
-   /* apres */
-   @import "tailwindcss";
-   ```
-4. Supprimer ou adapter `frontend/tailwind.config.js` (theme, content paths)
-5. Adapter `postcss.config.js` : remplacer `require('tailwindcss')` par `require('@tailwindcss/postcss')`
-6. Lancer `npm run dev` et verifier visuellement les pages principales
-7. `npm test` — corriger les snapshots CSS eventuellesClasses qui changent entre Tailwind 3 et 4 (verifier dans le code) :
-   - `bg-muted`, `text-muted-foreground` : peuvent necessiter des variables CSS personnalisees
-   - Classes prefixees `dark:` — syntaxe inchangee
+Migration shadcn/ui-compatible via `@theme inline` dans `index.css`.
+`postcss.config.js` utilise desormais `@tailwindcss/postcss`.
+`tailwind.config.js` conserve (inactif, Tailwind 4 l'ignore) — supprimer dans un sprint futur si souhaite.
 
 ---
 
@@ -202,5 +161,5 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 _Template maintenance CI/Dependabot — TradingClaude_
 _Derniere mise a jour : 2026-05-23_
-_Packages integres : typescript 6, typescript-eslint 8, jsdom 29, asyncpg 0.31, fastapi 0.136, langfuse 4.6, fakeredis 2.35, respx 0.23, pytest-playwright 0.8_
-_Items differés : Vite 6 + plugin-react 6, Tailwind 4_
+_Packages integres : typescript 6, typescript-eslint 8, jsdom 29, asyncpg 0.31, fastapi 0.136, langfuse 4.6, fakeredis 2.35, respx 0.23, pytest-playwright 0.8, vite 8, plugin-react 6, vitest 4, tailwindcss 4, @tailwindcss/postcss 4_
+_Items differés : aucun_
