@@ -25,17 +25,17 @@ et la gestion des dependances npm/pip avec leurs breaking changes entre versions
 
 ---
 
-# ETAT DE REFERENCE CI (apres sprint 98 + migration Vite 8 / Tailwind 4)
+# ETAT DE REFERENCE CI (apres sprint Login + correction mocks CI — 2026-05-23)
 
 | Job CI | Etat | Commande locale |
 |--------|------|-----------------|
-| test-backend | ✅ 1383 verts | `pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q` |
-| test-frontend | ✅ 205 verts | `cd frontend && npm test` |
+| test-backend | ✅ 1398 verts | `pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q` |
+| test-frontend | ✅ 212 verts | `cd frontend && npm test` |
 | lint | ✅ ruff + ESLint | `ruff check app/ tests/` + `cd frontend && npm run lint` |
 | typecheck | ✅ mypy + tsc | `mypy app/ --ignore-missing-imports` + `cd frontend && npm run typecheck` |
 
 **Packages integres (a ne pas regresser) :**
-- Python : asyncpg>=0.31, fastapi>=0.136.1, langfuse>=4.6.1, fakeredis>=2.35.1, respx>=0.23.1, pytest-playwright>=0.8.0
+- Python : asyncpg>=0.31, fastapi>=0.136.1, langfuse>=4.6.1, fakeredis>=2.35.1, respx>=0.23.1, pytest-playwright>=0.8.0, email-validator>=2.1.0, argon2-cffi>=23.1.0, python-jose[cryptography]>=3.3.0, itsdangerous>=2.2.0, pypdf>=3.0.0
 - npm : typescript ^6.0.3, @typescript-eslint/{plugin,parser} ^8.59.4, jsdom ^29.1.1, vite ^8.0.14, @vitejs/plugin-react ^6.0.2, vitest ^4.1.7, tailwindcss ^4.3.0, @tailwindcss/postcss ^4.3.0
 
 ---
@@ -124,6 +124,15 @@ Migration shadcn/ui-compatible via `@theme inline` dans `index.css`.
 `postcss.config.js` utilise desormais `@tailwindcss/postcss`.
 `tailwind.config.js` conserve (inactif, Tailwind 4 l'ignore) — supprimer dans un sprint futur si souhaite.
 
+## ✅ Item 3 — Correction mocks CI Sprint Login (integre 2026-05-23)
+
+Packages Sprint Login absents du venv Poetry local : email-validator, argon2-cffi, python-jose, itsdangerous, pypdf.
+Tous sont dans requirements.txt — correction : `pip install` dans le venv local.
+Bug test : `_mock_auth_token_service` utilisait `AsyncMock()` pour les methodes sync `create_access_token`
+et `decode_access_token` — corrige en `MagicMock` explicite dans `tests/test_auth_endpoints.py`.
+3 erreurs ruff corrigees via `ruff check --fix` (F401 imports inutilises, I001 ordre imports).
+Resultat : 1398 tests backend verts, 212 Vitest verts, lint + typecheck clean.
+
 ---
 
 # CONTRAINTES ABSOLUES (rappel)
@@ -161,5 +170,5 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 _Template maintenance CI/Dependabot — TradingClaude_
 _Derniere mise a jour : 2026-05-23_
-_Packages integres : typescript 6, typescript-eslint 8, jsdom 29, asyncpg 0.31, fastapi 0.136, langfuse 4.6, fakeredis 2.35, respx 0.23, pytest-playwright 0.8, vite 8, plugin-react 6, vitest 4, tailwindcss 4, @tailwindcss/postcss 4_
+_Packages integres : typescript 6, typescript-eslint 8, jsdom 29, asyncpg 0.31, fastapi 0.136, langfuse 4.6, fakeredis 2.35, respx 0.23, pytest-playwright 0.8, vite 8, plugin-react 6, vitest 4, tailwindcss 4, @tailwindcss/postcss 4, email-validator 2.3, argon2-cffi 25.1, python-jose 3.5, itsdangerous 2.x, pypdf 6.x_
 _Items differés : aucun_

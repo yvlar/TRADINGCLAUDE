@@ -41,15 +41,16 @@ def _mock_user_service():
 @pytest.fixture
 def _mock_auth_token_service():
     mock = AsyncMock()
-    mock.create_access_token.return_value = "fake-jwt-access-token"
-    mock.create_refresh_token.return_value = "fake-refresh-uuid"
-    mock.decode_access_token.return_value = {
+    # Méthodes sync — MagicMock explicite pour éviter que AsyncMock les rende async
+    mock.create_access_token = MagicMock(return_value="fake-jwt-access-token")
+    mock.decode_access_token = MagicMock(return_value={
         "sub": str(uuid.uuid4()),
         "email": "test@test.com",
         "role": "reader",
         "jti": str(uuid.uuid4()),
         "exp": 9_999_999_999,
-    }
+    })
+    mock.create_refresh_token.return_value = "fake-refresh-uuid"
     mock.is_jti_blacklisted.return_value = False
     mock.blacklist_jti.return_value = None
     mock.invalidate_refresh_token.return_value = None

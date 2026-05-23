@@ -17,9 +17,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.endpoints.admin import _require_admin
 from app.api.endpoints.admin import router as admin_router
-from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.analyze_stream import router as analyze_stream_router
 from app.api.endpoints.annotations import router as annotations_router
+from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.backtest import router as backtest_router
 from app.api.endpoints.compare import router as compare_router
 from app.api.endpoints.composite_history import router as composite_history_router
@@ -57,20 +57,20 @@ from app.services.analysis_cache import AnalysisCacheService
 from app.services.annotation_service import AnnotationService
 from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
 from app.services.api_key_service import ApiKeyService
+from app.services.auth_token_service import AuthTokenService
 from app.services.compare_service import CompareService
 from app.services.composite_history_service import CompositeHistoryService
 from app.services.esg_history_service import EsgHistoryService
 from app.services.eval_drift_service import EvalDriftService
 from app.services.monthly_report_service import MonthlyReportService
 from app.services.observability import ObservabilityService
+from app.services.password_reset_service import PasswordResetService
 from app.services.pdf_report_service import PdfReportService
 from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
-from app.services.watchlist_pdf_service import WatchlistPdfService
-from app.services.auth_token_service import AuthTokenService
-from app.services.password_reset_service import PasswordResetService
 from app.services.user_service import UserService
+from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
