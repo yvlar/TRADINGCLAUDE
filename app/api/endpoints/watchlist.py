@@ -43,8 +43,8 @@ class WatchlistEsgResponse(BaseModel):
     entries: list[WatchlistEsgEntry]
 
 _MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_XLSX_HEADERS = ["Ticker", "Nom", "Date ajout", "Composite Score", "Label", "Alerte", "Notes", "Score ESG", "Verdict ESG"]
-_XLSX_COL_WIDTHS = [10, 20, 12, 16, 10, 8, 30, 12, 14]
+_XLSX_HEADERS = ["Ticker", "Nom", "Date ajout", "Composite Score", "Label", "Alerte", "Notes", "Score ESG", "Verdict ESG", "Annotation"]
+_XLSX_COL_WIDTHS = [10, 20, 12, 16, 10, 8, 30, 12, 14, 40]
 
 
 # Alias retro-compatible (Sprint 88) — implementation deplacee dans app/utils/esg_utils.py
@@ -88,6 +88,7 @@ def _generate_watchlist_xlsx(rows: list[dict]) -> bytes:
             "",  # notes — champ absent du modèle actuel
             round(esg_score, 1) if esg_score is not None else None,
             _esg_verdict(esg_score),
+            row.get("derniere_annotation", ""),
         ])
 
     for i, width in enumerate(_XLSX_COL_WIDTHS, start=1):

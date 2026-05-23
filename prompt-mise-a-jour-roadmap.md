@@ -1,4 +1,4 @@
-# Sprint 92 -- Annotations dans l'export Excel watchlist
+# Sprint 93 -- Streaming SSE dans ComparePage (opt-in)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
@@ -17,10 +17,10 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 1. `CLAUDE.md` -- index slim (pointe vers `.claude/rules/`)
 2. `.claude/rules/base-connaissances-skills.md` -- catalogue 16+2 skills
 3. `ROADMAP.md` -- etat courant, sprint actif, historique des decisions
-4. `app/services/watchlist_service.py` -- methode `get_all_with_composite()` (LEFT JOIN LATERAL a enrichir avec les annotations)
-5. `app/services/annotation_service.py` -- methode `get_all_with_ticker()` (pattern a utiliser pour le JOIN)
-6. `app/api/endpoints/watchlist.py` -- fonction `_generate_watchlist_xlsx()` + colonnes actuelles
-7. `app/models/annotation.py` -- schema `Annotation` (champs `ticker`, `content`)
+4. `app/api/endpoints/analyze_stream.py` -- endpoint SSE existant (`POST /analyze-stream`) et generateur `_sse_generator`
+5. `frontend/src/pages/AnalyzePage.tsx` -- implementation streaming SSE cote frontend (pattern a reutiliser)
+6. `frontend/src/pages/ComparePage.tsx` -- page actuelle, bouton "Analyser" + `handleAnalyze()` (Sprint 87)
+7. `frontend/src/api/analyze.ts` -- `streamAnalyze()` ou equivalent (SSE client)
 
 ---
 
@@ -28,14 +28,15 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 
 | Champ                   | Valeur                                                  |
 | ----------------------- | ------------------------------------------------------- |
-| Version                 | 8.4.0                                                   |
+| Version                 | 8.5.0                                                   |
 | Phase active            | Phase 3 -- Pipeline de synthese                         |
-| Sprint actif            | **Sprint 92 -- Annotations dans l'export Excel watchlist** |
-| Dernier sprint complete | Sprint 91 -- Seuil de prix configurable par ticker ✅   |
+| Sprint actif            | **Sprint 93 -- Streaming SSE dans ComparePage (opt-in)** |
+| Dernier sprint complete | Sprint 92 -- Annotations dans l'export Excel watchlist ✅ |
 
 ## Infrastructure backend (operationnelle)
 
 - 18 skills en production (16 Tier2 + 2 Tier1) -- tous documentes dans `.claude/skills/`
+- `POST /analyze-stream` -- streaming SSE skill par skill (utilise dans AnalyzePage)
 - `PATCH /watchlist/{id}/price-threshold` -- seuil alerte prix configurable par ticker (Sprint 91)
 - `PATCH /watchlist/{id}/esg-threshold` -- seuil alerte ESG configurable par ticker (Sprint 84)
 - `GET /history-paged?ticker=&q=&page=1&page_size=10` -- pagination offset/limit avec total_count (Sprint 90)
@@ -45,14 +46,16 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 - `SlackService` -- send_text/send_esg_alert/send_screener_summary/send_monthly_report_summary (Sprint 86)
 - `GET /annotations/export.csv` + `GET /annotations/export.xlsx` -- export annotations depuis HistoryPage (Sprint 85)
 - `AnnotationService.get_all_with_ticker()` -- toutes les annotations avec ticker (Sprint 85)
-- `GET /watchlist/export.xlsx` -- export Excel watchlist avec Score ESG + Verdict ESG, SANS annotation (Sprint 83)
-- `get_all_with_composite()` -- LEFT JOIN LATERAL sur composite_score_history (Sprint 82/83)
-- 1371 tests CI verts (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`)
+- `GET /watchlist/export.xlsx` -- export Excel watchlist avec Score ESG + Verdict ESG + Annotation (Sprint 83/92)
+- `get_all_with_composite()` -- LEFT JOIN LATERAL composite_score_history + annotations (Sprint 82/83/92)
+- 1374 tests au total (1372 CI verts hors e2e et evals)
 
 ## Frontend React (operationnel)
 
 - SPA React 18 + TypeScript strict -- port 5173
 - 9 pages : Analyze, Screener, History, Watchlist, Dashboard, Login, Admin, Comparer, ESG
+- **ComparePage** -- bouton "Analyser" (opt-in, `analysis_id===null`) + `handleAnalyze()` Promise.race 60s (Sprint 87)
+- **AnalyzePage** -- streaming SSE skill par skill via `POST /analyze-stream` (pattern de reference)
 - **WatchlistTable** -- colonnes Seuil ESG (Sprint 84) et Seuil Prix (%) (Sprint 91) avec edition inline
 - **HistoryPage** -- pagination numerotee (Sprint 90) + export annotations CSV/Excel (Sprint 85)
 - Vitest + @testing-library/react -- 192 tests verts
@@ -63,58 +66,54 @@ React 18, TypeScript strict, Vitest et les patterns de tests automatises.
 
 ---
 
-# TACHE -- SPRINT 92
+# TACHE -- SPRINT 93
 
 ## Objectif
 
-Inclure la colonne "Annotation" dans `GET /watchlist/export.xlsx` en faisant un LEFT JOIN
-sur la table `annotations` depuis `get_all_with_composite()`. Les annotations sont deja
-exportables depuis HistoryPage (Sprint 85) mais pas depuis la watchlist. Ce sprint ferme
-cette incoherence : un seul champ par ticker (la derniere annotation, ou vide si aucune).
+Ajouter une option "Streaming" (toggle ou checkbox) dans `ComparePage` qui utilise
+`POST /analyze-stream` au lieu de `POST /analyze` -- affichage progressif skill par skill
+pendant l'analyse. L'infrastructure SSE existe deja (AnalyzePage) -- l'appliquer a
+ComparePage ameliore l'UX pour les analyses longues (> 30s). Le mode non-streaming
+reste disponible (opt-in, pas de changement de comportement par defaut).
 
 ## Livrables attendus
 
-### 1. Backend
+### 1. Frontend
 
-- `app/services/watchlist_service.py` -- enrichir `get_all_with_composite()` avec un deuxieme
-  LEFT JOIN LATERAL sur la table `annotations` pour recuperer `content` de la derniere annotation
-  par ticker (ORDER BY created_at DESC LIMIT 1) ; alias SQL : `derniere_annotation`
-- `app/api/endpoints/watchlist.py` -- ajouter la colonne "Annotation" a `_XLSX_HEADERS` et
-  `_XLSX_COL_WIDTHS` ; dans `_generate_watchlist_xlsx()`, recuperer `row.get("derniere_annotation", "")`
-  et l'ecrire dans la colonne appropriee (apres "Notes" existant ou a la place)
+- `frontend/src/pages/ComparePage.tsx` -- ajouter un toggle `streamingEnabled` (boolean, defaut false) ;
+  quand coché, `handleAnalyze()` utilise `streamAnalyze()` (SSE) au lieu de `postAnalyze()` ; afficher
+  les tokens/skills recus progressivement dans la cellule correspondante (meme colonne, meme ticker) ;
+  conserver le bouton "Analyser" et la logique Promise.race 60s existante
 
-### 2. Tests CI
+- `frontend/src/api/analyze.ts` -- verifier que `streamAnalyze(request, onChunk)` existe deja ou
+  l'ajouter (callback invoque a chaque evenement SSE recu, parse le JSON du chunk, retourne la
+  reponse finale complete quand le stream se ferme)
 
-- `tests/test_watchlist_xlsx_annotation.py` -- 3 tests CI :
-  - `get_all_with_composite()` inclut la colonne `derniere_annotation` dans le SQL
-  - `GET /watchlist/export.xlsx` contient la colonne "Annotation" dans la ligne d'en-tete
-  - `GET /watchlist/export.xlsx` ecrit la valeur de l'annotation si presente, chaine vide si absente
+### 2. Tests Vitest
 
-Objectif : +3 CI (total >= 1374)
+- `frontend/src/__tests__/CompareStreaming.test.tsx` -- 5 tests Vitest :
+  - Toggle "Streaming" present et initialement desactive
+  - Cocher le toggle appelle `streamAnalyze()` et non `postAnalyze()` lors du clic "Analyser"
+  - Sans toggle, `postAnalyze()` est toujours appele (retrocompatibilite)
+  - Les chunks recus sont affiches progressivement (spy sur le callback)
+  - Erreur stream (rejet Promise) affichee inline 5s
 
-### 3. Tests Vitest
+### 3. Tests CI backend
 
-Pas de changement frontend -- aucun test Vitest requis pour ce sprint.
+Pas de changement backend -- aucun test CI requis pour ce sprint.
+Objectif : +5 Vitest (total >= 197)
 
 ## Contraintes techniques
 
-- Ne pas casser `get_all_with_composite()` -- les colonnes existantes doivent rester identiques
-- Le champ "Notes" dans le XLSX actuel est toujours vide (`""`) -- remplacer par `derniere_annotation`
-  ou ajouter "Annotation" comme colonne supplementaire apres "Notes" (au choix)
-- Garder la retrocompatibilite : si la table `annotations` est vide pour un ticker, la cellule est `""`
-- La requete SQL ne doit pas utiliser de sous-requete correllee non-indexed -- utiliser LEFT JOIN LATERAL
+- Ne pas casser `handleAnalyze()` et le comportement actuel (Sprint 87) -- le mode non-streaming
+  reste le defaut (toggle off = comportement identique a avant ce sprint)
+- `Promise.race 60s` doit s'appliquer aussi en mode streaming
+- Le toggle doit etre visuellement clair (label "Streaming en direct" ou equivalent)
+- Pas de changement du backend -- `POST /analyze-stream` existe deja
 
 ---
 
-# SPRINTS SUGGERES (93-97)
-
-### Sprint 93 -- Streaming SSE dans ComparePage (opt-in)
-
-**Objectif** : Ajouter une option "streaming" dans ComparePage qui utilise
-`POST /analyze-stream` au lieu de `POST /analyze` -- affichage progressif skill par skill.
-**Complexite** : Moyenne
-**Justification** : L'infrastructure SSE existe deja (AnalyzePage) -- l'appliquer a
-ComparePage ameliore l'UX pour les analyses longues (> 30s).
+# SPRINTS SUGGERES (94-98)
 
 ### Sprint 94 -- Alerte ESG sur degradation historique
 
@@ -167,10 +166,8 @@ linting/formatage automatique, type-checking CI, templates GitHub, fichiers de g
 - `SECURITY.md` -- politique de divulgation responsable (contact ivess49@gmail.com)
 
 **Complexite** : Moyenne
-**Justification** : Le depot est maintenant public (fait en session Sprint 91). Sans ces fichiers,
-le projet parait abandonne ou non maintenu. Ces artefacts sont la norme pour tout depot open-source
-serieux et ameliorent la confiance des recruteurs/contributeurs. Le linting CI catch les regressions
-de style avant merge -- valeur immediate, effort faible.
+**Justification** : Le depot est maintenant public. Sans ces fichiers, le projet parait abandonne.
+Ces artefacts sont la norme pour tout depot open-source serieux.
 
 ---
 
@@ -199,16 +196,17 @@ de style avant merge -- valeur immediate, effort faible.
 - **Seuil ESG Sprint 84** : `PATCH /watchlist/{id}/esg-threshold` + colonne "Seuil ESG" WatchlistTable -- ne pas modifier
 - **Export annotations Sprint 85** : `GET /annotations/export.csv` + `GET /annotations/export.xlsx` -- ne pas modifier
 - **Slack Sprint 86** : `SlackService` dans `app.state.slack_service` + `app.services.slack_service` -- ne pas modifier
-- **Comparaison live Sprint 87** : bouton "Analyser" + `handleAnalyze()` dans `ComparePage.tsx` -- ne pas modifier
+- **Comparaison live Sprint 87** : bouton "Analyser" + `handleAnalyze()` dans `ComparePage.tsx` -- ne pas modifier ; ajouter le toggle SSE sans casser ce comportement
 - **Section ESG mensuelle Sprint 88** : `MonthlyReportService.generate()` accepte `watchlist_service` kwarg -- ne pas modifier
 - **Helper ESG Sprint 88** : `esg_verdict()` dans `app/utils/esg_utils.py` -- alias `_esg_verdict` conserve dans `app/api/endpoints/watchlist.py` pour retrocompat
 - **Historique ESG Sprint 89** : table `esg_score_history` + `EsgHistoryService` dans `app.state.esg_history_service` + `GET /esg-history/{ticker}` + `record(ticker, score)` appele apres `EsgSimplifiedSkill` dans orchestrator -- ne pas modifier
 - **Pagination Sprint 90** : `PagedHistoryResponse` + `Orchestrator.get_history_paged()` + `GET /history-paged` + `getHistoryPaged()` (frontend) + `HistoryPage.tsx` boutons `history-pagination-prev/next` + `history-page-label` -- ne pas modifier ; `GET /history` (cursor) preserve pour retrocompat
 - **Seuil Prix Sprint 91** : `PATCH /watchlist/{id}/price-threshold` + `update_price_threshold()` + colonne "Seuil Prix (%)" WatchlistTable -- ne pas modifier ; l'endpoint divise la valeur % par 100 avant stockage NUMERIC(5,4)
+- **Annotations XLSX Sprint 92** : `get_all_with_composite()` retourne `derniere_annotation` (COALESCE '') ; colonne "Annotation" position 9 dans `_XLSX_HEADERS` -- ne pas modifier
 - **Robustesse OneDrive** : si la synchro OneDrive coupe une edition (fichier tronque a mi-contenu), restaurer en appendant la queue manquante via `python3 ... open(path, 'ab')` en chunks de ~600 bytes maximum ; toujours verifier `wc -l` + balance braces/parens apres une edition critique
 
 ---
 
 _Roadmap mise a jour le 2026-05-22 -- Yves / TradingClaude_
-_Sprint 91 complete : Seuil de prix configurable par ticker -- update_price_threshold() WatchlistService + PriceThresholdUpdate schema + PATCH /watchlist/{id}/price-threshold (422 si hors 0-100, division par 100 pour stockage NUMERIC(5,4)) + colonne "Seuil Prix (%)" WatchlistTable (edition inline, etats independants du seuil ESG) + patchPriceThreshold() API + 3 CI + 5 Vitest + bonus correction corruption OneDrive types/index.ts + accents HistoryPage.tsx + mock getHistoryPaged PdfDownload.test.tsx -- 1371 CI verts + 192 Vitest verts -- version 8.4.0_
-_Sprints 92-98 suggeres : Annotations watchlist export -> Streaming SSE ComparePage -> Alerte degradation ESG -> DELETE /history -> Estimation rapide total_count -> Sparkline composite watchlist -> Professionnalisation GitHub (CI lint/typecheck, templates, LICENSE, CONTRIBUTING, Dependabot)_
+_Sprint 92 complete : Annotations dans l'export Excel watchlist -- second LEFT JOIN LATERAL dans get_all_with_composite() sur annotations+analysis_history (derniere_annotation COALESCE '') + colonne "Annotation" position 9 dans _XLSX_HEADERS/_XLSX_COL_WIDTHS + _generate_watchlist_xlsx() lit derniere_annotation + 3 tests CI (SQL, en-tete, valeur presente/absente) -- 1374 tests au total (1372 CI verts) -- version 8.5.0_
+_Sprints 93-98 suggeres : Streaming SSE ComparePage -> Alerte degradation ESG -> DELETE /history -> Estimation rapide total_count -> Sparkline composite watchlist -> Professionnalisation GitHub (CI lint/typecheck, templates, LICENSE, CONTRIBUTING, Dependabot)_

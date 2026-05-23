@@ -133,7 +133,7 @@ class WatchlistService:
         )
 
     async def get_all_with_composite(self) -> list[dict]:
-        """Retourne toutes les entrées watchlist enrichies du dernier composite_score historique."""
+        """Retourne toutes les entrées watchlist enrichies du dernier composite_score et de la dernière annotation."""
         rows = await self._db.fetch(
             """
             SELECT
@@ -144,7 +144,8 @@ class WatchlistService:
                 COALESCE(csh.score, w.last_composite_score) AS composite_score_latest,
                 csh.label AS composite_label_latest,
                 w.last_esg_score,
-                w.esg_alert_threshold
+                w.esg_alert_threshold,
+                COALESCE(ann.note, '') AS derniere_annotation
             FROM watchlist w
             LEFT JOIN LATERAL (
                 SELECT score, label
@@ -153,6 +154,14 @@ class WatchlistService:
                 ORDER BY recorded_at DESC
                 LIMIT 1
             ) csh ON true
+            LEFT JOIN LATERAL (
+                SELECT a.note
+                FROM annotations a
+                JOIN analysis_history h USING (analysis_id)
+                WHERE h.ticker = w.ticker
+                ORDER BY a.created_at DESC
+                LIMIT 1
+            ) ann ON true
             ORDER BY w.created_at DESC
             """
         )

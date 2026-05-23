@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-22 — Sprint 91 complété**
+**Dernière mise à jour : 2026-05-22 — Sprint 92 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 8.4.0 |
+| **Version** | 8.5.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 92 — Annotations dans l'export Excel watchlist |
-| **Dernier sprint complété** | Sprint 91 — Seuil de prix configurable par ticker ✅ |
+| **Sprint actif** | Sprint 93 — Streaming SSE dans ComparePage (opt-in) |
+| **Dernier sprint complété** | Sprint 92 — Annotations dans l'export Excel watchlist ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -97,6 +97,20 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 92 — Annotations dans l'export Excel watchlist ✅
+
+**Objectif :** Inclure la dernière annotation par ticker dans `GET /watchlist/export.xlsx` en enrichissant `get_all_with_composite()` avec un second LEFT JOIN LATERAL sur la table `annotations` (via `analysis_history`). Ferme l'incohérence entre l'export annotations (Sprint 85) et l'export watchlist (Sprint 83).
+
+**Livrables :**
+- `app/services/watchlist_service.py` — second LEFT JOIN LATERAL dans `get_all_with_composite()` : joint `annotations` via `analysis_history` pour récupérer `note` de la dernière annotation par ticker (ORDER BY created_at DESC LIMIT 1) ; alias SQL `derniere_annotation` (COALESCE → '' si absent)
+- `app/api/endpoints/watchlist.py` — colonne "Annotation" ajoutée en fin de `_XLSX_HEADERS` (position 9) + `_XLSX_COL_WIDTHS` (largeur 40) + `_generate_watchlist_xlsx()` écrit `row.get("derniere_annotation", "")`
+- `tests/test_watchlist_xlsx_annotation.py` — 3 tests CI (SQL contient `derniere_annotation`, en-tête XLSX contient "Annotation", valeur présente vs cellule vide)
+
+**Version** : 8.5.0
+**Tests** : 1374 tests au total (1372 CI verts hors e2e et evals) — +3 tests Sprint 92 ; 192 Vitest verts (inchangé)
+
+---
 
 ### Sprint 91 — Seuil de prix configurable par ticker ✅
 
