@@ -12,7 +12,7 @@ import pytest
 
 from app.services.composite_score import compute_composite_score
 
-_DATASET_PATH = Path(__file__).parent / "evals" / "golden_screener_dataset.json"
+_DATASET_PATH = Path(__file__).parent.parent / "evals" / "golden_screener_dataset.json"
 _DEFENSIVE_VERDICTS = {"PASSE", "BORDERLINE", "REJETER"}
 _GRAHAM_VERDICTS = {"REJETER", "WATCHLIST", "CANDIDAT_SOLIDE", "EXEMPLAIRE"}
 _COMPOSITE_LABELS = {"FORT", "MODÉRÉ", "FAIBLE"}
