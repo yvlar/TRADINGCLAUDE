@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-23 — Sprint 99 complété**
+**Dernière mise à jour : 2026-05-23 — Sprint 100 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.4.0 |
+| **Version** | 9.5.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 100 — Export analyse individuelle en PDF enrichi |
-| **Dernier sprint complété** | Sprint 99 — Tableau de bord alertes (AlertsPage) ✅ |
+| **Sprint actif** | Sprint 101 — à définir |
+| **Dernier sprint complété** | Sprint 100 — Nettoyage structure repo (publishable GitHub) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -273,6 +273,31 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 9.3.0 (9.2.0 = migration Vite 8 + Tailwind 4 en parallèle — cf. commit cf5a7a36)
 **Tests** : 1396 CI verts (hors e2e et evals) — +13 tests Sprint Login ; 212 Vitest verts — +7 tests (6 RegisterPage + 1 LoginPage net)
+
+---
+
+### Sprint 100 — Nettoyage structure repo (publishable GitHub) ✅
+
+**Objectif :** Rendre la racine du dépôt propre et compréhensible pour un visiteur GitHub : déplacer les fichiers internes Claude Code, supprimer les artefacts résiduels, protéger les analyses personnelles, réorganiser les 80+ tests à plat en sous-dossiers thématiques.
+
+**Livrables :**
+- `.claude/prompts/archive/` — 4 anciens prompts sprint (sprint-1 à sprint-4) déplacés depuis la racine
+- `.claude/prompts/` — 5 prompts actifs déplacés (prompt-bootstrap-webapp.md, prompt-frontend-catchup.md, prompt-sprint-ci-dependabot.md, prompt-create-login-sprint.md, prompt-rag-bootstrap.md)
+- `.claude/docs/revue-projet-rag.md` — revue interne déplacée
+- `docs/architecture/architecture-copilote-financier.md` — doc d'architecture déplacée dans docs/
+- Supprimés : `test_write.txt` (résidu OneDrive), `=2.0.0` (artefact pip)
+- `.gitignore` — `analyses/` + `.claude/settings.local.json` ajoutés ; `analyses/BNS-2026-05.md` et `.claude/settings.local.json` désindexés (git rm --cached)
+- `tests/skills/` (20 fichiers) — tests skills tier1/tier2
+- `tests/api/` (26 fichiers) — tests endpoints FastAPI
+- `tests/services/` (24 fichiers) — tests couche services
+- `tests/workers/` (3 fichiers) — tests tâches Celery
+- `tests/orchestrator/` (5 fichiers) — tests orchestrateur + intégration
+- `tests/load/test_load_smoke.py` — déplacé dans load/ existant
+
+**Note :** `.claude/skills/.git` (dépôt git imbriqué sans .gitmodules) — signalé à l'utilisateur pour décision ; `.claude/skills/investment/` — dossier orphelin, idem.
+
+**Version** : 9.5.0
+**Tests** : 1401 CI verts (inchangé — réorganisation structurelle uniquement) ; 217 Vitest verts (inchangé)
 
 ---
 
