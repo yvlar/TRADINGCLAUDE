@@ -1,0 +1,42 @@
+{
+  "current": {
+    "receivables": 29508,
+    "sales": 383285,
+    "cogs": 214137,
+    "current_assets": 143566,
+    "ppe_net": 43715,
+    "securities": 31590,
+    "total_assets": 352583,
+    "depreciation": 11519,
+    "sga": 24932,
+    "net_income": 96995,
+    "cfo": 110543,
+    "current_liabilities": 145308,
+    "long_term_debt": 95281,
+    "inventory": 6331,
+    "other_current_assets": 14695,
+    "ppe_gross": 116930,
+    "shares_outstanding": 15613,
+    "cash": 29965
+  },
+  "previous": {
+    "receivables": 28184,
+    "sales": 394328,
+    "cogs": 223546,
+    "current_assets": 135405,
+    "ppe_net": 42117,
+    "securities": 24658,
+    "total_assets": 352755,
+    "depreciation": 11104,
+    "sga": 25094,
+    "net_income": 99803,
+    "cfo": 122151,
+    "current_liabilities": 153982,
+    "long_term_debt": 98959,
+    "inventory": 4946,
+    "other_current_assets": 21223,
+    "ppe_gross": 114457,
+    "shares_outstanding": 15943,
+    "cash": 23646
+  }
+}

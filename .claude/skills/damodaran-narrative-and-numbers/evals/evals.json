@@ -1,0 +1,27 @@
+{
+  "skill_name": "damodaran-narrative-and-numbers",
+  "trigger_evals": [
+    {"id": 1, "query": "Comment Damodaran valorise une story stock comme Snowflake ?", "should_trigger": true},
+    {"id": 2, "query": "Mon DCF donne ROIC implicite 60%, c'est normal ?", "should_trigger": true},
+    {"id": 3, "query": "Quelle est l'ERP implicite actuelle selon Damodaran ?", "should_trigger": true},
+    {"id": 4, "query": "Test possible plausible probable pour Beyond Meat ?", "should_trigger": true},
+    {"id": 5, "query": "Country risk premium pour le Brésil en 2026 ?", "should_trigger": true},
+    {"id": 6, "query": "Comment vérifier la cohérence d'un DCF entre croissance, ROIC et réinvestissement ?", "should_trigger": true},
+    {"id": 7, "query": "Valoriser une biotech pre-revenue avec un seul candidat ?", "should_trigger": true},
+    {"id": 8, "query": "Story to numbers — comment traduire une thèse en chiffres ?", "should_trigger": true},
+    {"id": 9, "query": "Mon modèle implique 50% de croissance pendant 10 ans, est-ce réaliste ?", "should_trigger": true},
+    {"id": 10, "query": "Probabilité de survie dans la valorisation d'une entreprise distressed", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 12, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 13, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 14, "query": "REER ou CELI pour Apple ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 15, "query": "Cycles Marks", "should_trigger": false, "rationale": "marks"},
+    {"id": 16, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 17, "query": "Costco fast grower selon Lynch ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 18, "query": "Pabrai positions actuelles", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 19, "query": "Klarman margin of safety", "should_trigger": false, "rationale": "klarman"},
+    {"id": 20, "query": "Munger biais inversion", "should_trigger": false, "rationale": "munger"}
+  ]
+}

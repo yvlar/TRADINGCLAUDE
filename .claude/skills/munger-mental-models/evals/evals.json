@@ -1,0 +1,27 @@
+{
+  "skill_name": "munger-mental-models",
+  "trigger_evals": [
+    {"id": 1, "query": "Quels biais cognitifs Munger identifie ?", "should_trigger": true},
+    {"id": 2, "query": "Comment Munger appliquait l'inversion ?", "should_trigger": true},
+    {"id": 3, "query": "Lollapalooza effect — exemple concret ?", "should_trigger": true},
+    {"id": 4, "query": "Audit des biais avant d'acheter Tesla à 200 USD", "should_trigger": true},
+    {"id": 5, "query": "Latticework de modèles mentaux — par où commencer ?", "should_trigger": true},
+    {"id": 6, "query": "Invert always invert — comment l'appliquer à un investissement ?", "should_trigger": true},
+    {"id": 7, "query": "Psychology of Human Misjudgment — résumé ?", "should_trigger": true},
+    {"id": 8, "query": "Social proof bias dans les marchés ?", "should_trigger": true},
+    {"id": 9, "query": "Charlie Munger latticework — disciplines clés ?", "should_trigger": true},
+    {"id": 10, "query": "Comment éviter le commitment bias en investissement ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Marks pendule", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 18, "query": "Costco Lynch fast grower", "should_trigger": false, "rationale": "lynch"},
+    {"id": 19, "query": "Pabrai Dhandho", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 20, "query": "Klarman margin Boeing", "should_trigger": false, "rationale": "klarman"}
+  ]
+}

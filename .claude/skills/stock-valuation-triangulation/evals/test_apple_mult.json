@@ -1,0 +1,18 @@
+{
+  "company": "Apple Inc.",
+  "metrics": {
+    "ebitda_forward": 130000,
+    "earnings_forward": 105000,
+    "fcf": 110000,
+    "revenue": 390000,
+    "book_value_tangible": 20000
+  },
+  "shares_diluted": 15613,
+  "net_debt": 60000,
+  "peers": [
+    {"name": "Microsoft", "ev_ebitda": 22.0, "pe_forward": 32.0, "p_fcf": 35.0, "ev_revenue": 12.0},
+    {"name": "Alphabet", "ev_ebitda": 16.5, "pe_forward": 22.0, "p_fcf": 25.0, "ev_revenue": 6.5},
+    {"name": "Meta", "ev_ebitda": 14.5, "pe_forward": 22.5, "p_fcf": 26.0, "ev_revenue": 7.5},
+    {"name": "Amazon", "ev_ebitda": 18.0, "pe_forward": 38.0, "p_fcf": 45.0, "ev_revenue": 3.0}
+  ]
+}

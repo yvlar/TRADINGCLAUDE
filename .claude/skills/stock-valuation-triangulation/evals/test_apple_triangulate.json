@@ -1,0 +1,25 @@
+{
+  "company": "Apple Inc.",
+  "current_price": 175.0,
+  "currency": "USD",
+  "methods": {
+    "dcf": {
+      "low": 93.0,
+      "central": 121.0,
+      "high": 177.0,
+      "weight": 0.50
+    },
+    "comparables": {
+      "low": 140.0,
+      "central": 177.0,
+      "high": 215.0,
+      "weight": 0.40
+    },
+    "sectorial": {
+      "low": 130.0,
+      "central": 160.0,
+      "high": 200.0,
+      "weight": 0.10
+    }
+  }
+}

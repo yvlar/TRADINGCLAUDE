@@ -1,0 +1,10 @@
+{
+  "company": "Apple Inc.",
+  "currency": "USD",
+  "fcf_projections": [110000, 115000, 120000, 124000, 128000],
+  "wacc": 0.085,
+  "perpetual_growth": 0.025,
+  "net_debt": 60000,
+  "cash_excedentaire": 30000,
+  "shares_diluted": 15613
+}

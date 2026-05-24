@@ -1,0 +1,20 @@
+{
+  "ticker": "RY.TO",
+  "profil": "defensif",
+  "currency": "CAD",
+  "price": 130.0,
+  "revenu_annuel": 50000,
+  "current_assets": 1500000,
+  "current_liabilities": 700000,
+  "long_term_debt": 800000,
+  "working_capital": 800000,
+  "deficits_10ans": 0,
+  "deficits_5ans": 0,
+  "dividendes_continus_annees": 30,
+  "verse_dividende": true,
+  "bpa_actuel": 12.0,
+  "bpa_il_y_a_10ans": 7.5,
+  "bpa_5ans_passe_positif": true,
+  "book_value_per_share": 75.0,
+  "tangible_book_value_per_share": 70.0
+}

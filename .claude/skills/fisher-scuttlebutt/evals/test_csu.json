@@ -1,0 +1,20 @@
+{
+  "ticker": "CSU.TO",
+  "scores": {
+    "1_growth_potential": 5,
+    "2_new_products_intent": 4,
+    "3_rd_effectiveness": 4,
+    "4_sales_organization": 4,
+    "5_profit_margin": 5,
+    "6_margin_maintenance": 5,
+    "7_personnel_relations": 4,
+    "8_executive_depth": 5,
+    "9_management_depth": 5,
+    "10_cost_accounting": 5,
+    "11_industry_specific": 5,
+    "12_long_term_view": 5,
+    "13_capital_dilution": 5,
+    "14_management_franchise_problems": 5,
+    "15_management_integrity": 5
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "ticker": "CSU.TO",
+  "company_name": "Constellation Software Inc.",
+  "thesis_type": "compounder",
+  "current_price": 4200,
+  "currency": "CAD",
+  "market_cap_b": 90,
+  "summary": "CSU est un compounder exceptionnel grâce à des switching costs très élevés sur des logiciels verticaux niche, capable de réinvestir 60-70% de son cash flow à 25%+ ROIC pendant 10+ ans.",
+  "business_description": "Constellation Software acquiert et opère des entreprises de logiciel vertical (gestion municipalités, dispatch police, restaurants régionaux, etc.). Modèle d'acquisition discipliné à hurdle rate 20%+ ROIC, avec gestion décentralisée par business unit. Plus de 700 acquisitions depuis fondation 1995.",
+  "moat_description": "Switching costs massifs sur les logiciels critiques pour des niches non substituables (durée de remplacement 12-24 mois minimum, données historiques difficilement migrables, customisations spécifiques accumulées). ROIC 28% moyen depuis 10 ans, stabilité exceptionnelle (CV 0.06).",
+  "moat_type": "switching costs + scale d'acquisitions",
+  "key_metrics": {
+    "roic_avg": 0.28,
+    "revenue_growth_5y": 0.18,
+    "gross_margin": 0.42,
+    "fcf_margin": 0.22,
+    "net_debt_ebitda": 0.5
+  },
+  "management": "Mark Leonard, CEO depuis fondation 1995. Track record 25+ ans à 25%+ CAGR. Compensation modeste, communication transparente (lettres aux actionnaires considérées parmi les meilleures jamais écrites). Fisher 14: 5/5. Fisher 15: 5/5.",
+  "valuation": {
+    "method": "DCF + EV/EBITDA + DCF Owner Earnings",
+    "intrinsic_value": 5500,
+    "margin_of_safety_pct": 0.24
+  },
+  "scenarios": {
+    "bear": {"prob": 0.20, "impact_pct": -0.30, "conditions": "Multiples acquisitions montent (concurrence Vista/Roper), ROIC compresse"},
+    "base": {"prob": 0.55, "impact_pct": 0.80, "conditions": "Compounding 12-15%/an sur 7 ans à multiple stable"},
+    "bull": {"prob": 0.25, "impact_pct": 2.50, "conditions": "Compounding 18-20%/an + multiple expansion modeste"}
+  },
+  "kill_criteria": [
+    "ROIC < 18% pendant 2 années consécutives",
+    "Mark Leonard quitte sans plan succession clair",
+    "Croissance organique nette < 3% pendant 2 ans",
+    "Multiples acquisitions > 1.5x médiane historique pendant 3 ans",
+    "Concentration client > 15% des revenus"
+  ],
+  "devils_advocate": [
+    "Multiples acquisitions ont monté (5-7x EBITDA vs 3-4x historique)",
+    "Mark Leonard avancé en âge, succession non clair",
+    "Loi des grands nombres, difficile maintenir 25% CAGR",
+    "Concurrence accrue (Vista, Roper, Thoma Bravo)",
+    "Multiple actuel élevé (P/E 35x)"
+  ],
+  "position_size_pct": 0.07,
+  "horizon_years": 7,
+  "review_date": "2027-Q4"
+}

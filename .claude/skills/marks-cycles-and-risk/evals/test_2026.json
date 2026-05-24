@@ -1,0 +1,15 @@
+{
+  "date": "2026-04",
+  "indicators": {
+    "cape_shiller": 32,
+    "buffett_indicator_pct_gdp": 165,
+    "high_yield_spread_bps": 320,
+    "vix": 16,
+    "aaii_bull_pct": 45,
+    "aaii_bear_pct": 28,
+    "ipo_activity": "elevated",
+    "spac_volume": "low",
+    "margin_debt_growth_pct": 15,
+    "media_sentiment": "optimistic"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "ticker": "AAPL",
+  "roic_history_10y": [0.30, 0.32, 0.31, 0.30, 0.34, 0.36, 0.40, 0.45, 0.50, 0.55],
+  "wacc": 0.085,
+  "gross_margin_history_5y": [0.38, 0.39, 0.41, 0.43, 0.44],
+  "fcf_to_revenue_5y": [0.22, 0.24, 0.25, 0.26, 0.27],
+  "capex_to_da_ratio_5y": [0.95, 0.92, 0.85, 0.88, 0.95],
+  "stock_based_comp_pct_revenue": 0.028
+}

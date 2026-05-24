@@ -1,0 +1,27 @@
+{
+  "skill_name": "stock-valuation-triangulation",
+  "trigger_evals": [
+    {"id": 1, "query": "Combien vaut Costco selon un DCF ? Le titre est à 750 USD.", "should_trigger": true},
+    {"id": 2, "query": "Calcule-moi le WACC de Bell Canada avec leur structure de capital actuelle", "should_trigger": true},
+    {"id": 3, "query": "Je veux estimer la juste valeur de Brookfield Asset Management — ils sont quasi un holding", "should_trigger": true},
+    {"id": 4, "query": "Dollarama trade à 24× les bénéfices forward, comment se compare aux pairs Five Below et Dollar General ?", "should_trigger": true},
+    {"id": 5, "query": "Fais-moi une matrice de sensibilité CMPC × g pour CN Rail", "should_trigger": true},
+    {"id": 6, "query": "Suncor à 50 CAD, quelle valeur intrinsèque selon la méthode des réserves prouvées ?", "should_trigger": true},
+    {"id": 7, "query": "Mon DCF de Disney sort 95 USD mais les multiples sortent 130 USD, comment réconcilier ?", "should_trigger": true},
+    {"id": 8, "query": "Quel multiple EV/EBITDA est raisonnable pour une SaaS Rule of 40 à 65% ?", "should_trigger": true},
+    {"id": 9, "query": "Je dois valoriser une banque canadienne, le DCF classique marche pas. Comment faire ?", "should_trigger": true},
+    {"id": 10, "query": "RBC trade à 1.8x book value, est-ce justifié vs son ROE de 16% et son coût des capitaux ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "Quel est le ROE de Constellation Software ?", "should_trigger": false, "rationale": "Question factuelle simple, pas valorisation"},
+    {"id": 12, "query": "Fais-moi un screening Graham sur le TSX 60", "should_trigger": false, "rationale": "graham-stock-screening"},
+    {"id": 13, "query": "Quels sont les biais cognitifs identifiés par Munger ?", "should_trigger": false, "rationale": "munger-mental-models"},
+    {"id": 14, "query": "Y a-t-il des manipulations comptables dans les résultats de Tesla 2024 ?", "should_trigger": false, "rationale": "earnings-quality-fraud-detection"},
+    {"id": 15, "query": "Les positions de Buffett dans le 13F le plus récent ?", "should_trigger": false, "rationale": "pabrai-dhandho-and-cloning"},
+    {"id": 16, "query": "Comment Lynch catégoriserait Costco ? Stalwart ou fast grower ?", "should_trigger": false, "rationale": "lynch-categories-and-tenbaggers"},
+    {"id": 17, "query": "Apple a-t-elle un moat durable selon le cadre Dorsey ?", "should_trigger": false, "rationale": "dorsey-moat-analysis"},
+    {"id": 18, "query": "Faut-il loger Apple dans mon CELI ou mon REER ?", "should_trigger": false, "rationale": "canadian-tax-considerations"},
+    {"id": 19, "query": "Combien vaut un Bitcoin à long terme ?", "should_trigger": false, "rationale": "Crypto, hors scope actions cotées"},
+    {"id": 20, "query": "Cette action est-elle un value trap ? P/B 0.5 et CFO négatif", "should_trigger": false, "rationale": "earnings-quality-fraud-detection (F-score), pas valorisation"}
+  ]
+}

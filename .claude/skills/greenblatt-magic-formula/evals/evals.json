@@ -1,0 +1,27 @@
+{
+  "skill_name": "greenblatt-magic-formula",
+  "trigger_evals": [
+    {"id": 1, "query": "Applique la magic formula à mon univers de 50 actions", "should_trigger": true},
+    {"id": 2, "query": "Comment Joel Greenblatt classe les actions ?", "should_trigger": true},
+    {"id": 3, "query": "Calcule ROC et Earnings Yield pour Costco", "should_trigger": true},
+    {"id": 4, "query": "Quelle est la formule magique du Little Book that Beats the Market ?", "should_trigger": true},
+    {"id": 5, "query": "Y a-t-il un spinoff intéressant à venir cette année ?", "should_trigger": true},
+    {"id": 6, "query": "Topicus est un spinoff de Constellation, est-ce une opportunité Greenblatt ?", "should_trigger": true},
+    {"id": 7, "query": "Risk arbitrage de la fusion Microsoft-Activision, est-ce intéressant ?", "should_trigger": true},
+    {"id": 8, "query": "Peut-on automatiser un screening qui combine qualité et bon marché ?", "should_trigger": true},
+    {"id": 9, "query": "Top 30 actions canadiennes selon les critères Greenblatt", "should_trigger": true},
+    {"id": 10, "query": "Stub stocks après recapitalisation — comment les analyser ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF de Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "RBC passe-t-elle Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 13, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 14, "query": "Le M-score Beneish de Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 15, "query": "CELI ou REER pour mes actions américaines ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Buffett vs Munger sur la qualité", "should_trigger": false, "rationale": "buffett or munger"},
+    {"id": 17, "query": "Comment Klarman trouve ses opportunités distressed ?", "should_trigger": false, "rationale": "klarman"},
+    {"id": 18, "query": "Lynch catégoriserait Costco ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 19, "query": "Position size selon le Kelly criterion", "should_trigger": false, "rationale": "portfolio construction"},
+    {"id": 20, "query": "Quelle est la marge de sécurité acceptable selon Klarman ?", "should_trigger": false, "rationale": "klarman"}
+  ]
+}

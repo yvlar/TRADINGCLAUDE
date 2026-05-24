@@ -1,0 +1,76 @@
+{
+  "universe": [
+    {
+      "ticker": "AAPL",
+      "ebit": 114000,
+      "current_assets": 143000,
+      "excess_cash": 80000,
+      "current_liabilities": 145000,
+      "interest_bearing_debt_st": 15000,
+      "ppe_net": 44000,
+      "market_cap": 3000000,
+      "total_debt": 110000,
+      "cash_and_equivalents": 30000
+    },
+    {
+      "ticker": "MSFT",
+      "ebit": 110000,
+      "current_assets": 184000,
+      "excess_cash": 100000,
+      "current_liabilities": 95000,
+      "interest_bearing_debt_st": 5000,
+      "ppe_net": 95000,
+      "market_cap": 3200000,
+      "total_debt": 80000,
+      "cash_and_equivalents": 80000
+    },
+    {
+      "ticker": "META",
+      "ebit": 70000,
+      "current_assets": 75000,
+      "excess_cash": 50000,
+      "current_liabilities": 32000,
+      "interest_bearing_debt_st": 0,
+      "ppe_net": 90000,
+      "market_cap": 1300000,
+      "total_debt": 20000,
+      "cash_and_equivalents": 65000
+    },
+    {
+      "ticker": "F",
+      "ebit": 6000,
+      "current_assets": 110000,
+      "excess_cash": 5000,
+      "current_liabilities": 95000,
+      "interest_bearing_debt_st": 18000,
+      "ppe_net": 38000,
+      "market_cap": 50000,
+      "total_debt": 145000,
+      "cash_and_equivalents": 24000
+    },
+    {
+      "ticker": "T",
+      "ebit": 25000,
+      "current_assets": 35000,
+      "excess_cash": 2000,
+      "current_liabilities": 50000,
+      "interest_bearing_debt_st": 8000,
+      "ppe_net": 130000,
+      "market_cap": 130000,
+      "total_debt": 140000,
+      "cash_and_equivalents": 8000
+    },
+    {
+      "ticker": "ULTA",
+      "ebit": 1600,
+      "current_assets": 2000,
+      "excess_cash": 200,
+      "current_liabilities": 1100,
+      "interest_bearing_debt_st": 0,
+      "ppe_net": 800,
+      "market_cap": 18000,
+      "total_debt": 2000,
+      "cash_and_equivalents": 700
+    }
+  ]
+}

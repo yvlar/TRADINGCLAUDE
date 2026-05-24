@@ -1,0 +1,27 @@
+{
+  "skill_name": "marks-cycles-and-risk",
+  "trigger_evals": [
+    {"id": 1, "query": "Où sommes-nous dans le cycle de marché début 2026 ?", "should_trigger": true},
+    {"id": 2, "query": "Howard Marks pendule du sentiment — comment le mesurer ?", "should_trigger": true},
+    {"id": 3, "query": "Le risque c'est la volatilité ou autre chose ?", "should_trigger": true},
+    {"id": 4, "query": "Second-level thinking sur Apple à 200 USD ?", "should_trigger": true},
+    {"id": 5, "query": "Cash position 40% en bull market — est-ce justifiable ?", "should_trigger": true},
+    {"id": 6, "query": "Comment Oaktree détermine si c'est un bon moment pour acheter ?", "should_trigger": true},
+    {"id": 7, "query": "CAPE Shiller à 32 et HY spreads à 250 bps — qu'est-ce que ça dit ?", "should_trigger": true},
+    {"id": 8, "query": "Contrarian investing — Marks vs avis du consensus ?", "should_trigger": true},
+    {"id": 9, "query": "Mastering the Market Cycle — résumé du livre ?", "should_trigger": true},
+    {"id": 10, "query": "Allocation contre-cyclique — quand augmenter ou réduire l'exposition aux actions ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Klarman margin of safety pour Boeing", "should_trigger": false, "rationale": "klarman"},
+    {"id": 17, "query": "Munger inversion psychology", "should_trigger": false, "rationale": "munger"},
+    {"id": 18, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 19, "query": "Costco Lynch fast grower", "should_trigger": false, "rationale": "lynch"},
+    {"id": 20, "query": "Pabrai Dhandho BABA", "should_trigger": false, "rationale": "pabrai"}
+  ]
+}

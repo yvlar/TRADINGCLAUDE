@@ -1,0 +1,27 @@
+{
+  "skill_name": "fisher-scuttlebutt",
+  "trigger_evals": [
+    {"id": 1, "query": "Quels sont les 15 points de Fisher ?", "should_trigger": true},
+    {"id": 2, "query": "Comment faire du scuttlebutt sur Constellation Software ?", "should_trigger": true},
+    {"id": 3, "query": "Common Stocks and Uncommon Profits — résumé ?", "should_trigger": true},
+    {"id": 4, "query": "Évaluer la qualité de la direction de Tesla ?", "should_trigger": true},
+    {"id": 5, "query": "Phil Fisher integrity test sur le management ?", "should_trigger": true},
+    {"id": 6, "query": "Comment interroger les ex-employés via LinkedIn ?", "should_trigger": true},
+    {"id": 7, "query": "15 points Fisher pour Couche-Tard", "should_trigger": true},
+    {"id": 8, "query": "Glassdoor reviews — sont-ils utiles pour due diligence ?", "should_trigger": true},
+    {"id": 9, "query": "Recherche qualitative sur le management — méthodologie ?", "should_trigger": true},
+    {"id": 10, "query": "Insider buying et qualité direction selon Fisher", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Marks pendule", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "Munger 25 biais", "should_trigger": false, "rationale": "munger"},
+    {"id": 18, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 19, "query": "Pabrai 13F cloning", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 20, "query": "Klarman margin Boeing", "should_trigger": false, "rationale": "klarman"}
+  ]
+}

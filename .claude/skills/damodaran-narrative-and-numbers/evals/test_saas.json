@@ -1,0 +1,15 @@
+{
+  "ticker": "SAASCO",
+  "revenue_initial": 2000,
+  "revenue_growth_path": [0.45, 0.40, 0.35, 0.28, 0.22, 0.16, 0.12, 0.08, 0.05, 0.03],
+  "operating_margin_path": [-0.10, -0.02, 0.05, 0.10, 0.15, 0.18, 0.20, 0.22, 0.22, 0.22],
+  "reinvestment_rate_path": [1.5, 1.2, 0.80, 0.60, 0.50, 0.40, 0.30, 0.25, 0.20, 0.15],
+  "tax_rate": 0.25,
+  "wacc": 0.095,
+  "terminal_growth": 0.025,
+  "terminal_roic": 0.20,
+  "shares_outstanding": 350,
+  "net_debt": -1500,
+  "probability_survival": 0.75,
+  "value_if_failure_per_share": 8.0
+}

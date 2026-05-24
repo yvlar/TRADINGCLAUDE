@@ -1,0 +1,27 @@
+{
+  "skill_name": "dorsey-moat-analysis",
+  "trigger_evals": [
+    {"id": 1, "query": "Apple a-t-elle un moat large selon Dorsey ?", "should_trigger": true},
+    {"id": 2, "query": "Quelles sont les 5 sources de moat selon Pat Dorsey ?", "should_trigger": true},
+    {"id": 3, "query": "Visa et Mastercard ont quel type de moat ?", "should_trigger": true},
+    {"id": 4, "query": "Constellation Software — durabilité de l'avantage concurrentiel ?", "should_trigger": true},
+    {"id": 5, "query": "Network effects de Shopify, est-ce un wide moat ?", "should_trigger": true},
+    {"id": 6, "query": "Switching costs des banques canadiennes — moat solide ?", "should_trigger": true},
+    {"id": 7, "query": "Costco a-t-il un avantage de coût durable ?", "should_trigger": true},
+    {"id": 8, "query": "Pipelines comme Enbridge — pourquoi c'est protégé de la concurrence ?", "should_trigger": true},
+    {"id": 9, "query": "Mon ROIC est de 28% depuis 10 ans, est-ce un moat ?", "should_trigger": true},
+    {"id": 10, "query": "Pourquoi les compagnies aériennes n'ont pas de moat ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF de Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "RBC passe-t-elle Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 13, "query": "M-Score Tesla 2024 ?", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Top 30 Magic Formula ?", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI pour Apple ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Cycles de marché selon Howard Marks", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "Position size selon Kelly criterion", "should_trigger": false, "rationale": "portfolio"},
+    {"id": 18, "query": "Lynch catégorie de Costco ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 19, "query": "Dhandho Pabrai — heads I win, tails I don't lose much", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 20, "query": "Comment Klarman calibre ses positions", "should_trigger": false, "rationale": "klarman"}
+  ]
+}

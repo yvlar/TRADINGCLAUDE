@@ -1,0 +1,15 @@
+{
+  "ticker": "AAPL",
+  "fiscal_year": "2023",
+  "net_income": 96995,
+  "depreciation_amortization": 11519,
+  "stock_based_comp": 10833,
+  "treat_sbc_as_noncash": false,
+  "other_noncash": 1000,
+  "capex_total": 10959,
+  "capex_maintenance_estimate": 9000,
+  "wc_change_avg_5y": 500,
+  "shares_outstanding": 15550,
+  "market_cap": 3000000,
+  "net_debt": 50000
+}

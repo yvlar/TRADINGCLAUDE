@@ -1,0 +1,27 @@
+{
+  "skill_name": "lynch-categories-and-tenbaggers",
+  "trigger_evals": [
+    {"id": 1, "query": "Lynch catégoriserait Costco comment ?", "should_trigger": true},
+    {"id": 2, "query": "Calcule le PEG ratio de Constellation Software", "should_trigger": true},
+    {"id": 3, "query": "Comment identifier un tenbagger ?", "should_trigger": true},
+    {"id": 4, "query": "Magna est-elle une cyclique selon Lynch ?", "should_trigger": true},
+    {"id": 5, "query": "Quelles sont les 6 catégories de Peter Lynch ?", "should_trigger": true},
+    {"id": 6, "query": "Stelco trade sous sa book value, est-ce un asset play ?", "should_trigger": true},
+    {"id": 7, "query": "Boeing est-il un turnaround intéressant en 2026 ?", "should_trigger": true},
+    {"id": 8, "query": "Invest in what you know — comment l'appliquer rigoureusement ?", "should_trigger": true},
+    {"id": 9, "query": "Mon action a P/E 25 et croissance 30%, PEG attractif ?", "should_trigger": true},
+    {"id": 10, "query": "BCE est slow grower ou stalwart ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF de Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "Tesla M-Score ?", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Top 30 Magic Formula", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI pour mes actions US ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Cycles Howard Marks", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "Klarman margin of safety", "should_trigger": false, "rationale": "klarman"},
+    {"id": 18, "query": "Munger 25 biases", "should_trigger": false, "rationale": "munger"},
+    {"id": 19, "query": "RBC passe Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 20, "query": "Comment Pabrai construit son portefeuille ?", "should_trigger": false, "rationale": "pabrai"}
+  ]
+}

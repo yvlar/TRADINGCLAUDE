@@ -1,0 +1,27 @@
+{
+  "skill_name": "canadian-tax-considerations",
+  "trigger_evals": [
+    {"id": 1, "query": "Je devrais loger Royal Bank dans mon CELI ou mon REER ?", "should_trigger": true},
+    {"id": 2, "query": "Quel est le taux marginal effectif sur dividendes éligibles au Québec à 200k de revenu ?", "should_trigger": true},
+    {"id": 3, "query": "Comment calcule-t-on le PBR après plusieurs achats à différents prix ?", "should_trigger": true},
+    {"id": 4, "query": "Combien je perds en retenue américaine si je détiens VOO dans mon TFSA ?", "should_trigger": true},
+    {"id": 5, "query": "Norbert's Gambit pour convertir 30 000 CAD en USD, ça vaut le coup ?", "should_trigger": true},
+    {"id": 6, "query": "Je veux faire de la récolte de pertes fiscales avant le 31 décembre, comment éviter la règle d'achat apparenté ?", "should_trigger": true},
+    {"id": 7, "query": "Plafond REER 2026 ?", "should_trigger": true},
+    {"id": 8, "query": "Mon enfant vient de naître, je commence un REEE — combien je dois cotiser pour la subvention max ?", "should_trigger": true},
+    {"id": 9, "query": "Je veux acheter ma première maison dans 5 ans, CELIAPP ou REER pour la mise de fonds ?", "should_trigger": true},
+    {"id": 10, "query": "Si je vends Apple à perte et que mon mari rachète Apple dans son REER 10 jours plus tard, ma perte est refusée ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "Quelle est la valeur intrinsèque d'Apple par DCF ?", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat selon Dorsey ?", "should_trigger": false, "rationale": "dorsey-moat-analysis"},
+    {"id": 13, "query": "Quelle est la formule du M-Score Beneish ?", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Lynch catégoriserait Costco comment ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 15, "query": "Quels sont les 25 biais de Munger ?", "should_trigger": false, "rationale": "munger"},
+    {"id": 16, "query": "Comment Klarman dimensionne ses positions ?", "should_trigger": false, "rationale": "klarman"},
+    {"id": 17, "query": "Calcul de la marge de sécurité sur RBC à 130 CAD ?", "should_trigger": false, "rationale": "investment-thesis-builder"},
+    {"id": 18, "query": "Quel logiciel utiliser pour faire ma déclaration d'impôt ?", "should_trigger": false, "rationale": "Question logiciels, hors scope investissement"},
+    {"id": 19, "query": "Qu'est-ce que la TVQ ?", "should_trigger": false, "rationale": "Fiscalité de consommation, hors scope placement"},
+    {"id": 20, "query": "Mon RRSP est plein, où devrais-je mettre les 10 000 supplémentaires ?", "should_trigger": true, "rationale": "Question évidente sur compte enregistré"}
+  ]
+}

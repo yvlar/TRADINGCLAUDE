@@ -1,0 +1,128 @@
+{
+  "skill_name": "earnings-quality-fraud-detection",
+  "description_under_test": "Détecte les manipulations comptables et le risque de faillite via cinq cadres académiques mécaniques — M-Score (Beneish), Z-Score (Altman), F-Score (Piotroski), C-Score (Montier), accruals (Sloan).",
+  "trigger_evals": [
+    {
+      "id": 1,
+      "query": "Je regarde Luckin Coffee comme opportunity value à 2 USD. Est-ce que les chiffres sont fiables ou y a-t-il des red flags comptables ?",
+      "should_trigger": true,
+      "rationale": "Mention explicite de red flags comptables sur une action connue pour fraude historique"
+    },
+    {
+      "id": 2,
+      "query": "Calcule le M-score de Tesla pour le dernier exercice fiscal stp",
+      "should_trigger": true,
+      "rationale": "Mention directe de M-Score, application sur un ticker"
+    },
+    {
+      "id": 3,
+      "query": "Mon screening Graham m'a sorti BBBY à un P/B de 0.3, est-ce que c'est un piège ?",
+      "should_trigger": true,
+      "rationale": "Question sur value trap, P/B très bas suspect, contexte typique du F-Score"
+    },
+    {
+      "id": 4,
+      "query": "GE Healthcare semble cheap après le spin-off, mais je veux verifier que les bénéfices sont solides avant d'acheter",
+      "should_trigger": true,
+      "rationale": "Verifier qualité bénéfices = earnings quality"
+    },
+    {
+      "id": 5,
+      "query": "Quel est le risque de faillite de Boeing avec son endettement actuel ? Z-score ou autre indicateur ?",
+      "should_trigger": true,
+      "rationale": "Mention explicite Z-score, question sur faillite"
+    },
+    {
+      "id": 6,
+      "query": "Cette boîte a un payout ratio de 90% et son CFO est négatif depuis 3 ans malgré des bénéfices comptables positifs. Suspect ?",
+      "should_trigger": true,
+      "rationale": "Description classique d'accruals élevés problématiques (Sloan)"
+    },
+    {
+      "id": 7,
+      "query": "J'ai trouvé une action qui rapporte 12% de dividendes, ça parait trop beau pour être vrai. Comment je vérifie que c'est pas une fraude ?",
+      "should_trigger": true,
+      "rationale": "Questionnement sur fraude, contexte de dividend trap"
+    },
+    {
+      "id": 8,
+      "query": "Une amie m'a parlé de Nikola Corp, j'ai un mauvais feeling sur leur comptabilité. Outils pour analyser ?",
+      "should_trigger": true,
+      "rationale": "Cas Nikola = fraude documentée, demande d'outil d'analyse"
+    },
+    {
+      "id": 9,
+      "query": "Comment Joseph Piotroski distingue les vraies opportunités value des value traps ?",
+      "should_trigger": true,
+      "rationale": "Question conceptuelle sur F-Score Piotroski"
+    },
+    {
+      "id": 10,
+      "query": "Apple FY2023 : NI = 96995, CFO = 110543, TA = 352583. Calcule moi le ratio d'accruals stp",
+      "should_trigger": true,
+      "rationale": "Demande directe de calcul accruals avec données fournies"
+    }
+  ],
+  "no_trigger_evals": [
+    {
+      "id": 11,
+      "query": "Quelle est la différence entre un P/E et un PEG ratio ?",
+      "should_trigger": false,
+      "rationale": "Question pédagogique de base sur ratios courants, pas spécifique à la qualité comptable"
+    },
+    {
+      "id": 12,
+      "query": "Aide-moi à construire un DCF pour Microsoft sur 5 ans",
+      "should_trigger": false,
+      "rationale": "DCF = stock-valuation-triangulation, pas earnings quality"
+    },
+    {
+      "id": 13,
+      "query": "Quels sont les avantages compétitifs durables de Costco ?",
+      "should_trigger": false,
+      "rationale": "Question sur moat = dorsey-moat-analysis"
+    },
+    {
+      "id": 14,
+      "query": "Donne-moi un screening Graham défensif sur les banques canadiennes",
+      "should_trigger": false,
+      "rationale": "Screening Graham = autre skill, et inapplicable aux banques"
+    },
+    {
+      "id": 15,
+      "query": "Combien de marge de sécurité demande Klarman avant d'acheter ?",
+      "should_trigger": false,
+      "rationale": "Question sur Klarman, pas sur fraud detection"
+    },
+    {
+      "id": 16,
+      "query": "Quelle est la composition optimale d'un portefeuille selon le critère de Kelly ?",
+      "should_trigger": false,
+      "rationale": "Question portfolio construction, hors scope"
+    },
+    {
+      "id": 17,
+      "query": "Charlie Munger parle souvent d'inversion. Comment l'appliquer à une décision d'investissement ?",
+      "should_trigger": false,
+      "rationale": "Question sur Munger/inversion, hors scope"
+    },
+    {
+      "id": 18,
+      "query": "Berkshire détient combien d'Apple aujourd'hui ?",
+      "should_trigger": false,
+      "rationale": "Question factuelle sur position d'un investisseur, hors scope"
+    },
+    {
+      "id": 19,
+      "query": "Fais-moi un audit de la qualité de mon code Python qui calcule des ratios financiers",
+      "should_trigger": false,
+      "rationale": "Demande de code review, pas d'audit comptable. Le mot 'audit' et 'qualité' peuvent confondre."
+    },
+    {
+      "id": 20,
+      "query": "Cette action a un Z-score Bloomberg de 3.5, est-ce normal pour le secteur tech ?",
+      "should_trigger": true,
+      "rationale": "PIÈGE: au premier abord question Bloomberg passive, mais demande contexte sur Z-score = trigger"
+    }
+  ]
+}

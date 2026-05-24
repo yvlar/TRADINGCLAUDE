@@ -1,0 +1,15 @@
+{
+  "ticker": "BABA",
+  "is_existing_business_5y_plus": true,
+  "is_simple_business": true,
+  "is_in_distress_or_unloved": true,
+  "has_durable_moat": true,
+  "moat_score": "wide",
+  "tailwind_sectoriel": true,
+  "estimated_downside_pct": -0.35,
+  "estimated_upside_pct": 2.0,
+  "probability_upside": 0.65,
+  "n_positions_in_portfolio": 12,
+  "is_clone_of_super_investor": true,
+  "super_investor_name": "Munger / Pabrai"
+}

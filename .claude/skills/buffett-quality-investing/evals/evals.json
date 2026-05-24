@@ -1,0 +1,27 @@
+{
+  "skill_name": "buffett-quality-investing",
+  "trigger_evals": [
+    {"id": 1, "query": "Quels sont les 4 filtres de Buffett ?", "should_trigger": true},
+    {"id": 2, "query": "Comment calculer Owner Earnings sur Coca-Cola ?", "should_trigger": true},
+    {"id": 3, "query": "Évolution Graham vers Buffett-Munger — résumé ?", "should_trigger": true},
+    {"id": 4, "query": "Wonderful business at fair price — exemple concret ?", "should_trigger": true},
+    {"id": 5, "query": "Cercle de compétence — comment le définir ?", "should_trigger": true},
+    {"id": 6, "query": "Apple est-elle une wonderful business à 200 USD ?", "should_trigger": true},
+    {"id": 7, "query": "Berkshire Hathaway lettres aux actionnaires — par où commencer ?", "should_trigger": true},
+    {"id": 8, "query": "Buffett quality score sur Costco ?", "should_trigger": true},
+    {"id": 9, "query": "See's Candies pourquoi c'était transformatif ?", "should_trigger": true},
+    {"id": 10, "query": "Comment Buffett évalue la qualité d'allocation de capital ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat selon Dorsey ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Marks pendule", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "Munger 25 biais", "should_trigger": false, "rationale": "munger"},
+    {"id": 18, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 19, "query": "Costco fast grower selon Lynch ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 20, "query": "Pabrai Dhandho BABA", "should_trigger": false, "rationale": "pabrai"}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "skill_name": "investment-thesis-builder",
+  "trigger_evals": [
+    {"id": 1, "query": "Aide-moi à construire une thèse formelle pour Apple", "should_trigger": true},
+    {"id": 2, "query": "Comment structurer une investment thesis ?", "should_trigger": true},
+    {"id": 3, "query": "Scenarios bull base bear pour Boeing avec probabilités ?", "should_trigger": true},
+    {"id": 4, "query": "Quels kill criteria pour ma position en Tesla ?", "should_trigger": true},
+    {"id": 5, "query": "Devil's advocate sur ma thèse Costco ?", "should_trigger": true},
+    {"id": 6, "query": "Synthèse multi-frameworks pour une décision d'investissement", "should_trigger": true},
+    {"id": 7, "query": "Expected value pondérée pour mon investissement", "should_trigger": true},
+    {"id": 8, "query": "Position size selon conviction — comment décider ?", "should_trigger": true},
+    {"id": 9, "query": "Document de thèse formelle pour CSU.TO", "should_trigger": true},
+    {"id": 10, "query": "Comment réviser ma thèse annuellement ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation seul"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey seul"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality seul"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt seul"},
+    {"id": 15, "query": "REER ou CELI ?", "should_trigger": false, "rationale": "canadian-tax seul"},
+    {"id": 16, "query": "Cycle position Marks", "should_trigger": false, "rationale": "marks seul"},
+    {"id": 17, "query": "Munger 25 biais", "should_trigger": false, "rationale": "munger seul"},
+    {"id": 18, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham seul"},
+    {"id": 19, "query": "Costco fast grower selon Lynch ?", "should_trigger": false, "rationale": "lynch seul"},
+    {"id": 20, "query": "Pabrai Dhandho BABA", "should_trigger": false, "rationale": "pabrai seul"}
+  ]
+}

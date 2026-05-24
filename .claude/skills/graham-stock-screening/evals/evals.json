@@ -1,0 +1,27 @@
+{
+  "skill_name": "graham-stock-screening",
+  "trigger_evals": [
+    {"id": 1, "query": "Est-ce que RY.TO passe les critères Graham défensifs ?", "should_trigger": true},
+    {"id": 2, "query": "Calcule la valeur intrinsèque selon Graham pour Costco avec BPA 18 et croissance 8%", "should_trigger": true},
+    {"id": 3, "query": "Filtre quantitatif value pour les actions canadiennes du TSX 60", "should_trigger": true},
+    {"id": 4, "query": "BCE est-il une action de Graham défensive ?", "should_trigger": true},
+    {"id": 5, "query": "P/E ≤ 15 et P/B ≤ 1.5 — quels titres canadiens passent ?", "should_trigger": true},
+    {"id": 6, "query": "Mon père veut investir mais sans risque, quels critères Graham appliquer ?", "should_trigger": true},
+    {"id": 7, "query": "Net-net stocks — comment Graham les définit ?", "should_trigger": true},
+    {"id": 8, "query": "Marge de sécurité sur Couche-Tard à 80 CAD avec BPA 4 et g 10% ?", "should_trigger": true},
+    {"id": 9, "query": "Investisseur entreprenant Graham — quels critères ?", "should_trigger": true},
+    {"id": 10, "query": "Dollarama trade à 30× les bénéfices, est-ce que ça passe Graham ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "Comment Buffett valorise une entreprise de qualité ?", "should_trigger": false, "rationale": "buffett-quality-investing"},
+    {"id": 12, "query": "Quels modèles mentaux Munger applique avant d'investir ?", "should_trigger": false, "rationale": "munger"},
+    {"id": 13, "query": "Lynch catégoriserait Costco comment ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 14, "query": "Y a-t-il manipulation comptable chez Tesla ?", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 15, "query": "Calcule un DCF complet pour Microsoft", "should_trigger": false, "rationale": "stock-valuation-triangulation"},
+    {"id": 16, "query": "Brookfield a-t-il un moat selon Dorsey ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 17, "query": "Apple en CELI ou REER ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 18, "query": "Quelles sont les positions de Pabrai en 2025 ?", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 19, "query": "Comment Klarman évalue une opportunité distressed ?", "should_trigger": false, "rationale": "klarman"},
+    {"id": 20, "query": "Magic Formula de Greenblatt — comment classer les actions ?", "should_trigger": false, "rationale": "greenblatt"}
+  ]
+}

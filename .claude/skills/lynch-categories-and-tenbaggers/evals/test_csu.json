@@ -1,0 +1,10 @@
+{
+  "ticker": "CSU.TO",
+  "revenue_growth_5y": 0.18,
+  "earnings_growth_5y": 0.22,
+  "revenue_volatility": 0.05,
+  "operating_margin_trend": "stable",
+  "is_in_distress": false,
+  "price_to_book": 12.0,
+  "asset_value_estimate_vs_market_cap": 0.5
+}

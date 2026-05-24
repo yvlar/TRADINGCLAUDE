@@ -1,0 +1,27 @@
+{
+  "skill_name": "pabrai-dhandho-and-cloning",
+  "trigger_evals": [
+    {"id": 1, "query": "Pabrai aurait-il acheté Boeing à 150 USD ?", "should_trigger": true},
+    {"id": 2, "query": "Comment cloner Buffett via les 13F ?", "should_trigger": true},
+    {"id": 3, "query": "Quels sont les 9 principes Dhandho ?", "should_trigger": true},
+    {"id": 4, "query": "Mohnish Pabrai positions actuelles ?", "should_trigger": true},
+    {"id": 5, "query": "Position size optimale pour une opportunité asymétrique 4:1 ?", "should_trigger": true},
+    {"id": 6, "query": "Heads I win tails I don't lose much — comment l'appliquer ?", "should_trigger": true},
+    {"id": 7, "query": "Klarman 13F dernières positions ?", "should_trigger": true},
+    {"id": 8, "query": "Low risk high uncertainty — exemple concret ?", "should_trigger": true},
+    {"id": 9, "query": "Cloning d'investisseurs — par où commencer ?", "should_trigger": true},
+    {"id": 10, "query": "Kelly fractionnel pour position sizing ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla ?", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30 ?", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI pour mes US ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Cycles Marks", "should_trigger": false, "rationale": "marks"},
+    {"id": 17, "query": "Munger 25 biases", "should_trigger": false, "rationale": "munger"},
+    {"id": 18, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 19, "query": "Costco fast grower selon Lynch ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 20, "query": "Marge sécurité Klarman", "should_trigger": false, "rationale": "klarman"}
+  ]
+}

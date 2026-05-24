@@ -1,0 +1,27 @@
+{
+  "skill_name": "klarman-margin-of-safety",
+  "trigger_evals": [
+    {"id": 1, "query": "Quelle marge de sécurité Klarman exige-t-il pour un compounder ?", "should_trigger": true},
+    {"id": 2, "query": "Margin of Safety — résumé du livre de Klarman", "should_trigger": true},
+    {"id": 3, "query": "Comment Baupost protège-t-il son capital en récession ?", "should_trigger": true},
+    {"id": 4, "query": "Distressed debt sur Boeing — comment l'analyser ?", "should_trigger": true},
+    {"id": 5, "query": "Cash position 40% du portefeuille, est-ce justifiable ?", "should_trigger": true},
+    {"id": 6, "query": "Absolute return vs relative return — différence pratique ?", "should_trigger": true},
+    {"id": 7, "query": "Apple à 35% sous valeur intrinsèque — achat selon Klarman ?", "should_trigger": true},
+    {"id": 8, "query": "Sortie de Chapter 11, recovery rates pour bondholders ?", "should_trigger": true},
+    {"id": 9, "query": "Comment résister au FOMO sur les hot stocks ?", "should_trigger": true},
+    {"id": 10, "query": "Préservation du capital — discipline psychologique requise ?", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "DCF Microsoft", "should_trigger": false, "rationale": "stock-valuation"},
+    {"id": 12, "query": "Apple a-t-elle un moat ?", "should_trigger": false, "rationale": "dorsey"},
+    {"id": 13, "query": "M-score Tesla", "should_trigger": false, "rationale": "earnings-quality"},
+    {"id": 14, "query": "Magic Formula top 30", "should_trigger": false, "rationale": "greenblatt"},
+    {"id": 15, "query": "REER ou CELI pour Apple ?", "should_trigger": false, "rationale": "canadian-tax"},
+    {"id": 16, "query": "Munger 25 biais", "should_trigger": false, "rationale": "munger"},
+    {"id": 17, "query": "RBC Graham défensif ?", "should_trigger": false, "rationale": "graham"},
+    {"id": 18, "query": "Costco fast grower selon Lynch ?", "should_trigger": false, "rationale": "lynch"},
+    {"id": 19, "query": "Pabrai Dhandho sur BABA", "should_trigger": false, "rationale": "pabrai"},
+    {"id": 20, "query": "Buffett owner earnings", "should_trigger": false, "rationale": "buffett"}
+  ]
+}
