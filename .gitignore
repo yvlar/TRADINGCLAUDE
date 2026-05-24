@@ -56,8 +56,10 @@ logs/
 # Docker
 *.pid
 
-# Analyses personnelles (données privées, non publiées)
+# Analyses personnelles et rapports générés (données privées, non publiées)
 analyses/
+reports/
+tmp_replacements.txt
 
 # Configuration locale Claude Code (permissions + chemins locaux)
 .claude/settings.local.json
