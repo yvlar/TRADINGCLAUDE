@@ -22,6 +22,7 @@ export default defineConfig({
       '/compare': 'http://localhost:8000',
       '/monthly-report': 'http://localhost:8000',
       '/screener-report': 'http://localhost:8000',
+      '/semantic-search': 'http://localhost:8000',
       '/ticker-report': 'http://localhost:8000',
       '/backtest': 'http://localhost:8000',
       '/evals': 'http://localhost:8000',

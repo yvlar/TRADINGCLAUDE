@@ -481,6 +481,19 @@ export interface AlertsResponse {
   alerts: AlertEntry[]
 }
 
+// ---- Recherche sémantique RAG (Sprint 106) ----
+export interface SemanticSearchResult {
+  source: string
+  extrait: string
+  score: number
+}
+
+export interface SemanticSearchResponse {
+  query: string
+  rag_enabled: boolean
+  results: SemanticSearchResult[]
+}
+
 export const WORKFLOWS: WorkflowOption[] = [
   {
     value: 'value_graham',

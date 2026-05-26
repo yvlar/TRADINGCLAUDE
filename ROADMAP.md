@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 101 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 106 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.5.1 |
+| **Version** | 9.6.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 102 — à définir |
-| **Dernier sprint complété** | Sprint 101 — Nettoyage `.claude/skills/` (clôture dette technique Sprint 100) ✅ |
+| **Sprint actif** | Sprint 107 — à définir |
+| **Dernier sprint complété** | Sprint 106 — Recherche sémantique RAG dans le frontend ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -30,6 +30,7 @@
 - `POST /auth/refresh` — rotation refresh token avec détection de vol par famille (Sprint Login)
 - `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login)
 - `GET /alerts?limit=50` — historique des alertes Celery (ESG + composite + prix) (Sprint 99)
+- `GET /semantic-search?q=&k=5` — recherche sémantique RAG dans `investment_knowledge` ; `rag_enabled=false` + `results=[]` si `OPENAI_API_KEY` absente (Sprint 106)
 - `POST /auth/forgot-password` — token réinitialisation itsdangerous 1h (anti-énumération) (Sprint Login)
 - `POST /auth/reset-password` — réinitialisation mot de passe avec token signé (Sprint Login)
 - `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
@@ -70,6 +71,7 @@
 - **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
 - **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
 - **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
+- **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -108,6 +110,26 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 106 — Recherche sémantique RAG dans le frontend ✅
+
+**Objectif :** Exposer le RAG Qdrant (collection `investment_knowledge`) directement dans le frontend via une nouvelle page `/recherche` : champ de recherche en langage naturel qui retourne les passages de référence (formules, seuils, frameworks) avec leur source et score de similarité. Le corpus RAG (~67 documents) était jusqu'ici alimenté et interrogé uniquement côté backend (par les skills), jamais surfacé à l'utilisateur.
+
+**Livrables :**
+- `app/api/endpoints/semantic_search.py` — `GET /semantic-search?q=&k=5` : `SemanticSearchResponse(query, rag_enabled, results: list[Citation])` ; lit `request.app.state.rag_service` (None si `OPENAI_API_KEY` absente) → `rag_enabled=false` + `results=[]` sans erreur ; `q` requis (`min_length=2`, `max_length=500` → 422), `k` borné (`ge=1, le=20`)
+- `app/api/main.py` — `app.state.rag_service = rag_service` exposé dans le lifespan (jusque-là injecté uniquement dans les constructeurs de skills) ; import + `include_router(semantic_search_router)`
+- `frontend/src/types/index.ts` — interfaces `SemanticSearchResult` (source / extrait / score) et `SemanticSearchResponse` (query / rag_enabled / results)
+- `frontend/src/api/search.ts` — `fetchSemanticSearch(query, k=5)` via `apiClient.request`
+- `frontend/src/pages/SearchPage.tsx` — formulaire de recherche (Input + Button, soumission via state `query`, React Query `['semantic-search', query]` activé si ≥ 2 caractères) ; résultats en `Card` (source nettoyée + badge score coloré selon seuil 0.8/0.6 + extrait) ; états `search-idle` / `search-spinner` / `search-error` / `search-rag-disabled` / `search-empty` / `search-results`
+- `frontend/src/App.tsx` — route `/recherche` (ProtectedRoute) + NavItem "Recherche"
+- `frontend/vite.config.ts` — proxy `/semantic-search` → `http://localhost:8000`
+- `tests/api/test_semantic_search.py` — 5 tests CI : 200 + résultats mappés (rag_enabled=true), rag désactivé (rag_service None), paramètre `k` propagé, 422 query absente, 422 query trop courte
+- `frontend/src/__tests__/SearchPage.test.tsx` — 6 tests Vitest : rendu formulaire + état initial, `fetchSemanticSearch` appelé avec la requête, affichage des passages, état vide, avertissement RAG désactivé, message d'erreur API
+
+**Version** : 9.6.0
+**Tests** : 1406 CI verts (hors e2e et evals) — +5 tests Sprint 106 ; 223 Vitest verts — +6 tests Sprint 106
+
+---
 
 ### Sprint 101 — Nettoyage `.claude/skills/` (clôture dette technique Sprint 100) ✅
 
