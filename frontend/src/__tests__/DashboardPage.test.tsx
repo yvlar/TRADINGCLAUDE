@@ -32,6 +32,12 @@ vi.mock('../api/metrics', () => ({
     skills_usage: {},
     skills_cost: {},
     cache_by_workflow: {},
+    daily_cost: {},
+  }),
+  fetchSkillAnalyses: vi.fn().mockResolvedValue({
+    skill: 'graham_analysis',
+    period_days: 30,
+    entries: [],
   }),
 }))
 

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 109 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 112 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.8.0 |
+| **Version** | 9.9.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 110 — à définir |
-| **Dernier sprint complété** | Sprint 109 — Screener v2 : filtres avancés et tri persistant ✅ |
+| **Sprint actif** | Sprint 113 — à définir |
+| **Dernier sprint complété** | Sprint 112 — Coût par skill : drill-down et tendance ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -21,7 +21,8 @@
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
-- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107)
+- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107) + `daily_cost` (coût USD total par jour, clé YYYY-MM-DD) (Sprint 112)
+- `GET /metrics/skill-analyses?skill=&days=30` — drill-down : analyses ayant utilisé un skill donné sur la période (ticker / workflow / coût / date), filtre jsonb `skills_used @> [skill]`, 422 si `skill` absent (Sprint 112)
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
 - `GET /performance/{ticker}` — rendement rétrospectif par analyse (Sprint 39)
 - `POST /auth/register` — inscription email/mot de passe, cookies JWT httpOnly + CSRF (Sprint Login)
@@ -73,6 +74,7 @@
 - **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
 - **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
 - **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
+- **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -111,6 +113,31 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 112 — Coût par skill : drill-down et tendance ✅
+
+**Objectif :** Prolonger le Dashboard v2 (Sprint 107) avec un drill-down sur le camembert « coût par skill » (clic → liste des analyses ayant utilisé ce skill sur la période) et une mini-tendance du coût total par jour. Les deux fonctions aident à piloter le budget API Claude : voir *où* part le coût (quels tickers/analyses par framework) et *comment il évolue* dans le temps.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `MetricsResponse.daily_cost: dict[str, float] = {}` (coût USD total par jour, clé `YYYY-MM-DD`, défaut `{}` → rétrocompatible) ; `get_metrics()` ajoute une 4e requête `daily_rows` (`GROUP BY to_char(date_trunc('day', created_at), 'YYYY-MM-DD')`) ; nouveaux schemas `SkillAnalysisEntry` (analysis_id / ticker / workflow_name / cost_usd / created_at) + `SkillAnalysesResponse` (skill / period_days / entries) ; méthode `get_skill_analyses(skill, days=30, limit=100)` filtrant `skills_used @> $2::jsonb` (`json.dumps([skill])`), tri `created_at DESC`
+- `app/api/main.py` — endpoint `GET /metrics/skill-analyses?skill=&days=30` (`skill` requis via `Query(..., min_length=1)` → 422 si absent ; `days` borné 1-365 → 422) ; import `SkillAnalysesResponse`
+- `frontend/src/types/index.ts` — `daily_cost: Record<string, number>` ajouté à `MetricsResponse` ; interfaces `SkillAnalysisEntry` + `SkillAnalysesResponse` (snake_case, miroir JSON FastAPI)
+- `frontend/src/api/metrics.ts` — `fetchSkillAnalyses(skill, days=30)` via `apiClient.request`
+- `frontend/src/components/DailyCostTrendChart.tsx` — `LineChart` recharts (coût total par jour, série triée par date asc, axe Y formaté `$`), états loading/error/empty
+- `frontend/src/components/SkillAnalysesDrilldown.tsx` — React Query `['skill-analyses', skill, days]` → tableau (Date / Ticker / Workflow / Coût), bouton « Fermer », états loading/error/empty
+- `frontend/src/components/SkillCostPieChart.tsx` — prop optionnelle `onSkillClick?: (skill: string) => void` ; `onClick` sur le `Pie` lit le skill via `slice.payload.skill` (type `PieSectorDataItem`), curseur pointeur quand cliquable
+- `frontend/src/pages/DashboardPage.tsx` — `DetailedMetricsSection` : state `selectedSkill`, `onSkillClick={setSelectedSkill}` sur le camembert, `DailyCostTrendChart` ajouté en pleine largeur (`lg:col-span-2`) dans la grille, `SkillAnalysesDrilldown` rendu sous la grille quand un skill est sélectionné (bouton Fermer → `setSelectedSkill(null)`)
+- `tests/orchestrator/test_metrics_v2.py` — +3 tests CI : `daily_cost` construit, `get_skill_analyses` mappe les entrées (+ vérifie le filtre jsonb sérialisé), `get_skill_analyses` vide ; helper `_build_orchestrator` étendu d'un 4e fetch `daily_rows`
+- `tests/orchestrator/test_integration_sync.py` — +2 tests CI : `/metrics/skill-analyses` retourne les analyses, 422 si `skill` absent
+- `frontend/src/__tests__/DailyCostTrendChart.test.tsx` — 4 tests Vitest (rendu avec données, vide, chargement, erreur ; recharts mocké)
+- `frontend/src/__tests__/SkillAnalysesDrilldown.test.tsx` — 5 tests Vitest (appel `fetchSkillAnalyses` avec skill+days, tableau, vide, erreur, bouton Fermer ; QueryClientProvider)
+- `frontend/src/__tests__/SkillCostPieChart.test.tsx` — +1 test Vitest (clic sur tranche → `onSkillClick` avec le skill ; mock `Pie` expose `onClick({payload})`)
+- `frontend/src/__tests__/DashboardPage.test.tsx` — mock `../api/metrics` complété (`daily_cost: {}` + `fetchSkillAnalyses`)
+
+**Version** : 9.9.0
+**Tests** : 1418 CI verts (hors e2e et evals) — +5 tests Sprint 112 ; 272 Vitest verts — +10 tests Sprint 112
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (recharts mocké) + helpers, et tests d'intégration backend (ruff `All checks passed`).
 
 ### Sprint 109 — Screener v2 : filtres avancés et tri persistant ✅
 

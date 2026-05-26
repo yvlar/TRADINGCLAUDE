@@ -1,6 +1,7 @@
-"""Tests Sprint 107 — Orchestrator.get_metrics() enrichi (skills_cost + cache_by_workflow)."""
+"""Tests Sprint 107/112 — Orchestrator.get_metrics() + get_skill_analyses() enrichis."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,12 +14,15 @@ def _build_orchestrator(
     ticker_rows: list[dict],
     skill_rows: list[dict],
     workflow_rows: list[dict],
+    daily_rows: list[dict] | None = None,
 ) -> Orchestrator:
     """Construit un Orchestrator dont le pool renvoie les lignes simulées dans l'ordre des requêtes."""
     pool = MagicMock()
     pool.fetchrow = AsyncMock(return_value=global_row)
-    # get_metrics enchaîne 3 fetch : top_tickers, skills, cache_by_workflow
-    pool.fetch = AsyncMock(side_effect=[ticker_rows, skill_rows, workflow_rows])
+    # get_metrics enchaîne 4 fetch : top_tickers, skills, cache_by_workflow, daily_cost
+    pool.fetch = AsyncMock(
+        side_effect=[ticker_rows, skill_rows, workflow_rows, daily_rows or []]
+    )
     return Orchestrator(
         db_pool=pool,
         graham_skill=MagicMock(),
@@ -80,3 +84,72 @@ async def test_get_metrics_champs_vides_par_defaut():
 
     assert result.skills_cost == {}
     assert result.cache_by_workflow == {}
+    assert result.daily_cost == {}
+
+
+@pytest.mark.asyncio
+async def test_get_metrics_construit_daily_cost():
+    """daily_cost doit mapper chaque jour (YYYY-MM-DD) à son coût total arrondi."""
+    orch = _build_orchestrator(
+        global_row={"total": 3, "total_cost": 0.03, "avg_cache_hit": 0.4},
+        ticker_rows=[],
+        skill_rows=[],
+        workflow_rows=[],
+        daily_rows=[
+            {"day": "2026-05-24", "cost": 0.012},
+            {"day": "2026-05-25", "cost": 0.018},
+        ],
+    )
+
+    result = await orch.get_metrics(days=7)
+
+    assert result.daily_cost == {"2026-05-24": 0.012, "2026-05-25": 0.018}
+
+
+@pytest.mark.asyncio
+async def test_get_skill_analyses_mappe_les_entrees():
+    """get_skill_analyses retourne les analyses ayant utilisé le skill, triées par date DESC."""
+    pool = MagicMock()
+    pool.fetch = AsyncMock(
+        return_value=[
+            {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "ticker": "BNS.TO",
+                "workflow_name": "value_graham",
+                "cost_usd": 0.0123,
+                "created_at": datetime(2026, 5, 25, 10, 0, tzinfo=timezone.utc),
+            },
+        ]
+    )
+    orch = Orchestrator(
+        db_pool=pool, graham_skill=MagicMock(), earnings_skill=MagicMock()
+    )
+
+    result = await orch.get_skill_analyses(skill="graham_analysis", days=30)
+
+    assert result.skill == "graham_analysis"
+    assert result.period_days == 30
+    assert len(result.entries) == 1
+    entry = result.entries[0]
+    assert entry.analysis_id == "11111111-1111-1111-1111-111111111111"
+    assert entry.ticker == "BNS.TO"
+    assert entry.workflow_name == "value_graham"
+    assert entry.cost_usd == 0.0123
+    assert entry.created_at == "2026-05-25T10:00:00+00:00"
+    # le filtre jsonb @> reçoit bien la liste sérialisée du skill demandé
+    assert pool.fetch.await_args.args[2] == '["graham_analysis"]'
+
+
+@pytest.mark.asyncio
+async def test_get_skill_analyses_vide():
+    """Aucune analyse → entries vide, pas d'erreur."""
+    pool = MagicMock()
+    pool.fetch = AsyncMock(return_value=[])
+    orch = Orchestrator(
+        db_pool=pool, graham_skill=MagicMock(), earnings_skill=MagicMock()
+    )
+
+    result = await orch.get_skill_analyses(skill="munger_mental_models", days=90)
+
+    assert result.entries == []
+    assert result.period_days == 90

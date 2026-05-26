@@ -500,6 +500,23 @@ export interface MetricsResponse {
   skills_usage: Record<string, number>
   skills_cost: Record<string, number>
   cache_by_workflow: Record<string, number>
+  // coût USD total par jour (clé YYYY-MM-DD) — tendance quotidienne (Sprint 112)
+  daily_cost: Record<string, number>
+}
+
+// ---- Drill-down coût par skill /metrics/skill-analyses (Sprint 112) ----
+export interface SkillAnalysisEntry {
+  analysis_id: string
+  ticker: string
+  workflow_name: string
+  cost_usd: number
+  created_at: string
+}
+
+export interface SkillAnalysesResponse {
+  skill: string
+  period_days: number
+  entries: SkillAnalysisEntry[]
 }
 
 // ---- Recherche sémantique RAG (Sprint 106) ----

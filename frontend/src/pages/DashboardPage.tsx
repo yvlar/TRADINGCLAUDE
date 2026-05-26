@@ -9,6 +9,8 @@ import { TopTickersChart } from '../components/TopTickersChart'
 import { SkillCostPieChart } from '../components/SkillCostPieChart'
 import { CacheByWorkflowChart } from '../components/CacheByWorkflowChart'
 import { AlertsTimelineChart } from '../components/AlertsTimelineChart'
+import { DailyCostTrendChart } from '../components/DailyCostTrendChart'
+import { SkillAnalysesDrilldown } from '../components/SkillAnalysesDrilldown'
 import { ConflictsList } from '../components/ConflictsList'
 import { loadRecentAnalyses } from '../lib/recentAnalyses'
 import { getCompositeHistory, fetchEvalDrift } from '../api/analyze'
@@ -107,6 +109,7 @@ const PERIOD_OPTIONS = [7, 30, 90] as const
 
 function DetailedMetricsSection() {
   const [days, setDays] = useState<number>(30)
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
 
   const metrics = useQuery({
     queryKey: ['metrics', days],
@@ -152,12 +155,13 @@ function DetailedMetricsSection() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-              Coût par skill (USD)
+              Coût par skill (USD) — cliquer pour le détail
             </p>
             <SkillCostPieChart
               skillsCost={metrics.data?.skills_cost ?? {}}
               isLoading={metrics.isLoading}
               isError={metrics.isError}
+              onSkillClick={setSelectedSkill}
             />
           </div>
           <div>
@@ -180,7 +184,26 @@ function DetailedMetricsSection() {
               isError={alerts.isError}
             />
           </div>
+          <div className="lg:col-span-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Tendance du coût total par jour (USD)
+            </p>
+            <DailyCostTrendChart
+              dailyCost={metrics.data?.daily_cost ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
         </div>
+        {selectedSkill && (
+          <div className="mt-6">
+            <SkillAnalysesDrilldown
+              skill={selectedSkill}
+              days={days}
+              onClose={() => setSelectedSkill(null)}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   )

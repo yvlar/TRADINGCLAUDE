@@ -1,4 +1,12 @@
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  type PieSectorDataItem,
+} from 'recharts'
 
 const SLICE_COLORS = [
   '#60a5fa', '#4ade80', '#fb923c', '#c084fc', '#f87171',
@@ -9,9 +17,10 @@ interface Props {
   skillsCost: Record<string, number>
   isLoading?: boolean
   isError?: boolean
+  onSkillClick?: (skill: string) => void
 }
 
-export function SkillCostPieChart({ skillsCost, isLoading, isError }: Props) {
+export function SkillCostPieChart({ skillsCost, isLoading, isError, onSkillClick }: Props) {
   if (isLoading) {
     return (
       <p className="text-xs text-muted-foreground py-4" data-testid="skill-cost-loading">
@@ -53,6 +62,12 @@ export function SkillCostPieChart({ skillsCost, isLoading, isError }: Props) {
             cy="50%"
             outerRadius={90}
             isAnimationActive={false}
+            onClick={(slice: PieSectorDataItem) => {
+              // recharts expose le datum original (`{skill, cost}`) sous `payload`
+              const skill = slice?.payload?.skill
+              if (onSkillClick && typeof skill === 'string') onSkillClick(skill)
+            }}
+            cursor={onSkillClick ? 'pointer' : undefined}
           >
             {data.map((entry, i) => (
               <Cell key={entry.skill} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
