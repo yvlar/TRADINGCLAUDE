@@ -220,6 +220,7 @@ export interface ScreenEntry {
   workflow_utilise: string
   cost_usd: number
   depuis_cache: boolean
+  analyzed_at: string | null
   erreur: string | null
 }
 

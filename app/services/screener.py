@@ -161,6 +161,7 @@ class ScreenerService:
                         workflow_utilise=request.workflow,
                         cost_usd=0.0,
                         depuis_cache=True,
+                        analyzed_at=cached.created_at,
                         erreur=None,
                     )
 
@@ -198,5 +199,6 @@ class ScreenerService:
                 workflow_utilise=request.workflow,
                 cost_usd=response.cost_usd,
                 depuis_cache=False,
+                analyzed_at=response.created_at,
                 erreur=None,
             )

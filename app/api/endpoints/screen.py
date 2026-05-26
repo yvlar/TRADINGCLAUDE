@@ -47,6 +47,9 @@ class ScreenEntry(BaseModel):
     workflow_utilise: str
     cost_usd: float
     depuis_cache: bool = False
+    # Date ISO 8601 de l'analyse sous-jacente — issue du cache ou de l'analyse fraîche.
+    # None pour les tickers en échec. Sert d'indicateur de fraîcheur côté frontend.
+    analyzed_at: str | None = None
     erreur: str | None
 
 
