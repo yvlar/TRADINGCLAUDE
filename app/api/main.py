@@ -50,6 +50,7 @@ from app.orchestrator.core import (
     MetricsResponse,
     Orchestrator,
     PagedHistoryResponse,
+    SkillAnalysesResponse,
 )
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
@@ -725,6 +726,27 @@ async def metrics(
         raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
     orchestrator: Orchestrator = request.app.state.orchestrator
     return await orchestrator.get_metrics(days=days)
+
+
+@app.get(
+    "/metrics/skill-analyses",
+    response_model=SkillAnalysesResponse,
+    summary="Analyses ayant utilisé un skill donné (drill-down Sprint 112)",
+)
+async def metrics_skill_analyses(
+    request: Request,
+    skill: str = Query(..., min_length=1, max_length=100),
+    days: int = 30,
+) -> SkillAnalysesResponse:
+    """
+    Liste les analyses ayant utilisé `skill` sur la période (drill-down du camembert coût).
+    - `skill` : identifiant du skill (ex: `graham_analysis`)
+    - `days` : fenêtre de temps en jours (défaut 30, max 365)
+    """
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    return await orchestrator.get_skill_analyses(skill=skill, days=days)
 
 
 @app.get(

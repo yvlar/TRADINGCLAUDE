@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — Sprint 107 — Dernière mise à jour : 2026-05-26*
+*Phase 3 active — Sprint 113 — Dernière mise à jour : 2026-05-26*
 
 ---
 
