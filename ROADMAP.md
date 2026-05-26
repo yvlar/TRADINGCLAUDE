@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-23 — Sprint 100 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 101 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.5.0 |
+| **Version** | 9.5.1 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 101 — à définir |
-| **Dernier sprint complété** | Sprint 100 — Nettoyage structure repo (publishable GitHub) ✅ |
+| **Sprint actif** | Sprint 102 — à définir |
+| **Dernier sprint complété** | Sprint 101 — Nettoyage `.claude/skills/` (clôture dette technique Sprint 100) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -108,6 +108,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 101 — Nettoyage `.claude/skills/` (clôture dette technique Sprint 100) ✅
+
+**Objectif :** Résoudre les deux points en suspens signalés en fin de Sprint 100 — le dépôt git imbriqué `.claude/skills/.git` (gitlink cassé sans `.gitmodules`) et le dossier orphelin `.claude/skills/investment/` — afin qu'un `git clone` du dépôt public ne récupère pas un submodule cassé.
+
+**Constat :** Vérification du dépôt distant — les deux points étaient **déjà résolus** par les commits intermédiaires `3ec7548` (« intégrer SKILL.md dans le repo principal — retire gitlink cassé ») et `d81c5dc`. C'étaient des artefacts purement locaux (synchronisation OneDrive de la machine de Yves), jamais présents sur le distant ni dans l'historique versionné.
+
+**Livrables :**
+- Vérification : 158 fichiers trackés sous `.claude/skills/` (dont les 16 SKILL.md), `.claude/skills` est un arbre normal (mode `040000`) et non un gitlink (mode `160000`) ; aucun `.git` imbriqué, aucun `.gitmodules`, aucun dossier `investment/` orphelin
+- `ROADMAP.md` — note de fin de Sprint 100 mise à jour pour pointer vers cette résolution ; état courant passé à v9.5.1 ; Sprint actif → 102
+- `prompt-mise-a-jour-roadmap.md` — réécrit pour le Sprint 102, retrait des avertissements périmés sur le `.git` imbriqué et le dossier orphelin
+
+**Version** : 9.5.1
+**Tests** : 1401 CI verts + 217 Vitest verts (inchangé — sprint de vérification et documentation, aucun changement de code applicatif)
+
+---
 
 ### Sprint 96 — Estimation rapide total_count via pg_class ✅
 
@@ -294,7 +310,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 - `tests/orchestrator/` (5 fichiers) — tests orchestrateur + intégration
 - `tests/load/test_load_smoke.py` — déplacé dans load/ existant
 
-**Note :** `.claude/skills/.git` (dépôt git imbriqué sans .gitmodules) — signalé à l'utilisateur pour décision ; `.claude/skills/investment/` — dossier orphelin, idem.
+**Note :** `.claude/skills/.git` (dépôt git imbriqué sans .gitmodules) — signalé à l'utilisateur pour décision ; `.claude/skills/investment/` — dossier orphelin, idem. → Résolus depuis : voir Sprint 101 ci-dessous.
 
 **Version** : 9.5.0
 **Tests** : 1401 CI verts (inchangé — réorganisation structurelle uniquement) ; 217 Vitest verts (inchangé)
