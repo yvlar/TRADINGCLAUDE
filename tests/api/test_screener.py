@@ -443,6 +443,69 @@ async def test_screen_entry_sans_composite_fallback_defensive():
     assert result.resultats[0].ticker == "RY"  # score=8, le plus élevé
 
 
+async def test_screen_entry_expose_analyzed_at_analyse_fraiche():
+    """ScreenEntry.analyzed_at reflète created_at de l'analyse fraîche."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(
+        return_value=_make_response("BNS", 6, "ACCEPTABLE")
+    )
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(tickers=["BNS"], ratios_map={"BNS": RATIOS_MINI})
+    result = await screener.screen(req)
+
+    assert result.resultats[0].analyzed_at == "2026-05-08T10:00:00+00:00"
+
+
+async def test_screen_entry_analyzed_at_depuis_cache():
+    """Un hit de cache propage created_at de l'analyse mise en cache dans analyzed_at."""
+    cached = _make_response("BNS", 6, "ACCEPTABLE")
+    mock_cache = AsyncMock()
+    mock_cache.get = AsyncMock(return_value=cached)
+    mock_extractor = AsyncMock()
+    mock_extractor.extract = AsyncMock(return_value=RATIOS_MINI)
+    mock_orchestrator = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=mock_cache,
+    )
+
+    req = ScreenRequest(tickers=["BNS"])
+    result = await screener.screen(req)
+
+    entry = result.resultats[0]
+    assert entry.depuis_cache is True
+    assert entry.analyzed_at == cached.created_at
+    mock_orchestrator.run_company_analysis.assert_not_called()
+
+
+async def test_screen_entry_analyzed_at_none_si_echec():
+    """Un ticker en échec a analyzed_at None."""
+    mock_orchestrator = AsyncMock()
+    mock_orchestrator.run_company_analysis = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_extractor = AsyncMock()
+
+    screener = ScreenerService(
+        orchestrator=mock_orchestrator,
+        extractor=mock_extractor,
+        cache=None,
+    )
+
+    req = ScreenRequest(tickers=["FAIL"], ratios_map={"FAIL": RATIOS_MINI})
+    result = await screener.screen(req)
+
+    assert result.resultats[0].erreur is not None
+    assert result.resultats[0].analyzed_at is None
+
+
 async def test_screen_entry_composite_label_valeurs_connues():
     """composite_label doit etre FORT, MODERE, ou FAIBLE."""
     mock_orchestrator = AsyncMock()

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 107 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 109 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,17 +8,17 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.7.0 |
+| **Version** | 9.8.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 108 — à définir |
-| **Dernier sprint complété** | Sprint 107 — Dashboard v2 : métriques détaillées ✅ |
+| **Sprint actif** | Sprint 110 — à définir |
+| **Dernier sprint complété** | Sprint 109 — Screener v2 : filtres avancés et tri persistant ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
 - `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
-- `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore)
+- `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
 - `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107)
@@ -48,7 +48,7 @@
 - **SPA React 18 + TypeScript** — `frontend/` — `npm run dev` → port 5173
 - Proxy Vite → API localhost:8000 (toutes routes `/analyze`, `/screen`, `/watchlist`, etc.)
 - **Page Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill
-- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score
+- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score ; **v2 (Sprint 109)** : tri persistant localStorage (5 colonnes : ticker/score/composite/fraîcheur/coût), filtres inline par label composite, colonne « Fraîcheur » (date relative + badge frais/périmé > 24h), export CSV des résultats filtrés côté client
 - **Page History** — historique analyses par ticker, téléchargement PDF
 - **Page Watchlist** — gestion positions surveillées, déclenchement analyses manuelles
 - **Page Dashboard** — métriques live WebSocket (jobs, coûts, cache hit ratio) + section Eval Drift (Sprint 66)
@@ -111,6 +111,26 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 109 — Screener v2 : filtres avancés et tri persistant ✅
+
+**Objectif :** Améliorer la page Screener avec un tri persistant entre sessions (localStorage), des filtres inline par label composite, un indicateur de fraîcheur des données (date de la dernière analyse par ticker), et un export CSV des résultats filtrés tel qu'affichés. Le screener est l'outil le plus utilisé après l'analyse individuelle ; ces améliorations de navigation ont un impact direct sur l'efficacité du flux d'investissement.
+
+**Livrables :**
+- `app/api/endpoints/screen.py` — `ScreenEntry.analyzed_at: str | None = None` (date ISO 8601 de l'analyse sous-jacente, défaut None → rétrocompatible ; None pour les tickers en échec)
+- `app/services/screener.py` — `analyzed_at` peuplé depuis `cached.created_at` (hit de cache) et `response.created_at` (analyse fraîche) ; chemin d'erreur laisse None
+- `frontend/src/types/index.ts` — champ `analyzed_at: string | null` ajouté à l'interface `ScreenEntry`
+- `frontend/src/lib/screenerView.ts` — helpers purs testables : `loadSortState`/`saveSortState` + `loadLabelFilter`/`saveLabelFilter` (persistance localStorage, clés `copilote_screener_sort` et `copilote_screener_label_filter`), `availableLabels()` (labels distincts dans l'ordre d'apparition), `formatFreshness()` (date relative FR + flag `stale` au-delà de 24h, seuil aligné sur le cache composite), `buildScreenerCsv()` (CSV échappé, 9 colonnes)
+- `frontend/src/components/ScreenerTable.tsx` — tri persistant sur 5 colonnes (ticker/score/composite/fraîcheur/coût), barre de filtres par label composite (chips dérivées des données + bouton « Réinitialiser »), colonne « Fraîcheur » (`FreshnessCell` : vert si frais, jaune si périmé), bouton `data-testid="export-filtered-csv"` (export client-side des résultats filtrés/triés avec BOM UTF-8)
+- `tests/api/test_screener.py` — +3 tests CI : `analyzed_at` reflète `created_at` (analyse fraîche), propagé depuis le cache, None si échec
+- `frontend/src/__tests__/screenerView.test.ts` — 14 tests Vitest : `formatFreshness` (null/instant/heures/périmé/date invalide), `availableLabels`, persistance tri + filtre (défaut, round-trip, clé invalide), `buildScreenerCsv` (en-tête + lignes, échappement virgules, cache oui/non + date)
+- `frontend/src/__tests__/ScreenerTable.test.tsx` — +7 tests Vitest (colonne Fraîcheur, chips de filtre, filtrage au clic, réinitialisation, persistance + restauration du tri, présence bouton export) ; `localStorage.clear()` en `beforeEach`
+- `frontend/src/__tests__/{ScreenerPage,ScreenerPdfExport}.test.tsx` — fixtures `ScreenResult` enrichies de `analyzed_at`
+
+**Version** : 9.8.0
+**Tests** : 1413 CI verts (hors e2e et evals) — +3 tests Sprint 109 ; 262 Vitest verts — +21 tests Sprint 109
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant + helpers purs, et tests d'intégration backend (ruff `All checks passed`).
 
 ### Sprint 107 — Dashboard v2 : métriques détaillées ✅
 

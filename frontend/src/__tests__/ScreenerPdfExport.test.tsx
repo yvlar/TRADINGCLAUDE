@@ -33,6 +33,7 @@ const MOCK_RESULT: ScreenResult = {
       workflow_utilise: 'value_graham',
       cost_usd: 0.002,
       depuis_cache: false,
+      analyzed_at: '2026-05-26T10:00:00+00:00',
       erreur: null,
     },
   ],
