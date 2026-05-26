@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 106 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 107 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.6.0 |
+| **Version** | 9.7.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 107 — à définir |
-| **Dernier sprint complété** | Sprint 106 — Recherche sémantique RAG dans le frontend ✅ |
+| **Sprint actif** | Sprint 108 — à définir |
+| **Dernier sprint complété** | Sprint 107 — Dashboard v2 : métriques détaillées ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -21,7 +21,7 @@
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
-- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers
+- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107)
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
 - `GET /performance/{ticker}` — rendement rétrospectif par analyse (Sprint 39)
 - `POST /auth/register` — inscription email/mot de passe, cookies JWT httpOnly + CSRF (Sprint Login)
@@ -72,6 +72,7 @@
 - **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
 - **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
 - **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
+- **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -110,6 +111,29 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 107 — Dashboard v2 : métriques détaillées ✅
+
+**Objectif :** Enrichir `DashboardPage` avec les métriques jusqu'ici manquantes — top tickers analysés, coût par skill, taux de cache par workflow, et évolution du nombre d'alertes dans le temps. Les données proviennent de `GET /metrics` (enrichi côté backend) et `GET /alerts` (Sprint 99), surfacées via 4 graphiques recharts dans une section dédiée.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `MetricsResponse` étendu avec `skills_cost: dict[str, float] = {}` (coût USD de chaque analyse réparti également entre ses skills via `cost_usd / NULLIF(jsonb_array_length(skills_used), 0)`) et `cache_by_workflow: dict[str, float] = {}` (taux de cache moyen `GROUP BY workflow_name`) ; `get_metrics()` fusionne le coût dans la requête `skill_rows` existante et ajoute une 3e requête `workflow_rows` ; défauts `{}` → rétrocompatibilité totale des constructions `MetricsResponse` existantes
+- `frontend/src/types/index.ts` — interfaces `TickerMetrics` et `MetricsResponse` en snake_case (miroir exact de la réponse JSON FastAPI, comme `AlertEntry`)
+- `frontend/src/api/metrics.ts` — `fetchMetrics(days=30)` via `apiClient.request`
+- `frontend/src/components/TopTickersChart.tsx` — `BarChart` recharts horizontal (top N par nombre d'analyses), états loading/error/empty
+- `frontend/src/components/SkillCostPieChart.tsx` — `PieChart` recharts (coût USD par skill, slices triées DESC, filtre les coûts nuls), états loading/error/empty
+- `frontend/src/components/CacheByWorkflowChart.tsx` — `BarChart` recharts horizontal (taux de cache en %, domaine 0-100), états loading/error/empty
+- `frontend/src/components/AlertsTimelineChart.tsx` — `BarChart` recharts (alertes regroupées par jour `YYYY-MM-DD`, triées asc), helper `bucketByDay()`, états loading/error/empty
+- `frontend/src/pages/DashboardPage.tsx` — nouvelle section `DetailedMetricsSection` : sélecteur de période `data-testid="metrics-period-select"` (7/30/90 j), React Query `['metrics', days]` + `['alerts', 'timeline']`, grille 2 colonnes des 4 graphiques ; insérée entre `MetricsDashboard` et `CompositeChartSection`
+- `tests/orchestrator/test_metrics_v2.py` — 3 tests CI : `get_metrics` construit `skills_cost`, construit `cache_by_workflow` (arrondi 4 décimales), dicts vides par défaut sans données
+- `tests/orchestrator/test_integration_sync.py` — +1 test CI : `/metrics` sérialise `skills_cost` et `cache_by_workflow` dans la réponse
+- `frontend/src/__tests__/{TopTickersChart,SkillCostPieChart,CacheByWorkflowChart,AlertsTimelineChart}.test.tsx` — 18 tests Vitest (recharts mocké) : rendu avec données, états vide/chargement/erreur ; `AlertsTimelineChart` vérifie le regroupement par jour + tri
+- `frontend/src/__tests__/DashboardPage.test.tsx` — mocks `../api/metrics` et `../api/alerts` ajoutés (tests existants déterministes)
+
+**Version** : 9.7.0
+**Tests** : 1410 CI verts (hors e2e et evals) — +4 tests Sprint 107 ; 241 Vitest verts — +18 tests Sprint 107
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur), Vitest composant (recharts mocké) et tests d'intégration backend.
 
 ### Sprint 106 — Recherche sémantique RAG dans le frontend ✅
 

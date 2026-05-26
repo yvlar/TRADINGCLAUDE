@@ -158,6 +158,26 @@ async def test_metrics_total_non_negatif(client):
     assert r.json()["total_analyses"] >= 0
 
 
+async def test_metrics_expose_skills_cost_et_cache_by_workflow(client):
+    """Sprint 107 — les nouveaux agrégats sont sérialisés dans la réponse /metrics."""
+    app.state.orchestrator.get_metrics.return_value = MetricsResponse(
+        period_days=30,
+        total_analyses=2,
+        total_cost_usd=0.02,
+        avg_cost_per_analysis=0.01,
+        cache_hit_ratio_avg=0.6,
+        top_tickers=[],
+        skills_usage={"graham_analysis": 2},
+        skills_cost={"graham_analysis": 0.012},
+        cache_by_workflow={"value_graham": 0.72},
+    )
+    r = await client.get("/metrics?days=30")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["skills_cost"] == {"graham_analysis": 0.012}
+    assert body["cache_by_workflow"] == {"value_graham": 0.72}
+
+
 async def test_extract_endpoint_existe(client):
     """GET /extract → 404 attendu (mock yahoo retourne 404 pour ticker inconnu)."""
     r = await client.get(f"/extract?ticker={TICKER_TEST}")

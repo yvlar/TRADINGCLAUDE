@@ -300,6 +300,10 @@ class MetricsResponse(BaseModel):
     cache_hit_ratio_avg: float
     top_tickers: list[TickerMetrics]
     skills_usage: dict[str, int]
+    # coût USD attribué par skill (coût de l'analyse réparti également entre ses skills)
+    skills_cost: dict[str, float] = {}
+    # taux de cache moyen agrégé par workflow_name
+    cache_by_workflow: dict[str, float] = {}
 
 
 class Orchestrator:
@@ -1670,12 +1674,36 @@ class Orchestrator:
 
         skill_rows = await self._db.fetch(
             """
-            SELECT skill, COUNT(*) AS nb
+            SELECT skill,
+                   COUNT(*) AS nb,
+                   COALESCE(
+                       SUM(cost_usd / NULLIF(jsonb_array_length(skills_used), 0)), 0
+                   ) AS cost
             FROM analysis_history,
                  jsonb_array_elements_text(skills_used) AS skill
             WHERE created_at >= NOW() - ($1 || ' days')::interval
             GROUP BY skill
             ORDER BY nb DESC
+            """,
+            str(days),
+        )
+
+        workflow_rows = await self._db.fetch(
+            """
+            SELECT
+                workflow_name,
+                COALESCE(AVG(
+                    CASE
+                        WHEN tokens_input + tokens_cache_read + tokens_cache_creation > 0
+                        THEN tokens_cache_read::float
+                             / (tokens_input + tokens_cache_read + tokens_cache_creation)
+                        ELSE 0
+                    END
+                ), 0) AS cache_ratio
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY workflow_name
+            ORDER BY workflow_name
             """,
             str(days),
         )
@@ -1698,6 +1726,13 @@ class Orchestrator:
                 for row in ticker_rows
             ],
             skills_usage={row["skill"]: int(row["nb"]) for row in skill_rows},
+            skills_cost={
+                row["skill"]: round(float(row["cost"]), 6) for row in skill_rows
+            },
+            cache_by_workflow={
+                row["workflow_name"]: round(float(row["cache_ratio"]), 4)
+                for row in workflow_rows
+            },
         )
 
     async def get_history(
