@@ -5,9 +5,15 @@ import { MetricsDashboard } from '../components/MetricsDashboard'
 import { CompositeScoreHistory } from '../components/CompositeScoreHistory'
 import { CompositeScoreChart } from '../components/CompositeScoreChart'
 import { TickerComparisonChart } from '../components/TickerComparisonChart'
+import { TopTickersChart } from '../components/TopTickersChart'
+import { SkillCostPieChart } from '../components/SkillCostPieChart'
+import { CacheByWorkflowChart } from '../components/CacheByWorkflowChart'
+import { AlertsTimelineChart } from '../components/AlertsTimelineChart'
 import { ConflictsList } from '../components/ConflictsList'
 import { loadRecentAnalyses } from '../lib/recentAnalyses'
 import { getCompositeHistory, fetchEvalDrift } from '../api/analyze'
+import { fetchMetrics } from '../api/metrics'
+import { fetchAlerts } from '../api/alerts'
 import type { CompositeHistoryPoint, EvalDriftResult, RecentAnalysis } from '../types'
 
 function compositeColor(label: string): string {
@@ -94,6 +100,89 @@ function QualitySection() {
         <TickerQualityCard key={a.ticker} analysis={a} />
       ))}
     </div>
+  )
+}
+
+const PERIOD_OPTIONS = [7, 30, 90] as const
+
+function DetailedMetricsSection() {
+  const [days, setDays] = useState<number>(30)
+
+  const metrics = useQuery({
+    queryKey: ['metrics', days],
+    queryFn: () => fetchMetrics(days),
+  })
+
+  const alerts = useQuery({
+    queryKey: ['alerts', 'timeline'],
+    queryFn: () => fetchAlerts(200),
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold">Métriques détaillées</h3>
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            data-testid="metrics-period-select"
+            aria-label="Période en jours"
+          >
+            {PERIOD_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {d} jours
+              </option>
+            ))}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Top tickers analysés
+            </p>
+            <TopTickersChart
+              tickers={metrics.data?.top_tickers ?? []}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Coût par skill (USD)
+            </p>
+            <SkillCostPieChart
+              skillsCost={metrics.data?.skills_cost ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Taux de cache par workflow
+            </p>
+            <CacheByWorkflowChart
+              cacheByWorkflow={metrics.data?.cache_by_workflow ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Alertes dans le temps
+            </p>
+            <AlertsTimelineChart
+              alerts={alerts.data?.alerts ?? []}
+              isLoading={alerts.isLoading}
+              isError={alerts.isError}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -301,6 +390,8 @@ export default function DashboardPage() {
       </div>
 
       <MetricsDashboard />
+
+      <DetailedMetricsSection />
 
       <CompositeChartSection />
 
