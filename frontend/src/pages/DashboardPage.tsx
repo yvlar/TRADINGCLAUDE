@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
-import { SkeletonChart } from '../components/ui/skeleton'
 import { PageTransition } from '../components/PageTransition'
 import { MetricsDashboard } from '../components/MetricsDashboard'
 import { CompositeScoreHistory } from '../components/CompositeScoreHistory'

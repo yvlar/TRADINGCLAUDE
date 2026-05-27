@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { AnimatedNumber } from '../components/ui/animated-number'
 
 describe('AnimatedNumber', () => {
