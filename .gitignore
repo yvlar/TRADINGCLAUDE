@@ -63,3 +63,21 @@ tmp_replacements.txt
 
 # Configuration locale Claude Code (permissions + chemins locaux)
 .claude/settings.local.json
+
+# Certificats et clés privées
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Artefacts OneDrive / synchronisation
+*~$*
+*.tmp
+
+# Exports et dumps de données personnelles
+*.sql.gz
+*.dump
+backend_data/
+data_export/
