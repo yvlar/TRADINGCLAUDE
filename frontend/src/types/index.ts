@@ -93,6 +93,93 @@ export interface SkillOutput {
   [key: string]: unknown
 }
 
+// ---- Earnings Quality Output (Sprint 118) ----
+export interface MScoreDetail {
+  dsri: number | null
+  gmi: number | null
+  aqi: number | null
+  sgi: number | null
+  depi: number | null
+  sgai: number | null
+  tata: number | null
+  lvgi: number | null
+  m_score: number | null
+  interpretation: string
+}
+
+export interface ZScoreDetail {
+  variante: string
+  z_score: number | null
+  interpretation: string
+}
+
+export interface FScoreCriterion {
+  nom: string
+  passe: boolean
+  detail: string
+}
+
+export interface FScoreDetail {
+  criteria: FScoreCriterion[]
+  f_score: number
+  interpretation: string
+}
+
+export interface CScoreSignal {
+  nom: string
+  present: boolean
+  detail: string
+}
+
+export interface CScoreDetail {
+  signaux: CScoreSignal[]
+  c_score: number
+  interpretation: string
+}
+
+export interface SloanDetail {
+  accrual_ratio: number | null
+  interpretation: string
+}
+
+export interface EarningsQualityOutput {
+  ticker: string
+  is_financial: boolean
+  m_score: MScoreDetail
+  z_score: ZScoreDetail
+  f_score: FScoreDetail
+  c_score: CScoreDetail
+  sloan: SloanDetail
+  drapeaux_rouges: string[]
+  verdict: string
+  verdict_detail: string
+  confidence_score: number
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Investment Thesis Builder Output (Sprint 118) ----
+export interface ThesisScenario {
+  probabilite: number
+  rendement_cible: number
+  hypotheses: string[]
+}
+
+export interface ThesisBuilderOutput {
+  ticker: string
+  scenario_bull: ThesisScenario
+  scenario_base: ThesisScenario
+  scenario_bear: ThesisScenario
+  kill_criteria: string[]
+  devils_advocate: string
+  position_size_pct: number
+  verdict_final: string
+  synthese_narrative: string
+  citations: unknown[]
+  cost_usd: number
+}
+
 // ---- Score composite pondéré (Sprint 38) ----
 export interface CompositeScore {
   score: number
@@ -142,11 +229,11 @@ export interface AnalyzeResponse {
   workflow: string
   skills_applied: string[]
   graham: GrahamAnalysisOutput | null
-  earnings_quality: SkillOutput | null
+  earnings_quality: EarningsQualityOutput | null
   dorsey: SkillOutput | null
   buffett: SkillOutput | null
   valuation: SkillOutput | null
-  thesis: SkillOutput | null
+  thesis: ThesisBuilderOutput | null
   munger: SkillOutput | null
   canadian_tax: SkillOutput | null
   lynch: SkillOutput | null

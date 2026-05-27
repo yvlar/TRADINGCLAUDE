@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-27 — Sprint 117 complété**
+**Dernière mise à jour : 2026-05-27 — Sprint 118 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.4.0 |
+| **Version** | 10.5.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 118 — à définir |
-| **Dernier sprint complété** | Sprint 117 — Repo public-ready (gouvernance + README + CHANGELOG) ✅ |
+| **Sprint actif** | Sprint 119 — à définir |
+| **Dernier sprint complété** | Sprint 118 — Refonte UI Earnings Quality + Thèse d'investissement ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -78,6 +78,7 @@
 - **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
 - **Layout pleine largeur (Sprint 115)** — shell applicatif fluide `max-w-shell` (token `--container-shell` = 96rem, point de réglage unique) remplaçant `max-w-5xl` dans `App.tsx` ; en-tête sticky en pleine largeur avec contenu interne aligné sur la même largeur que le `<main>` ; **Dashboard en grille responsive 12 colonnes** (`lg:grid-cols-12`, `items-start`) — métriques live et métriques détaillées en pleine largeur (`lg:col-span-12`), sections composite/comparaison/eval-drift/qualité en demi-largeur (`lg:col-span-6`) au lieu d'une pile verticale
 - **Palette de commandes ⌘K (Sprint 116)** — `CommandPalette` déclenchée par Ctrl+K / ⌘K : navigation entre les 10 pages, action « Analyser [ticker] » → `/?ticker=`, analyses récentes depuis localStorage, recherche sémantique RAG inline (debounce 400 ms) ; bouton déclencheur dans l'en-tête avec hint clavier ; ticker pré-rempli dans `AnalyzeForm` via `?ticker=` URL param
+- **UI Earnings Quality + Thèse d'investissement (Sprint 118)** — `EarningsQualitySection` (5 cadres analytiques : F-Score 9 critères, C-Score 6 signaux, M-Score, Z-Score, Sloan) et `ThesisSection` (3 scénarios bull/base/bear probabilisés, kill criteria, devil's advocate, narrative) remplacent l'affichage JSON brut générique
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -116,6 +117,23 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 118 — Refonte UI Earnings Quality + Thèse d'investissement ✅
+
+**Objectif :** Remplacer l'affichage JSON brut des deux skills les plus riches (Earnings Quality et Investment Thesis Builder) par des composants React structurés et visuellement exploitables.
+
+**Livrables :**
+- `frontend/src/types/index.ts` — ajout des types structurés `MScoreDetail`, `ZScoreDetail`, `FScoreCriterion`, `FScoreDetail`, `CScoreSignal`, `CScoreDetail`, `SloanDetail`, `EarningsQualityOutput`, `ThesisScenario`, `ThesisBuilderOutput` ; `AnalyzeResponse.earnings_quality` et `.thesis` typés précisément (plus `SkillOutput` générique)
+- `frontend/src/components/EarningsQualitySection.tsx` — composant dédié : en-tête avec verdict badge + barre de confiance (% des 5 cadres calculables) ; grille 2 colonnes des 5 frameworks : F-Score Piotroski (9 critères ✓/✗ avec détail), C-Score Montier (6 signaux ⚠/✓ avec détail), M-Score Beneish (8 ratios + seuil -1.78), Z-Score Altman (variante + seuil 2.99/1.81), Sloan accruals (ratio % + seuil ±5%) ; red flags en badges danger ; recommandations prochaine étape ; note contextuelle institutions financières
+- `frontend/src/components/ThesisSection.tsx` — composant dédié : en-tête avec verdict_final badge + position size % ; 3 cartes scénarios côte à côte (bull/base/bear) avec barres de probabilité colorées, rendement cible ±%, hypothèses clés ; kill criteria en liste ✗ ; devil's advocate en box mise en évidence ; synthèse narrative découpée en paragraphes
+- `frontend/src/components/AnalysisResult.tsx` — branchement sur `EarningsQualitySection` et `ThesisSection` (plus `SkillSection` générique pour ces deux skills)
+- `frontend/src/__tests__/EarningsQualitySection.test.tsx` — 6 tests Vitest (toggle fermé/ouvert, F-Score, C-Score, M-Score, Z-Score, drapeaux rouges, recommandations, M-Score null → N/A)
+- `frontend/src/__tests__/ThesisSection.test.tsx` — 6 tests Vitest (toggle fermé/ouvert, 3 scénarios, rendements formatés, kill criteria, devil's advocate ciblé avec `within`, narrative paragraphes)
+
+**Version** : 10.5.0
+**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 319 Vitest verts (+12 Sprint 118) ; tsc 0 erreur ; ESLint 0 ; ruff non modifié
+
+---
 
 ### Sprint 117 — Repo public-ready (gouvernance + README + CHANGELOG) ✅
 
