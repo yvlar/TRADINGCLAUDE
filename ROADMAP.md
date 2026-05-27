@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-27 — Sprint 115 complété**
+**Dernière mise à jour : 2026-05-27 — Sprint 116 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.2.0 |
+| **Version** | 10.3.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 116 — à définir |
-| **Dernier sprint complété** | Sprint 115 — Layout pleine largeur + grille Dashboard 12 colonnes ✅ |
+| **Sprint actif** | Sprint 117 — à définir |
+| **Dernier sprint complété** | Sprint 116 — Palette de commandes ⌘K ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -77,6 +77,7 @@
 - **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
 - **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
 - **Layout pleine largeur (Sprint 115)** — shell applicatif fluide `max-w-shell` (token `--container-shell` = 96rem, point de réglage unique) remplaçant `max-w-5xl` dans `App.tsx` ; en-tête sticky en pleine largeur avec contenu interne aligné sur la même largeur que le `<main>` ; **Dashboard en grille responsive 12 colonnes** (`lg:grid-cols-12`, `items-start`) — métriques live et métriques détaillées en pleine largeur (`lg:col-span-12`), sections composite/comparaison/eval-drift/qualité en demi-largeur (`lg:col-span-6`) au lieu d'une pile verticale
+- **Palette de commandes ⌘K (Sprint 116)** — `CommandPalette` déclenchée par Ctrl+K / ⌘K : navigation entre les 10 pages, action « Analyser [ticker] » → `/?ticker=`, analyses récentes depuis localStorage, recherche sémantique RAG inline (debounce 400 ms) ; bouton déclencheur dans l'en-tête avec hint clavier ; ticker pré-rempli dans `AnalyzeForm` via `?ticker=` URL param
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -115,6 +116,25 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 116 — Palette de commandes ⌘K ✅
+
+**Objectif :** Ajouter une command palette (`cmdk`) déclenchée par Ctrl+K / ⌘K permettant de naviguer entre les pages, d'analyser un ticker en un raccourci, d'accéder aux analyses récentes, et de consulter la base de connaissances RAG directement depuis le clavier.
+
+**Livrables :**
+- `frontend/src/components/CommandPalette.tsx` — composant `CommandPalette` : rendu via `createPortal` dans `document.body` ; groupes **Actions rapides** (Analyser / Comparer, visibles dès saisie), **Analyses récentes** (depuis `loadRecentAnalyses()`, affichées à l'ouverture vide), **Pages** (10 routes filtrées par query), **Base de connaissances** (résultats RAG `fetchSemanticSearch` debounce 400 ms, activé si ≥ 3 caractères) ; fermeture sur Escape / clic backdrop / sélection d'un item ; légende raccourcis (↵ ↑↓ ESC) en pied de palette
+- `frontend/src/App.tsx` — import `CommandPalette` + state `paletteOpen` dans `AppShell` ; `useEffect` global `keydown` sur `Ctrl+K` / `⌘K` (`e.preventDefault()`) ; bouton déclencheur dans l'en-tête (`data-testid="command-palette-trigger"`) avec hint clavier visible sur ≥ md
+- `frontend/src/components/AnalyzeForm.tsx` — prop optionnelle `initialTicker?: string` ; état `ticker` initialisé avec `initialTicker ?? ''`
+- `frontend/src/pages/AnalyzePage.tsx` — `useSearchParams` pour lire `?ticker=` (pré-rempli depuis la palette) ; `useEffect` pour nettoyer l'URL après lecture (`setSearchParams({}, { replace: true })`) ; `key={prefillTicker}` sur `<AnalyzeForm>` pour forcer le re-mont lors d'un nouveau ticker
+- `frontend/src/setupTests.ts` — polyfill `ResizeObserver` pour `cmdk` en jsdom
+- `frontend/src/__tests__/CommandPalette.test.tsx` — 8 tests Vitest (mock `cmdk` + `useNavigate` + `loadRecentAnalyses` + `fetchSemanticSearch`) : palette fermée/ouverte, pages navigation affichées, fermeture backdrop, analyses récentes, Analyser → `/?ticker=`, filtre pages par saisie, clic nav item
+- `frontend/src/__tests__/AnalyzePage.test.tsx` + `CacheIndicator.test.tsx` — ajout `MemoryRouter` dans le wrapper (requis par `useSearchParams`)
+- `frontend/package.json` — dépendance `cmdk@1.1.1` ajoutée
+
+**Version** : 10.3.0
+**Tests** : 1423 CI verts (inchangé — sprint frontend pur) ; 307 Vitest verts (+8 Sprint 116) ; tsc 0 erreur ; ESLint 0 ; ruff non modifié
+
+---
 
 ### Sprint 115 — Layout pleine largeur + grille Dashboard 12 colonnes ✅
 

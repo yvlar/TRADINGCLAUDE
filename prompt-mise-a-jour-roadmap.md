@@ -1,41 +1,43 @@
-# Sprint 116 — à définir
+# Sprint 117 — à définir
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.2.0 — Sprint 115 complété)
+## État du projet (v10.3.0 — Sprint 116 complété)
 
 Le dépôt est propre, publiable sur GitHub, et aucune dette technique n'est en suspens.
 
-**Nouveauté Sprint 115** — Layout pleine largeur + grille Dashboard 12 colonnes (frein n°1 de l'audit UX comblé) :
-- **Shell applicatif fluide** — nouveau token `--container-shell: 96rem` dans `index.css` (`@theme inline`) qui génère l'utilitaire `max-w-shell` (Tailwind 4 a retiré `max-w-screen-*` ; un token `--container-*` est l'équivalent idiomatique et **configurable** depuis un seul point). Le `<main>` d'`App.tsx` passe de `max-w-5xl` à `max-w-shell mx-auto w-full`.
-- **En-tête full-bleed aligné** — la barre sticky `bg-card border-b` reste pleine largeur, mais son contenu interne est enveloppé dans `max-w-shell mx-auto w-full` pour aligner son bord gauche sur celui du `<main>`.
-- **Dashboard en grille 12 colonnes** — `DashboardPage` passe d'une pile verticale `space-y-6` à `grid grid-cols-1 lg:grid-cols-12 gap-6 items-start` : métriques live + métriques détaillées en `lg:col-span-12`, sections composite/comparaison/eval-drift/qualité en `lg:col-span-6` (deux par rangée sur grand écran).
+**Nouveauté Sprint 116** — Palette de commandes ⌘K :
+- **Raccourci global Ctrl+K / ⌘K** — `CommandPalette` déclenchée depuis n'importe quelle page ; state `paletteOpen` dans `AppShell` (`App.tsx`) ; `useEffect` global `keydown` ; fermeture sur Escape / clic backdrop.
+- **Bouton déclencheur dans l'en-tête** — `data-testid="command-palette-trigger"` avec hint « Ctrl K » visible sur ≥ md.
+- **4 groupes fonctionnels** : Actions rapides (Analyser / Comparer dès qu'une saisie est présente), Analyses récentes (localStorage `loadRecentAnalyses`), Pages (10 routes filtrées par query), Base de connaissances (résultats RAG `fetchSemanticSearch`, debounce 400 ms, activé si ≥ 3 caractères).
+- **Intégration AnalyzePage** — prop `initialTicker` dans `AnalyzeForm`, `useSearchParams` + `?ticker=` nettoyé via `setSearchParams({}, { replace: true })` + `key={prefillTicker}` pour forcer le re-mont.
+- **cmdk 1.1.1** ajouté aux dépendances ; polyfill `ResizeObserver` dans `setupTests.ts`.
 
 **Fonctionnalités actives** :
 - 18 skills (16 tier2 + 2 tier1), orchestrateur multi-workflow, streaming SSE skill par skill avec event `plan`
 - Auth JWT cookie httpOnly + CSRF + argon2 (Sprint Login)
 - Screener v2 — tri persistant accessible + filtres composite + fraîcheur + export filtré (Sprint 109/114)
-- Dashboard v2 — métriques détaillées (Sprint 107) + drill-down coût par skill + tendance quotidienne (Sprint 112), désormais en **grille responsive 12 colonnes** (Sprint 115)
-  + recherche sémantique RAG `/recherche` (Sprint 106)
+- Dashboard v2 — métriques détaillées (Sprint 107) + drill-down coût par skill + tendance quotidienne (Sprint 112), grille responsive 12 colonnes (Sprint 115)
+- Recherche sémantique RAG `/recherche` (Sprint 106)
 - Tableau de bord alertes Celery (Sprint 99) + page Alertes `/alerts`
 - RAG Qdrant, Langfuse, Redis cache, Celery beat
-- Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages, **shell pleine largeur** `max-w-shell`, design tokens sémantiques
-- 1423 CI pytest verts + 299 Vitest verts + 4 jobs CI GitHub Actions opérationnels
+- Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages, shell pleine largeur `max-w-shell`, design tokens sémantiques, **palette de commandes ⌘K** (`cmdk`)
+- 1423 CI pytest verts + 307 Vitest verts + 4 jobs CI GitHub Actions opérationnels
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v10.2.0, Sprint 115 ✅
+2. `ROADMAP.md` — état courant v10.3.0, Sprint 116 ✅
 3. `.claude/rules/` — 16 fichiers de règles path-scoped (conventions, architecture, tests)
 4. `docs/cheatsheet.md` — toutes les commandes opérationnelles
 
 ---
 
-## TÂCHE — Sprint 116
+## TÂCHE — Sprint 117
 
 **Ce sprint est à définir par Yves.** Choisir l'un des sprints suggérés ci-dessous, ou en spécifier un autre.
 
@@ -61,11 +63,6 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 
 ## SPRINTS SUGGÉRÉS (non planifiés)
 
-### Sprint 116 — Palette de commandes ⌘K
-**Objectif** : Ajouter une command palette (`cmdk`) — recherche ticker, navigation entre pages, actions « Analyser X » / « Comparer » — déclenchée par ⌘K, branchée sur les routes et la recherche sémantique existante.
-**Complexité** : Moyenne
-**Justification** : Aucune navigation clavier globale n'existe ; fonctionnalité la plus attendue du persona « power user / trader », et le shell pleine largeur (Sprint 115) rend la navigation rapide encore plus utile.
-
 ### Sprint 117 — Export analyse individuelle en PDF enrichi
 **Objectif** : `GET /ticker-report/{ticker}?analysis_id=X` incluant verdicts skill par skill, ratios clés, annotation existante et score ESG. Complète la boucle « analyser → lire → exporter ».
 **Complexité** : Moyenne
@@ -86,12 +83,17 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 **Complexité** : Élevée
 **Justification** : Capitalise directement sur la grille 12 colonnes du Sprint 115 pour offrir un tableau de bord personnalisable façon plateforme pro.
 
+### Sprint 121 — Annotations enrichies : tags + filtres
+**Objectif** : Ajouter un champ `tags` (liste de mots-clés libres) aux annotations, indexé GIN, filtrable via `GET /history?tags=value,growth`. Affichage chips dans `HistoryTable` et `AnnotationSection`.
+**Complexité** : Moyenne
+**Justification** : Les annotations (Sprint 78) sont du texte libre sans structure ; les tags permettent un filtrage sémantique du portefeuille sans RAG.
+
 ---
 
 ## Template de démarrage
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.2.0), et les règles .claude/rules/ avant de commencer.
-Sprint actif : 116 — [à compléter par Yves]
+Lis CLAUDE.md, ROADMAP.md (v10.3.0), et les règles .claude/rules/ avant de commencer.
+Sprint actif : 117 — [à compléter par Yves]
 ```

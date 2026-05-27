@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AnalyzeForm } from '../components/AnalyzeForm'
 import { AnalysisResult } from '../components/AnalysisResult'
@@ -39,6 +40,7 @@ function applySkillResult(
 }
 
 export default function AnalyzePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
   const [lastRequest, setLastRequest] = useState<AnalyzeRequest | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -49,6 +51,12 @@ export default function AnalyzePage() {
   const [completedSkills, setCompletedSkills] = useState<string[]>([])
   const [depuisCache, setDepuisCache] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Ticker pré-rempli depuis la palette de commandes (?ticker=BNS.TO)
+  const prefillTicker = searchParams.get('ticker') ?? ''
+  useEffect(() => {
+    if (prefillTicker) setSearchParams({}, { replace: true })
+  }, [prefillTicker, setSearchParams])
 
   const pdfMutation = useMutation({
     mutationFn: async (req: AnalyzeRequest) => {
@@ -129,7 +137,12 @@ export default function AnalyzePage() {
         </div>
 
         <StaggerItem index={0}>
-          <AnalyzeForm onSubmit={handleSubmit} isLoading={isStreaming} />
+          <AnalyzeForm
+            key={prefillTicker}
+            onSubmit={handleSubmit}
+            isLoading={isStreaming}
+            initialTicker={prefillTicker}
+          />
         </StaggerItem>
 
         {streamError && (

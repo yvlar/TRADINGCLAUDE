@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import AnalyzePage from '../pages/AnalyzePage'
 import * as analyzeApi from '../api/analyze'
 import type { AnalyzeResponse } from '../types'
@@ -46,7 +47,11 @@ const BASE_RESPONSE: AnalyzeResponse = {
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  )
 }
 
 describe('CacheIndicator — badge "Score depuis cache"', () => {
