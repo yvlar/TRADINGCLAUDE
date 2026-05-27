@@ -38,3 +38,12 @@ if (!window.HTMLElement.prototype.releasePointerCapture) {
 if (!window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = () => undefined
 }
+
+// Polyfill ResizeObserver pour cmdk (non disponible en jsdom)
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}

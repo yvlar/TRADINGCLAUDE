@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -16,6 +17,7 @@ import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import { Button } from './components/ui/button'
+import { CommandPalette } from './components/CommandPalette'
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -43,6 +45,19 @@ function NavItem({ to, label }: { to: string; label: string }) {
 
 function AppShell() {
   const { isAuthenticated, logout } = useAuth()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // Raccourci global Ctrl+K / ⌘K pour ouvrir/fermer la palette
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   return (
     <>
@@ -64,12 +79,27 @@ function AppShell() {
             </nav>
           )}
           {isAuthenticated && (
-            <Button variant="ghost" className="ml-auto text-sm" onClick={logout}>
-              Déconnexion
-            </Button>
+            <>
+              <button
+                onClick={() => setPaletteOpen(true)}
+                className="ml-auto flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                data-testid="command-palette-trigger"
+                aria-label="Ouvrir la palette de commandes"
+              >
+                <span className="hidden md:inline">Rechercher…</span>
+                <kbd className="flex items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+                  <span>Ctrl</span>
+                  <span>K</span>
+                </kbd>
+              </button>
+              <Button variant="ghost" className="text-sm" onClick={logout}>
+                Déconnexion
+              </Button>
+            </>
           )}
         </div>
       </header>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <main data-testid="app-main" className="max-w-shell mx-auto w-full px-6 py-6">
         <Routes>
           <Route path="/login" element={<LoginPage />} />

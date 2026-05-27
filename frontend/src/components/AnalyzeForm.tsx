@@ -10,6 +10,7 @@ import type { AnalyzeRequest, EarningsQualityRatios, GrahamRatios } from '../typ
 interface AnalyzeFormProps {
   onSubmit: (req: AnalyzeRequest) => void
   isLoading?: boolean
+  initialTicker?: string
 }
 
 const DEFAULT_RATIOS: GrahamRatios = {
@@ -34,8 +35,8 @@ function parseNum(s: string): number | null {
   return isNaN(v) ? null : v
 }
 
-export function AnalyzeForm({ onSubmit, isLoading = false }: AnalyzeFormProps) {
-  const [ticker, setTicker] = useState('')
+export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }: AnalyzeFormProps) {
+  const [ticker, setTicker] = useState(initialTicker)
   const [workflow, setWorkflow] = useState('value_graham')
   const [ratios, setRatios] = useState<GrahamRatios>(DEFAULT_RATIOS)
   const [earningsRatios, setEarningsRatios] = useState<EarningsQualityRatios | null>(null)
