@@ -46,29 +46,31 @@ function AppShell() {
 
   return (
     <>
-      <header className="bg-card border-b border-border px-6 py-3 flex items-center gap-4 sticky top-0 z-50">
-        <h1 className="text-lg font-bold tracking-tight">Copilote Financier IA</h1>
-        {isAuthenticated && (
-          <nav className="flex items-end gap-1 ml-4">
-            <NavItem to="/" label="Analyse" />
-            <NavItem to="/screener" label="Screener" />
-            <NavItem to="/historique" label="Historique" />
-            <NavItem to="/dashboard" label="Dashboard" />
-            <NavItem to="/watchlist" label="Watchlist" />
-            <NavItem to="/compare" label="Comparer" />
-            <NavItem to="/esg" label="ESG" />
-            <NavItem to="/recherche" label="Recherche" />
-            <NavItem to="/alerts" label="Alertes" />
-            <NavItem to="/admin" label="Admin" />
-          </nav>
-        )}
-        {isAuthenticated && (
-          <Button variant="ghost" className="ml-auto text-sm" onClick={logout}>
-            Déconnexion
-          </Button>
-        )}
+      <header className="bg-card border-b border-border sticky top-0 z-50">
+        <div className="max-w-shell mx-auto w-full px-6 py-3 flex items-center gap-4">
+          <h1 className="text-lg font-bold tracking-tight">Copilote Financier IA</h1>
+          {isAuthenticated && (
+            <nav className="flex items-end gap-1 ml-4">
+              <NavItem to="/" label="Analyse" />
+              <NavItem to="/screener" label="Screener" />
+              <NavItem to="/historique" label="Historique" />
+              <NavItem to="/dashboard" label="Dashboard" />
+              <NavItem to="/watchlist" label="Watchlist" />
+              <NavItem to="/compare" label="Comparer" />
+              <NavItem to="/esg" label="ESG" />
+              <NavItem to="/recherche" label="Recherche" />
+              <NavItem to="/alerts" label="Alertes" />
+              <NavItem to="/admin" label="Admin" />
+            </nav>
+          )}
+          {isAuthenticated && (
+            <Button variant="ghost" className="ml-auto text-sm" onClick={logout}>
+              Déconnexion
+            </Button>
+          )}
+        </div>
       </header>
-      <main className="max-w-5xl mx-auto px-6 py-6">
+      <main data-testid="app-main" className="max-w-shell mx-auto w-full px-6 py-6">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
