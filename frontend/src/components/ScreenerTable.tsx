@@ -16,9 +16,9 @@ import {
 } from '../lib/screenerView'
 
 function compositeColor(label: string | null): string {
-  if (label === 'FORT') return 'text-green-400'
-  if (label === 'MODÉRÉ' || label === 'MODERE') return 'text-yellow-400'
-  return 'text-red-400'
+  if (label === 'FORT') return 'text-bull'
+  if (label === 'MODÉRÉ' || label === 'MODERE') return 'text-neutral'
+  return 'text-bear'
 }
 
 function verdictVariant(verdict: string | null): 'success' | 'warning' | 'danger' | 'outline' {
@@ -31,13 +31,13 @@ function verdictVariant(verdict: string | null): 'success' | 'warning' | 'danger
 
 function ScoreCell({ score }: { score: number | null }) {
   if (score == null) return <span className="text-muted-foreground">—</span>
-  const color = score >= 6 ? 'text-green-400' : score >= 4 ? 'text-yellow-400' : 'text-red-400'
+  const color = score >= 6 ? 'text-bull' : score >= 4 ? 'text-neutral' : 'text-bear'
   return <span className={`font-semibold tabular-nums ${color}`}>{score}/8</span>
 }
 
 function FreshnessCell({ analyzedAt }: { analyzedAt: string | null }) {
   const { label, stale } = formatFreshness(analyzedAt)
-  const color = analyzedAt == null ? 'text-muted-foreground' : stale ? 'text-yellow-400' : 'text-green-400'
+  const color = analyzedAt == null ? 'text-muted-foreground' : stale ? 'text-neutral' : 'text-bull'
   return (
     <span className={`text-xs tabular-nums ${color}`} title={analyzedAt ?? ''} data-testid="freshness-cell">
       {label}
@@ -117,8 +117,26 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
   }
 
   function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <span className="opacity-30 ml-1">↕</span>
-    return <span className="ml-1">{asc ? '↑' : '↓'}</span>
+    if (sortKey !== k) return <span className="opacity-30 ml-1" aria-hidden="true">↕</span>
+    return <span className="ml-1" aria-hidden="true">{asc ? '↑' : '↓'}</span>
+  }
+
+  /** En-tête triable accessible au clavier (bouton + aria-sort sur le th). */
+  function SortableHead({ k, label }: { k: SortKey; label: string }) {
+    const ariaSort: 'ascending' | 'descending' | 'none' =
+      sortKey === k ? (asc ? 'ascending' : 'descending') : 'none'
+    return (
+      <TableHead aria-sort={ariaSort} className="p-0 select-none">
+        <button
+          type="button"
+          onClick={() => toggleSort(k)}
+          className="flex h-10 w-full items-center px-3 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {label}
+          <SortIcon k={k} />
+        </button>
+      </TableHead>
+    )
   }
 
   const isFiltered = activeLabels.length > 0
@@ -177,37 +195,12 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
           <TableHeader>
             <TableRow>
               <TableHead className="w-8">#</TableHead>
-              <TableHead
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('ticker')}
-              >
-                Ticker <SortIcon k="ticker" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('score')}
-              >
-                Score défensif <SortIcon k="score" />
-              </TableHead>
+              <SortableHead k="ticker" label="Ticker" />
+              <SortableHead k="score" label="Score défensif" />
               <TableHead>Verdict</TableHead>
-              <TableHead
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('composite')}
-              >
-                Composite <SortIcon k="composite" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('freshness')}
-              >
-                Fraîcheur <SortIcon k="freshness" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('cost')}
-              >
-                Coût <SortIcon k="cost" />
-              </TableHead>
+              <SortableHead k="composite" label="Composite" />
+              <SortableHead k="freshness" label="Fraîcheur" />
+              <SortableHead k="cost" label="Coût" />
               <TableHead>Cache</TableHead>
               <TableHead>Erreur</TableHead>
             </TableRow>
@@ -246,7 +239,7 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
                     <Badge variant="secondary" className="text-xs">cache</Badge>
                   )}
                 </TableCell>
-                <TableCell className="text-xs text-red-400 max-w-48 truncate">
+                <TableCell className="text-xs text-bear max-w-48 truncate">
                   {entry.erreur ?? ''}
                 </TableCell>
               </TableRow>

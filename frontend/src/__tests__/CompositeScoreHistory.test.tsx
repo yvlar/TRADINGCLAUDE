@@ -39,7 +39,7 @@ describe('CompositeScoreHistory', () => {
   it('affiche un état de chargement', () => {
     vi.mocked(analyzeApi.getCompositeHistory).mockReturnValue(new Promise(() => {}))
     render(<CompositeScoreHistory ticker="BNS" />, { wrapper })
-    expect(screen.getByText('Chargement...')).toBeInTheDocument()
+    expect(screen.getByTestId('composite-history-loading')).toBeInTheDocument()
   })
 
   it('affiche les scores avec labels après chargement', async () => {

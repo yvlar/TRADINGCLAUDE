@@ -8,6 +8,8 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART } from '../lib/colors'
 import type { CompositeHistoryPoint } from '../types'
 
 interface Props {
@@ -17,9 +19,9 @@ interface Props {
 }
 
 function labelColor(label: string): string {
-  if (label === 'FORT') return '#4ade80'       // vert
-  if (label === 'MODERE' || label === 'MODÉRÉ') return '#fb923c'  // orange
-  return '#f87171'                              // rouge (FAIBLE)
+  if (label === 'FORT') return CHART.bull
+  if (label === 'MODERE' || label === 'MODÉRÉ') return CHART.neutral
+  return CHART.bear
 }
 
 function formatDate(iso: string): string {
@@ -62,9 +64,9 @@ function CustomTooltip({ active, payload }: any) {
 export function CompositeScoreChart({ data, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="chart-loading">
-        Chargement...
-      </p>
+      <div data-testid="chart-loading">
+        <Skeleton className="h-[220px] w-full" />
+      </div>
     )
   }
 
@@ -96,28 +98,28 @@ export function CompositeScoreChart({ data, isLoading, isError }: Props) {
     <div data-testid="composite-score-chart">
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
             domain={[0, 100]}
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={32}
           />
           <Tooltip content={<CustomTooltip />} />
           {/* Seuil FORT */}
-          <ReferenceLine y={70} stroke="#4ade80" strokeDasharray="4 2" label={{ value: 'FORT', position: 'insideTopRight', fontSize: 9, fill: '#4ade80' }} />
+          <ReferenceLine y={70} stroke={CHART.bull} strokeDasharray="4 2" label={{ value: 'FORT', position: 'insideTopRight', fontSize: 9, fill: CHART.bull }} />
           {/* Seuil MODÉRÉ */}
-          <ReferenceLine y={45} stroke="#fb923c" strokeDasharray="4 2" label={{ value: 'MODÉRÉ', position: 'insideTopRight', fontSize: 9, fill: '#fb923c' }} />
+          <ReferenceLine y={45} stroke={CHART.neutral} strokeDasharray="4 2" label={{ value: 'MODÉRÉ', position: 'insideTopRight', fontSize: 9, fill: CHART.neutral }} />
           <Line
             type="monotone"
             dataKey="score"
-            stroke="#94a3b8"
+            stroke={CHART.line}
             strokeWidth={2}
             dot={<CustomDot />}
             activeDot={{ r: 6 }}

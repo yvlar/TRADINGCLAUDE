@@ -109,7 +109,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false }: AnalyzeFormProps) {
             </Button>
           </div>
           {autoFillError && (
-            <p className="text-sm text-red-600" role="alert">{autoFillError}</p>
+            <p className="text-sm text-bear" role="alert">{autoFillError}</p>
           )}
         </div>
         <div className="flex flex-col gap-1 flex-1">
@@ -176,7 +176,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false }: AnalyzeFormProps) {
               />
               Qualité bénéfices
               {earningsAvailable ? (
-                <span className="text-xs text-green-600 font-medium">✓ chargé (Yahoo Finance)</span>
+                <span className="text-xs text-bull font-medium">✓ chargé (Yahoo Finance)</span>
               ) : (
                 <span className="text-xs">(Auto-fill requis)</span>
               )}

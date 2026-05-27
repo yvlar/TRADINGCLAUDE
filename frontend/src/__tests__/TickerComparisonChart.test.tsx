@@ -46,7 +46,6 @@ describe('TickerComparisonChart', () => {
       />,
     )
     expect(screen.getByTestId('comparison-loading')).toBeInTheDocument()
-    expect(screen.getByText('Chargement...')).toBeInTheDocument()
   })
 
   it('affiche l\'état d\'erreur', () => {

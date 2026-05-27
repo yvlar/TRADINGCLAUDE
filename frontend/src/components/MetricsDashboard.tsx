@@ -43,7 +43,7 @@ export function MetricsDashboard() {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <span
-          className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 shadow-[0_0_6px_#22c55e]' : 'bg-red-500'}`}
+          className={`w-2 h-2 rounded-full ${connected ? 'bg-bull shadow-[0_0_6px_hsl(142_71%_50%)]' : 'bg-bear'}`}
         />
         <span className="text-sm text-muted-foreground">
           WebSocket {connected ? 'connecté' : 'déconnecté'}

@@ -368,6 +368,86 @@ class Orchestrator:
         self._pabrai = pabrai_skill
         self._esg = esg_skill
 
+    def _planned_skill_ids(self, request: AnalyzeRequest) -> list[str]:
+        """Liste ordonnée des skills qui s'exécuteront réellement pour cette requête.
+
+        Reflète exactement les conditions d'exécution de stream_company_analysis
+        (appartenance au workflow + présence des données + dépendances). Permet
+        d'annoncer au client le nombre total d'étapes avant le streaming.
+        """
+        try:
+            allowed: frozenset[str] | None = frozenset(
+                s.skill_id for s in _workflow_router.route(request.workflow)
+            )
+        except ValueError:
+            allowed = None
+
+        def _in(skill_id: str) -> bool:
+            return allowed is None or skill_id in allowed
+
+        planned: list[str] = []
+        if _in("graham_analysis") and request.ratios is not None:
+            planned.append("graham_analysis")
+        if _in("earnings_quality") and request.earnings_ratios is not None:
+            planned.append("earnings_quality")
+        if _in("dorsey_moat") and request.dorsey_ratios is not None and self._dorsey is not None:
+            planned.append("dorsey_moat")
+        if _in("buffett_quality") and request.buffett_ratios is not None and self._buffett is not None:
+            planned.append("buffett_quality")
+        if (
+            _in("stock_valuation_triangulation")
+            and request.valuation_ratios is not None
+            and self._valuation is not None
+        ):
+            planned.append("stock_valuation_triangulation")
+        thesis_planned = (
+            _in("investment_thesis_builder")
+            and bool(request.thesis_ratios)
+            and self._thesis is not None
+        )
+        if thesis_planned:
+            planned.append("investment_thesis_builder")
+        # munger dépend de l'exécution effective de thesis (thesis_output non None)
+        if (
+            _in("munger_mental_models")
+            and bool(request.munger_ratios)
+            and self._munger is not None
+            and thesis_planned
+        ):
+            planned.append("munger_mental_models")
+        if (
+            _in("canadian_tax_considerations")
+            and request.tax_input is not None
+            and self._canadian_tax is not None
+        ):
+            planned.append("canadian_tax_considerations")
+        if _in("lynch_categories") and request.lynch_ratios is not None and self._lynch is not None:
+            planned.append("lynch_categories")
+        if _in("fisher_scuttlebutt") and request.fisher_input is not None and self._fisher is not None:
+            planned.append("fisher_scuttlebutt")
+        if _in("klarman_margin") and request.klarman_input is not None and self._klarman is not None:
+            planned.append("klarman_margin")
+        if (
+            _in("greenblatt_magic_formula")
+            and request.greenblatt_input is not None
+            and self._greenblatt is not None
+        ):
+            planned.append("greenblatt_magic_formula")
+        if (
+            _in("damodaran_narrative")
+            and request.damodaran_input is not None
+            and self._damodaran is not None
+        ):
+            planned.append("damodaran_narrative")
+        if _in("marks_cycles_risk") and request.marks_input is not None and self._marks is not None:
+            planned.append("marks_cycles_risk")
+        if _in("pabrai_dhandho") and request.pabrai_input is not None and self._pabrai is not None:
+            planned.append("pabrai_dhandho")
+        # esg n'est pas filtré par le workflow (cf. stream_company_analysis)
+        if request.esg_input is not None and self._esg is not None:
+            planned.append("esg_simplified")
+        return planned
+
     async def run_company_analysis(
         self,
         request: AnalyzeRequest,
@@ -971,6 +1051,7 @@ class Orchestrator:
         Yield des events SSE (dict {event, data}) après chaque skill complété.
 
         Events émis :
+        - {"event": "plan", "data": {"skills": list[str]}}  # skills qui vont s'exécuter
         - {"event": "skill_start", "data": {"skill_id": str}}
         - {"event": "skill_result", "data": {"skill_id": str, "result": dict}}
         - {"event": "complete", "data": AnalyzeResponse.model_dump()}
@@ -1028,6 +1109,9 @@ class Orchestrator:
                 "Workflow inconnu '%s' (stream) — tous les skills activés", request.workflow
             )
             _allowed = None
+
+        # Annonce la liste ordonnée des skills qui vont s'exécuter (barre de progression client)
+        yield {"event": "plan", "data": {"skills": self._planned_skill_ids(request)}}
 
         skills_applied: list[str] = []
         total_cost = 0.0

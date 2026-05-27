@@ -183,11 +183,11 @@ export default function AdminPage() {
                     <td className="py-3 pr-4 text-muted-foreground">{formatDate(k.last_used_at)}</td>
                     <td className="py-3 pr-4">
                       {k.is_active ? (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full border border-bull/40 bg-bull/15 text-bull">
                           Actif
                         </span>
                       ) : (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full border border-bear/40 bg-bear/15 text-bear">
                           Révoqué
                         </span>
                       )}

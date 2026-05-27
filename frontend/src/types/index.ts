@@ -339,7 +339,11 @@ export interface PriceStatus {
 }
 
 // ---- SSE Streaming ----
-export type SSEEventType = 'skill_start' | 'skill_result' | 'complete' | 'error' | 'cached'
+export type SSEEventType = 'plan' | 'skill_start' | 'skill_result' | 'complete' | 'error' | 'cached'
+
+export interface SSEPlan {
+  skills: string[]
+}
 
 export interface SSESkillStart {
   skill_id: string
@@ -351,6 +355,7 @@ export interface SSESkillResult {
 }
 
 export type SSEEvent =
+  | { type: 'plan'; data: SSEPlan }
   | { type: 'skill_start'; data: SSESkillStart }
   | { type: 'skill_result'; data: SSESkillResult }
   | { type: 'complete'; data: AnalyzeResponse }

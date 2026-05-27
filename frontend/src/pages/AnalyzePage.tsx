@@ -45,6 +45,7 @@ export default function AnalyzePage() {
   const [streamError, setStreamError] = useState<string | null>(null)
   const [partialResult, setPartialResult] = useState<Partial<AnalyzeResponse>>({})
   const [activeSkill, setActiveSkill] = useState<string | null>(null)
+  const [plannedSkills, setPlannedSkills] = useState<string[]>([])
   const [completedSkills, setCompletedSkills] = useState<string[]>([])
   const [depuisCache, setDepuisCache] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -68,6 +69,7 @@ export default function AnalyzePage() {
     setResult(null)
     setPartialResult({})
     setCompletedSkills([])
+    setPlannedSkills([])
     setActiveSkill(null)
     setStreamError(null)
     setDepuisCache(false)
@@ -76,7 +78,9 @@ export default function AnalyzePage() {
 
     try {
       for await (const event of streamAnalyze(req)) {
-        if (event.type === 'skill_start') {
+        if (event.type === 'plan') {
+          setPlannedSkills(event.data.skills)
+        } else if (event.type === 'skill_start') {
           setActiveSkill(event.data.skill_id)
         } else if (event.type === 'skill_result') {
           setPartialResult((prev) => applySkillResult(prev, event.data))
@@ -89,6 +93,7 @@ export default function AnalyzePage() {
           saveRecentAnalysis(finalResult)
           setPartialResult({})
           setCompletedSkills([])
+          setPlannedSkills([])
           setActiveSkill(null)
         } else if (event.type === 'error') {
           setStreamError(event.data.message)
@@ -138,6 +143,7 @@ export default function AnalyzePage() {
 
         {isStreaming && (
           <StreamingProgress
+            plannedSkills={plannedSkills}
             completedSkills={completedSkills}
             activeSkill={activeSkill}
             partialResult={partialResult}

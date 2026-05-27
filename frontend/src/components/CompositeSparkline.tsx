@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { LineChart, Line } from 'recharts'
 import { getCompositeHistory } from '../api/analyze'
+import { CHART } from '../lib/colors'
 
 interface CompositeSparklineProps {
   ticker: string
@@ -36,7 +37,7 @@ export function CompositeSparkline({ ticker, height = 40 }: CompositeSparklinePr
         <Line
           type="monotone"
           dataKey="score"
-          stroke="#94a3b8"
+          stroke={CHART.line}
           strokeWidth={1.5}
           dot={false}
           isAnimationActive={false}

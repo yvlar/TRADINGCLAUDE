@@ -173,9 +173,9 @@ export function WatchlistTable({
               <TableCell data-testid="composite-score-cell">
                 {entry.last_composite_score != null ? (
                   <span className={
-                    entry.last_composite_score >= 70 ? 'text-green-400 font-semibold' :
-                    entry.last_composite_score >= 45 ? 'text-yellow-400 font-semibold' :
-                    'text-red-400 font-semibold'
+                    entry.last_composite_score >= 70 ? 'text-bull font-semibold' :
+                    entry.last_composite_score >= 45 ? 'text-neutral font-semibold' :
+                    'text-bear font-semibold'
                   }>
                     {entry.last_composite_score.toFixed(1)}
                   </span>

@@ -20,10 +20,10 @@ function verdictBadge(verdict: string | undefined) {
 function CompositeBadge({ cs }: { cs: CompositeScore }) {
   const color =
     cs.label === 'FORT'
-      ? 'text-green-400'
+      ? 'text-bull'
       : cs.label === 'MODÉRÉ'
-      ? 'text-yellow-400'
-      : 'text-red-400'
+      ? 'text-neutral'
+      : 'text-bear'
   return (
     <span
       data-testid="composite-score"
@@ -38,7 +38,7 @@ function CompositeBadge({ cs }: { cs: CompositeScore }) {
 
 function ScoreBar({ score, max }: { score: number; max: number }) {
   const pct = Math.round((score / max) * 100)
-  const color = pct >= 70 ? 'bg-green-500' : pct >= 40 ? 'bg-yellow-500' : 'bg-red-500'
+  const color = pct >= 70 ? 'bg-bull' : pct >= 40 ? 'bg-neutral' : 'bg-bear'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-2 rounded-full bg-secondary">
@@ -72,9 +72,9 @@ function CriteriaTable({ criteria }: { criteria: GrahamCriterion[] }) {
             <TableCell className="font-mono text-xs text-muted-foreground">{c.seuil}</TableCell>
             <TableCell className="text-center">
               {c.passe === true ? (
-                <span className="text-green-400">✓</span>
+                <span className="text-bull">✓</span>
               ) : (
-                <span className="text-red-400">✗</span>
+                <span className="text-bear">✗</span>
               )}
             </TableCell>
           </TableRow>
@@ -169,7 +169,7 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
             {g.marge_securite != null && (
               <p className="text-sm">
                 Marge de sécurité :{' '}
-                <span className={g.marge_securite >= 0 ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
+                <span className={g.marge_securite >= 0 ? 'text-bull font-semibold' : 'text-bear font-semibold'}>
                   {(g.marge_securite * 100).toFixed(1)}%
                 </span>
                 {g.valeur_intrinseque_ajustee != null && (

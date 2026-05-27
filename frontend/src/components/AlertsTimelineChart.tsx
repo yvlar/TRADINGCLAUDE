@@ -7,6 +7,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART } from '../lib/colors'
 import type { AlertEntry } from '../types'
 
 interface Props {
@@ -30,9 +32,9 @@ function bucketByDay(alerts: AlertEntry[]): { date: string; count: number }[] {
 export function AlertsTimelineChart({ alerts, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="alerts-timeline-loading">
-        Chargement...
-      </p>
+      <div data-testid="alerts-timeline-loading">
+        <Skeleton className="h-[220px] w-full" />
+      </div>
     )
   }
 
@@ -58,30 +60,30 @@ export function AlertsTimelineChart({ alerts, isLoading, isError }: Props) {
     <div data-testid="alerts-timeline-chart">
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={28}
           />
           <Tooltip
-            cursor={{ fill: '#1e293b' }}
+            cursor={{ fill: CHART.cursor }}
             contentStyle={{
-              background: '#0f172a',
-              border: '1px solid #334155',
+              background: CHART.tooltipBg,
+              border: `1px solid ${CHART.tooltipBorder}`,
               borderRadius: 6,
               fontSize: 12,
             }}
             formatter={(value) => [`${value}`, 'Alertes'] as [string, string]}
           />
-          <Bar dataKey="count" fill="#fb923c" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="count" fill={CHART.neutral} radius={[4, 4, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

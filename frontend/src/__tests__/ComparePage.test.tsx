@@ -74,7 +74,7 @@ describe('ComparePage (Sprint 80)', () => {
       expect(screen.getByTestId('compare-cell-composite_score-BNS.TO')).toBeInTheDocument()
     })
     const bestCell = screen.getByTestId('compare-cell-composite_score-BNS.TO')
-    expect(bestCell.className).toContain('bg-yellow')
+    expect(bestCell.className).toContain('bg-primary')
   })
 
   it('affiche "--" pour un ticker sans analyse en DB', async () => {

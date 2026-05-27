@@ -20,9 +20,9 @@ import { fetchAlerts } from '../api/alerts'
 import type { CompositeHistoryPoint, EvalDriftResult, RecentAnalysis } from '../types'
 
 function compositeColor(label: string): string {
-  if (label === 'FORT') return 'text-green-400'
-  if (label === 'MODÉRÉ') return 'text-yellow-400'
-  return 'text-red-400'
+  if (label === 'FORT') return 'text-bull'
+  if (label === 'MODÉRÉ') return 'text-neutral'
+  return 'text-bear'
 }
 
 function TickerQualityCard({ analysis }: { analysis: RecentAnalysis }) {
@@ -365,14 +365,14 @@ function EvalDriftSection() {
                     <span className="text-sm font-medium">{r.dataset}</span>
                     {r.alert ? (
                       <span
-                        className="rounded px-2 py-0.5 text-xs font-semibold bg-red-600 text-white"
+                        className="rounded border border-bear/40 bg-bear/15 px-2 py-0.5 text-xs font-semibold text-bear"
                         data-testid={`eval-drift-badge-alert-${r.dataset}`}
                       >
                         DRIFT DÉTECTÉ
                       </span>
                     ) : (
                       <span
-                        className="rounded px-2 py-0.5 text-xs font-semibold bg-green-600 text-white"
+                        className="rounded border border-bull/40 bg-bull/15 px-2 py-0.5 text-xs font-semibold text-bull"
                         data-testid={`eval-drift-badge-ok-${r.dataset}`}
                       >
                         OK
@@ -384,7 +384,7 @@ function EvalDriftSection() {
                     aria-label={`Concordance ${pct}%`}
                   >
                     <div
-                      className={`h-full rounded transition-all ${r.alert ? 'bg-red-500' : 'bg-green-500'}`}
+                      className={`h-full rounded transition-all ${r.alert ? 'bg-bear' : 'bg-bull'}`}
                       style={{ width: `${pct}%` }}
                       data-testid={`eval-drift-bar-${r.dataset}`}
                     />

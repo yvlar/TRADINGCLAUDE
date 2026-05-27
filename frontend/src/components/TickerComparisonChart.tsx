@@ -9,9 +9,9 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART, SERIES } from '../lib/colors'
 import type { CompositeHistoryPoint } from '../types'
-
-const TICKER_COLORS = ['#60a5fa', '#4ade80', '#fb923c', '#c084fc', '#f87171']
 
 interface Props {
   tickers: string[]
@@ -67,9 +67,9 @@ function CustomTooltip({ active, payload, label }: any) {
 export function TickerComparisonChart({ tickers, tickersData, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="comparison-loading">
-        Chargement...
-      </p>
+      <div data-testid="comparison-loading">
+        <Skeleton className="h-[260px] w-full" />
+      </div>
     )
   }
 
@@ -103,16 +103,16 @@ export function TickerComparisonChart({ tickers, tickersData, isLoading, isError
     <div data-testid="ticker-comparison-chart">
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
             domain={[0, 100]}
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={32}
           />
@@ -120,22 +120,22 @@ export function TickerComparisonChart({ tickers, tickersData, isLoading, isError
           <Legend wrapperStyle={{ fontSize: '11px' }} />
           <ReferenceLine
             y={70}
-            stroke="#4ade80"
+            stroke={CHART.bull}
             strokeDasharray="4 2"
-            label={{ value: 'FORT', position: 'insideTopRight', fontSize: 9, fill: '#4ade80' }}
+            label={{ value: 'FORT', position: 'insideTopRight', fontSize: 9, fill: CHART.bull }}
           />
           <ReferenceLine
             y={45}
-            stroke="#fb923c"
+            stroke={CHART.neutral}
             strokeDasharray="4 2"
-            label={{ value: 'MODÉRÉ', position: 'insideTopRight', fontSize: 9, fill: '#fb923c' }}
+            label={{ value: 'MODÉRÉ', position: 'insideTopRight', fontSize: 9, fill: CHART.neutral }}
           />
           {tickers.map((ticker, i) => (
             <Line
               key={ticker}
               type="monotone"
               dataKey={ticker}
-              stroke={TICKER_COLORS[i % TICKER_COLORS.length]}
+              stroke={SERIES[i % SERIES.length]}
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 5 }}

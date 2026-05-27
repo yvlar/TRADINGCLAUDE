@@ -8,6 +8,8 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART } from '../lib/colors'
 import type { EsgHistoryPoint } from '../types'
 
 interface Props {
@@ -18,9 +20,9 @@ interface Props {
 
 // Couleurs alignees avec CompositeScoreChart (Sprint 57)
 function verdictColor(verdict: string): string {
-  if (verdict === 'ESG_FORT') return '#4ade80'    // vert
-  if (verdict === 'ESG_MODERE') return '#fb923c'  // orange
-  return '#f87171'                                // rouge (ESG_FAIBLE / N/A)
+  if (verdict === 'ESG_FORT') return CHART.bull
+  if (verdict === 'ESG_MODERE') return CHART.neutral
+  return CHART.bear
 }
 
 function formatDate(iso: string): string {
@@ -66,12 +68,9 @@ function CustomTooltip({ active, payload }: any) {
 export function EsgHistoryChart({ data, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p
-        className="text-xs text-muted-foreground py-4"
-        data-testid="esg-chart-loading"
-      >
-        Chargement...
-      </p>
+      <div data-testid="esg-chart-loading">
+        <Skeleton className="h-[220px] w-full" />
+      </div>
     )
   }
 
@@ -111,16 +110,16 @@ export function EsgHistoryChart({ data, isLoading, isError }: Props) {
     <div data-testid="esg-history-chart">
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
             domain={[0, 15]}
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={32}
           />
@@ -128,31 +127,31 @@ export function EsgHistoryChart({ data, isLoading, isError }: Props) {
           {/* Seuil ESG_FORT */}
           <ReferenceLine
             y={10}
-            stroke="#4ade80"
+            stroke={CHART.bull}
             strokeDasharray="4 2"
             label={{
               value: 'FORT',
               position: 'insideTopRight',
               fontSize: 9,
-              fill: '#4ade80',
+              fill: CHART.bull,
             }}
           />
           {/* Seuil ESG_MODERE */}
           <ReferenceLine
             y={5}
-            stroke="#fb923c"
+            stroke={CHART.neutral}
             strokeDasharray="4 2"
             label={{
               value: 'MODÉRÉ',
               position: 'insideTopRight',
               fontSize: 9,
-              fill: '#fb923c',
+              fill: CHART.neutral,
             }}
           />
           <Line
             type="monotone"
             dataKey="score"
-            stroke="#94a3b8"
+            stroke={CHART.line}
             strokeWidth={2}
             dot={<CustomDot />}
             activeDot={{ r: 6 }}

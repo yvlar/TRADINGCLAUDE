@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table'
+import { SkeletonTable } from './ui/skeleton'
 import { fetchSkillAnalyses } from '../api/metrics'
 import type { SkillAnalysisEntry } from '../types'
 
@@ -68,9 +69,9 @@ export function SkillAnalysesDrilldown({ skill, days, onClose }: Props) {
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-muted-foreground py-2" data-testid="skill-drilldown-loading">
-          Chargement...
-        </p>
+        <div data-testid="skill-drilldown-loading">
+          <SkeletonTable rows={4} cols={4} />
+        </div>
       ) : isError ? (
         <p className="text-xs text-destructive py-2" data-testid="skill-drilldown-error">
           Erreur de chargement
