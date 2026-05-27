@@ -4,6 +4,8 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import type { AnalyzeResponse, CompositeScore, GrahamCriterion, SkillOutput } from '../types'
+import { EarningsQualitySection } from './EarningsQualitySection'
+import { ThesisSection } from './ThesisSection'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -205,7 +207,7 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
 
       {/* Autres skills */}
       {result.earnings_quality && (
-        <SkillSection title="Earnings Quality" output={result.earnings_quality} />
+        <EarningsQualitySection output={result.earnings_quality} />
       )}
       {result.dorsey && <SkillSection title="Dorsey Moat" output={result.dorsey} />}
       {result.buffett && <SkillSection title="Buffett Quality" output={result.buffett} />}
@@ -217,7 +219,7 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
       {result.damodaran && <SkillSection title="Damodaran Narrative" output={result.damodaran} />}
       {result.marks && <SkillSection title="Marks Cycles" output={result.marks} />}
       {result.pabrai && <SkillSection title="Pabrai Dhandho" output={result.pabrai} />}
-      {result.thesis && <SkillSection title="Thèse d'investissement" output={result.thesis} />}
+      {result.thesis && <ThesisSection output={result.thesis} />}
       {result.munger && <SkillSection title="Munger Biais Cognitifs" output={result.munger} />}
       {result.canadian_tax && <SkillSection title="Fiscalité CA/QC" output={result.canadian_tax} />}
     </div>
