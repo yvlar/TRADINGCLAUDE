@@ -44,6 +44,14 @@ function skillVerdict(skillId: string, partial: Partial<AnalyzeResponse>): strin
   return output?.verdict
 }
 
+function verdictVariant(verdict: string): 'success' | 'danger' | 'warning' | 'secondary' {
+  const v = verdict.toUpperCase()
+  if (v.includes('PASS') || v.includes('FORT') || v.includes('FAVORABLE')) return 'success'
+  if (v.includes('FAIL') || v.includes('FAIBLE') || v.includes('DÉFAVORABLE')) return 'danger'
+  if (v.includes('NEUTRE') || v.includes('MODÉRÉ') || v.includes('PARTIEL')) return 'warning'
+  return 'secondary'
+}
+
 interface StreamingProgressProps {
   completedSkills: string[]
   activeSkill: string | null
@@ -55,52 +63,80 @@ export function StreamingProgress({
   activeSkill,
   partialResult,
 }: StreamingProgressProps) {
-  const allVisible = activeSkill
-    ? [...completedSkills, activeSkill]
-    : completedSkills
+  const allVisible = activeSkill ? [...completedSkills, activeSkill] : completedSkills
+  const total = allVisible.length
+  const done = completedSkills.length
 
   if (allVisible.length === 0) return null
 
+  const progressPct = total > 0 ? Math.round((done / total) * 100) : 0
+
   return (
     <div data-testid="streaming-progress" className="space-y-2">
-      {allVisible.map((skillId) => {
+      {/* barre de progression globale */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-500 ease-out"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+          {done}/{total}
+        </span>
+      </div>
+
+      {allVisible.map((skillId, index) => {
         const isActive = skillId === activeSkill
         const isDone = completedSkills.includes(skillId)
         const verdict = isDone ? skillVerdict(skillId, partialResult) : undefined
         const label = SKILL_LABELS[skillId] ?? skillId
+        const delay = Math.min(index * 40, 300)
 
         return (
-          <Card key={skillId} className={isActive ? 'border-primary/50' : ''}>
-            <CardContent className="pt-3 pb-3">
-              <div className="flex items-center gap-2">
-                {isActive ? (
-                  <span
-                    data-testid={`skill-active-${skillId}`}
-                    className="inline-block h-3 w-3 rounded-full bg-primary animate-pulse"
-                    aria-label="En cours"
-                  />
-                ) : (
-                  <span
-                    data-testid={`skill-done-${skillId}`}
-                    className="text-green-400 text-sm"
-                  >
-                    ✓
-                  </span>
-                )}
-                <span className="text-sm font-medium">{label}</span>
-                {verdict && (
-                  <Badge variant="secondary" className="ml-auto text-xs">
-                    {verdict}
-                  </Badge>
-                )}
-                {isActive && (
-                  <span className="ml-auto text-xs text-muted-foreground animate-pulse">
-                    En cours…
-                  </span>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <div
+            key={skillId}
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${delay}ms` }}
+          >
+            <Card className={isActive ? 'border-primary/60' : ''}>
+              <CardContent className="pt-3 pb-3">
+                <div className="flex items-center gap-2">
+                  {isActive ? (
+                    <span
+                      data-testid={`skill-active-${skillId}`}
+                      className="relative flex h-3 w-3 shrink-0"
+                      aria-label="En cours"
+                    >
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75 animate-ping" />
+                      <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
+                    </span>
+                  ) : (
+                    <span
+                      data-testid={`skill-done-${skillId}`}
+                      className="text-green-400 text-sm shrink-0"
+                    >
+                      ✓
+                    </span>
+                  )}
+                  <span className="text-sm font-medium">{label}</span>
+                  {verdict && (
+                    <Badge
+                      variant={verdictVariant(verdict)}
+                      className="ml-auto text-xs"
+                    >
+                      {verdict}
+                    </Badge>
+                  )}
+                  {isActive && (
+                    <span className="ml-auto text-xs text-muted-foreground animate-pulse">
+                      En cours…
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )
       })}
     </div>

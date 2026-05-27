@@ -9,6 +9,8 @@ import {
   TableRow,
 } from '../components/ui/table'
 import { Badge } from '../components/ui/badge'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 import type { AlertEntry } from '../types'
 
 function alertTypeBadgeVariant(type: string): 'destructive' | 'warning' | 'success' | 'secondary' {
@@ -59,7 +61,14 @@ export default function AlertsPage() {
   })
 
   if (isLoading) {
-    return <p data-testid="alerts-spinner" className="text-muted-foreground">Chargement...</p>
+    return (
+      <PageTransition>
+        <div data-testid="alerts-spinner" className="space-y-4">
+          <div className="h-8 w-24 skeleton-shimmer rounded" />
+          <SkeletonTable rows={6} cols={6} />
+        </div>
+      </PageTransition>
+    )
   }
 
   if (isError) {
@@ -73,6 +82,7 @@ export default function AlertsPage() {
   const alerts = data?.alerts ?? []
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Alertes</h1>
 
@@ -100,5 +110,6 @@ export default function AlertsPage() {
         </Table>
       )}
     </div>
+    </PageTransition>
   )
 }

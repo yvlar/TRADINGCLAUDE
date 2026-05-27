@@ -4,6 +4,8 @@ import { Input } from '../components/ui/input'
 import { postCompare } from '../api/compare'
 import { postAnalyze, streamAnalyze } from '../api/analyze'
 import { ApiError } from '../api/client'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 import type { CompareResponse, TickerComparison } from '../types'
 
 type Row = {
@@ -151,6 +153,7 @@ export default function ComparePage() {
     : -1
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <h2 className="text-xl font-bold">Comparaison de tickers</h2>
 
@@ -185,6 +188,8 @@ export default function ComparePage() {
       {error && (
         <p className="text-sm text-destructive" data-testid="compare-error">{error}</p>
       )}
+
+      {loading && <SkeletonTable rows={7} cols={4} />}
 
       {result && (
         <div className="overflow-x-auto">
@@ -271,5 +276,6 @@ export default function ComparePage() {
         </div>
       )}
     </div>
+    </PageTransition>
   )
 }

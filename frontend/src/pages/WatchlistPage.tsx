@@ -12,6 +12,8 @@ import { ApiError } from '../api/client'
 import type { WatchlistCreate } from '../types'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 
 export default function WatchlistPage() {
   const queryClient = useQueryClient()
@@ -107,9 +109,19 @@ export default function WatchlistPage() {
     addMutation.mutate({ ticker: t, workflow })
   }
 
-  if (isLoading) return <p className="text-muted-foreground">Chargement...</p>
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <div className="space-y-4">
+          <div className="h-8 w-32 skeleton-shimmer rounded" />
+          <SkeletonTable rows={5} cols={6} />
+        </div>
+      </PageTransition>
+    )
+  }
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Watchlist</h1>
@@ -176,5 +188,6 @@ export default function WatchlistPage() {
         </>
       )}
     </div>
+    </PageTransition>
   )
 }

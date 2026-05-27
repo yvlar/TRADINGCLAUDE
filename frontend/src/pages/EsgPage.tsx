@@ -14,6 +14,8 @@ import {
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { EsgHistoryChart } from '../components/EsgHistoryChart'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 import type { WatchlistEsgEntry } from '../types'
 
 type SortKey = 'last_esg_score' | 'ticker'
@@ -87,9 +89,19 @@ export default function EsgPage() {
     }
   }
 
-  if (isLoading) return <p className="text-muted-foreground">Chargement...</p>
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <div className="space-y-4">
+          <div className="h-8 w-32 skeleton-shimmer rounded" />
+          <SkeletonTable rows={6} cols={5} />
+        </div>
+      </PageTransition>
+    )
+  }
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Scores ESG</h1>
 
@@ -198,5 +210,6 @@ export default function EsgPage() {
         </div>
       )}
     </div>
+    </PageTransition>
   )
 }
