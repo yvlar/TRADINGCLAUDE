@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-23 — Sprint 100 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 113 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,20 +8,21 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.5.0 |
+| **Version** | 10.0.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 101 — à définir |
-| **Dernier sprint complété** | Sprint 100 — Nettoyage structure repo (publishable GitHub) ✅ |
+| **Sprint actif** | Sprint 114 — à définir |
+| **Dernier sprint complété** | Sprint 113 — Global Micro-UX Refresh ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
 - `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
-- `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore)
+- `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
-- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers
+- `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107) + `daily_cost` (coût USD total par jour, clé YYYY-MM-DD) (Sprint 112)
+- `GET /metrics/skill-analyses?skill=&days=30` — drill-down : analyses ayant utilisé un skill donné sur la période (ticker / workflow / coût / date), filtre jsonb `skills_used @> [skill]`, 422 si `skill` absent (Sprint 112)
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
 - `GET /performance/{ticker}` — rendement rétrospectif par analyse (Sprint 39)
 - `POST /auth/register` — inscription email/mot de passe, cookies JWT httpOnly + CSRF (Sprint Login)
@@ -30,6 +31,7 @@
 - `POST /auth/refresh` — rotation refresh token avec détection de vol par famille (Sprint Login)
 - `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login)
 - `GET /alerts?limit=50` — historique des alertes Celery (ESG + composite + prix) (Sprint 99)
+- `GET /semantic-search?q=&k=5` — recherche sémantique RAG dans `investment_knowledge` ; `rag_enabled=false` + `results=[]` si `OPENAI_API_KEY` absente (Sprint 106)
 - `POST /auth/forgot-password` — token réinitialisation itsdangerous 1h (anti-énumération) (Sprint Login)
 - `POST /auth/reset-password` — réinitialisation mot de passe avec token signé (Sprint Login)
 - `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
@@ -47,7 +49,7 @@
 - **SPA React 18 + TypeScript** — `frontend/` — `npm run dev` → port 5173
 - Proxy Vite → API localhost:8000 (toutes routes `/analyze`, `/screen`, `/watchlist`, etc.)
 - **Page Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill
-- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score
+- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score ; **v2 (Sprint 109)** : tri persistant localStorage (5 colonnes : ticker/score/composite/fraîcheur/coût), filtres inline par label composite, colonne « Fraîcheur » (date relative + badge frais/périmé > 24h), export CSV des résultats filtrés côté client
 - **Page History** — historique analyses par ticker, téléchargement PDF
 - **Page Watchlist** — gestion positions surveillées, déclenchement analyses manuelles
 - **Page Dashboard** — métriques live WebSocket (jobs, coûts, cache hit ratio) + section Eval Drift (Sprint 66)
@@ -70,6 +72,10 @@
 - **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
 - **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
 - **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
+- **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
+- **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
+- **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
+- **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -108,6 +114,135 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 113 — Global Micro-UX Refresh ✅
+
+**Objectif :** Doter les 11 pages de l'interface React d'un système cohérent d'animations, de micro-interactions et de squelettes de chargement, sans modifier la palette ni la structure des pages. Chaque action répond désormais avec un retour physique (press, pulsation) et chaque attente réseau est représentée par un squelette shimmer correspondant au layout réel.
+
+**Livrables :**
+- `frontend/src/index.css` — 5 `@keyframes` CSS (`shimmer`, `fade-in-up`, `scale-in`, `slide-in-right`, `count-pulse`) + 5 entrées `--animate-*` dans `@theme inline` (disponibles comme classes Tailwind) + classe `@layer components .skeleton-shimmer` (gradient 200 % animé)
+- `frontend/src/components/ui/skeleton.tsx` — 6 composants : `Skeleton` (rect shimmer aria-hidden), `SkeletonRow` (ligne de tableau N colonnes), `SkeletonCard` (3 rects), `SkeletonCardGrid` (grille de N cartes), `SkeletonChart` (bloc graphique), `SkeletonTable` (tableau complet N×N)
+- `frontend/src/components/ui/animated-number.tsx` — `AnimatedNumber` : count-up `requestAnimationFrame` cubic-out vers la valeur cible + pulsation CSS à l'arrivée
+- `frontend/src/components/PageTransition.tsx` — `PageTransition` (fade-in-up au montage) + `StaggerItem` (délai proportionnel à l'index, plafonné 400 ms)
+- `frontend/src/components/ui/button.tsx` — `active:scale-95` press feedback
+- `frontend/src/components/ui/badge.tsx` — `animate-scale-in` à chaque montage
+- `frontend/src/components/ui/card.tsx` — hover : `border-primary/30` + glow box-shadow subtil (`transition-[border-color,box-shadow]`)
+- `frontend/src/components/StreamingProgress.tsx` — barre de progression globale (done/total), `animate-ping` sur l'indicateur actif, stagger 40 ms par skill
+- `frontend/src/App.tsx` — indicateur de navigation animé (`animate-scale-in` sur l'underline actif) + hover `border-primary/30`
+- `frontend/src/components/MetricsDashboard.tsx` — `AnimatedNumber` sur les 5 métriques WebSocket, `SkeletonCardGrid` pendant le chargement initial
+- **11 pages** — `PageTransition` wrapper + `SkeletonTable`/`SkeletonCard` sur les états de chargement : `AnalyzePage`, `DashboardPage`, `HistoryPage`, `ScreenerPage`, `WatchlistPage`, `EsgPage`, `AlertsPage`, `SearchPage` (squelettes + `StaggerItem` sur résultats), `ComparePage`
+- `frontend/src/__tests__/Skeleton.test.tsx` — 9 tests (dimensions, colonnes, aria-hidden, classe shimmer)
+- `frontend/src/__tests__/AnimatedNumber.test.tsx` — 5 tests (valeur initiale, className, formatter, nodeName, tabular-nums)
+- `frontend/src/__tests__/PageTransition.test.tsx` — 8 tests (rendu, animate-fade-in-up, className supplémentaire, StaggerItem délai croissant, plafond 400 ms)
+
+**Version** : 10.0.0
+**Tests** : 1418 CI verts (inchangé — sprint frontend pur) ; 294 Vitest verts (+22 tests Sprint 113)
+
+---
+
+### Sprint 112 — Coût par skill : drill-down et tendance ✅
+
+**Objectif :** Prolonger le Dashboard v2 (Sprint 107) avec un drill-down sur le camembert « coût par skill » (clic → liste des analyses ayant utilisé ce skill sur la période) et une mini-tendance du coût total par jour. Les deux fonctions aident à piloter le budget API Claude : voir *où* part le coût (quels tickers/analyses par framework) et *comment il évolue* dans le temps.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `MetricsResponse.daily_cost: dict[str, float] = {}` (coût USD total par jour, clé `YYYY-MM-DD`, défaut `{}` → rétrocompatible) ; `get_metrics()` ajoute une 4e requête `daily_rows` (`GROUP BY to_char(date_trunc('day', created_at), 'YYYY-MM-DD')`) ; nouveaux schemas `SkillAnalysisEntry` (analysis_id / ticker / workflow_name / cost_usd / created_at) + `SkillAnalysesResponse` (skill / period_days / entries) ; méthode `get_skill_analyses(skill, days=30, limit=100)` filtrant `skills_used @> $2::jsonb` (`json.dumps([skill])`), tri `created_at DESC`
+- `app/api/main.py` — endpoint `GET /metrics/skill-analyses?skill=&days=30` (`skill` requis via `Query(..., min_length=1)` → 422 si absent ; `days` borné 1-365 → 422) ; import `SkillAnalysesResponse`
+- `frontend/src/types/index.ts` — `daily_cost: Record<string, number>` ajouté à `MetricsResponse` ; interfaces `SkillAnalysisEntry` + `SkillAnalysesResponse` (snake_case, miroir JSON FastAPI)
+- `frontend/src/api/metrics.ts` — `fetchSkillAnalyses(skill, days=30)` via `apiClient.request`
+- `frontend/src/components/DailyCostTrendChart.tsx` — `LineChart` recharts (coût total par jour, série triée par date asc, axe Y formaté `$`), états loading/error/empty
+- `frontend/src/components/SkillAnalysesDrilldown.tsx` — React Query `['skill-analyses', skill, days]` → tableau (Date / Ticker / Workflow / Coût), bouton « Fermer », états loading/error/empty
+- `frontend/src/components/SkillCostPieChart.tsx` — prop optionnelle `onSkillClick?: (skill: string) => void` ; `onClick` sur le `Pie` lit le skill via `slice.payload.skill` (type `PieSectorDataItem`), curseur pointeur quand cliquable
+- `frontend/src/pages/DashboardPage.tsx` — `DetailedMetricsSection` : state `selectedSkill`, `onSkillClick={setSelectedSkill}` sur le camembert, `DailyCostTrendChart` ajouté en pleine largeur (`lg:col-span-2`) dans la grille, `SkillAnalysesDrilldown` rendu sous la grille quand un skill est sélectionné (bouton Fermer → `setSelectedSkill(null)`)
+- `tests/orchestrator/test_metrics_v2.py` — +3 tests CI : `daily_cost` construit, `get_skill_analyses` mappe les entrées (+ vérifie le filtre jsonb sérialisé), `get_skill_analyses` vide ; helper `_build_orchestrator` étendu d'un 4e fetch `daily_rows`
+- `tests/orchestrator/test_integration_sync.py` — +2 tests CI : `/metrics/skill-analyses` retourne les analyses, 422 si `skill` absent
+- `frontend/src/__tests__/DailyCostTrendChart.test.tsx` — 4 tests Vitest (rendu avec données, vide, chargement, erreur ; recharts mocké)
+- `frontend/src/__tests__/SkillAnalysesDrilldown.test.tsx` — 5 tests Vitest (appel `fetchSkillAnalyses` avec skill+days, tableau, vide, erreur, bouton Fermer ; QueryClientProvider)
+- `frontend/src/__tests__/SkillCostPieChart.test.tsx` — +1 test Vitest (clic sur tranche → `onSkillClick` avec le skill ; mock `Pie` expose `onClick({payload})`)
+- `frontend/src/__tests__/DashboardPage.test.tsx` — mock `../api/metrics` complété (`daily_cost: {}` + `fetchSkillAnalyses`)
+
+**Version** : 9.9.0
+**Tests** : 1418 CI verts (hors e2e et evals) — +5 tests Sprint 112 ; 272 Vitest verts — +10 tests Sprint 112
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (recharts mocké) + helpers, et tests d'intégration backend (ruff `All checks passed`).
+
+### Sprint 109 — Screener v2 : filtres avancés et tri persistant ✅
+
+**Objectif :** Améliorer la page Screener avec un tri persistant entre sessions (localStorage), des filtres inline par label composite, un indicateur de fraîcheur des données (date de la dernière analyse par ticker), et un export CSV des résultats filtrés tel qu'affichés. Le screener est l'outil le plus utilisé après l'analyse individuelle ; ces améliorations de navigation ont un impact direct sur l'efficacité du flux d'investissement.
+
+**Livrables :**
+- `app/api/endpoints/screen.py` — `ScreenEntry.analyzed_at: str | None = None` (date ISO 8601 de l'analyse sous-jacente, défaut None → rétrocompatible ; None pour les tickers en échec)
+- `app/services/screener.py` — `analyzed_at` peuplé depuis `cached.created_at` (hit de cache) et `response.created_at` (analyse fraîche) ; chemin d'erreur laisse None
+- `frontend/src/types/index.ts` — champ `analyzed_at: string | null` ajouté à l'interface `ScreenEntry`
+- `frontend/src/lib/screenerView.ts` — helpers purs testables : `loadSortState`/`saveSortState` + `loadLabelFilter`/`saveLabelFilter` (persistance localStorage, clés `copilote_screener_sort` et `copilote_screener_label_filter`), `availableLabels()` (labels distincts dans l'ordre d'apparition), `formatFreshness()` (date relative FR + flag `stale` au-delà de 24h, seuil aligné sur le cache composite), `buildScreenerCsv()` (CSV échappé, 9 colonnes)
+- `frontend/src/components/ScreenerTable.tsx` — tri persistant sur 5 colonnes (ticker/score/composite/fraîcheur/coût), barre de filtres par label composite (chips dérivées des données + bouton « Réinitialiser »), colonne « Fraîcheur » (`FreshnessCell` : vert si frais, jaune si périmé), bouton `data-testid="export-filtered-csv"` (export client-side des résultats filtrés/triés avec BOM UTF-8)
+- `tests/api/test_screener.py` — +3 tests CI : `analyzed_at` reflète `created_at` (analyse fraîche), propagé depuis le cache, None si échec
+- `frontend/src/__tests__/screenerView.test.ts` — 14 tests Vitest : `formatFreshness` (null/instant/heures/périmé/date invalide), `availableLabels`, persistance tri + filtre (défaut, round-trip, clé invalide), `buildScreenerCsv` (en-tête + lignes, échappement virgules, cache oui/non + date)
+- `frontend/src/__tests__/ScreenerTable.test.tsx` — +7 tests Vitest (colonne Fraîcheur, chips de filtre, filtrage au clic, réinitialisation, persistance + restauration du tri, présence bouton export) ; `localStorage.clear()` en `beforeEach`
+- `frontend/src/__tests__/{ScreenerPage,ScreenerPdfExport}.test.tsx` — fixtures `ScreenResult` enrichies de `analyzed_at`
+
+**Version** : 9.8.0
+**Tests** : 1413 CI verts (hors e2e et evals) — +3 tests Sprint 109 ; 262 Vitest verts — +21 tests Sprint 109
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant + helpers purs, et tests d'intégration backend (ruff `All checks passed`).
+
+### Sprint 107 — Dashboard v2 : métriques détaillées ✅
+
+**Objectif :** Enrichir `DashboardPage` avec les métriques jusqu'ici manquantes — top tickers analysés, coût par skill, taux de cache par workflow, et évolution du nombre d'alertes dans le temps. Les données proviennent de `GET /metrics` (enrichi côté backend) et `GET /alerts` (Sprint 99), surfacées via 4 graphiques recharts dans une section dédiée.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `MetricsResponse` étendu avec `skills_cost: dict[str, float] = {}` (coût USD de chaque analyse réparti également entre ses skills via `cost_usd / NULLIF(jsonb_array_length(skills_used), 0)`) et `cache_by_workflow: dict[str, float] = {}` (taux de cache moyen `GROUP BY workflow_name`) ; `get_metrics()` fusionne le coût dans la requête `skill_rows` existante et ajoute une 3e requête `workflow_rows` ; défauts `{}` → rétrocompatibilité totale des constructions `MetricsResponse` existantes
+- `frontend/src/types/index.ts` — interfaces `TickerMetrics` et `MetricsResponse` en snake_case (miroir exact de la réponse JSON FastAPI, comme `AlertEntry`)
+- `frontend/src/api/metrics.ts` — `fetchMetrics(days=30)` via `apiClient.request`
+- `frontend/src/components/TopTickersChart.tsx` — `BarChart` recharts horizontal (top N par nombre d'analyses), états loading/error/empty
+- `frontend/src/components/SkillCostPieChart.tsx` — `PieChart` recharts (coût USD par skill, slices triées DESC, filtre les coûts nuls), états loading/error/empty
+- `frontend/src/components/CacheByWorkflowChart.tsx` — `BarChart` recharts horizontal (taux de cache en %, domaine 0-100), états loading/error/empty
+- `frontend/src/components/AlertsTimelineChart.tsx` — `BarChart` recharts (alertes regroupées par jour `YYYY-MM-DD`, triées asc), helper `bucketByDay()`, états loading/error/empty
+- `frontend/src/pages/DashboardPage.tsx` — nouvelle section `DetailedMetricsSection` : sélecteur de période `data-testid="metrics-period-select"` (7/30/90 j), React Query `['metrics', days]` + `['alerts', 'timeline']`, grille 2 colonnes des 4 graphiques ; insérée entre `MetricsDashboard` et `CompositeChartSection`
+- `tests/orchestrator/test_metrics_v2.py` — 3 tests CI : `get_metrics` construit `skills_cost`, construit `cache_by_workflow` (arrondi 4 décimales), dicts vides par défaut sans données
+- `tests/orchestrator/test_integration_sync.py` — +1 test CI : `/metrics` sérialise `skills_cost` et `cache_by_workflow` dans la réponse
+- `frontend/src/__tests__/{TopTickersChart,SkillCostPieChart,CacheByWorkflowChart,AlertsTimelineChart}.test.tsx` — 18 tests Vitest (recharts mocké) : rendu avec données, états vide/chargement/erreur ; `AlertsTimelineChart` vérifie le regroupement par jour + tri
+- `frontend/src/__tests__/DashboardPage.test.tsx` — mocks `../api/metrics` et `../api/alerts` ajoutés (tests existants déterministes)
+
+**Version** : 9.7.0
+**Tests** : 1410 CI verts (hors e2e et evals) — +4 tests Sprint 107 ; 241 Vitest verts — +18 tests Sprint 107
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur), Vitest composant (recharts mocké) et tests d'intégration backend.
+
+### Sprint 106 — Recherche sémantique RAG dans le frontend ✅
+
+**Objectif :** Exposer le RAG Qdrant (collection `investment_knowledge`) directement dans le frontend via une nouvelle page `/recherche` : champ de recherche en langage naturel qui retourne les passages de référence (formules, seuils, frameworks) avec leur source et score de similarité. Le corpus RAG (~67 documents) était jusqu'ici alimenté et interrogé uniquement côté backend (par les skills), jamais surfacé à l'utilisateur.
+
+**Livrables :**
+- `app/api/endpoints/semantic_search.py` — `GET /semantic-search?q=&k=5` : `SemanticSearchResponse(query, rag_enabled, results: list[Citation])` ; lit `request.app.state.rag_service` (None si `OPENAI_API_KEY` absente) → `rag_enabled=false` + `results=[]` sans erreur ; `q` requis (`min_length=2`, `max_length=500` → 422), `k` borné (`ge=1, le=20`)
+- `app/api/main.py` — `app.state.rag_service = rag_service` exposé dans le lifespan (jusque-là injecté uniquement dans les constructeurs de skills) ; import + `include_router(semantic_search_router)`
+- `frontend/src/types/index.ts` — interfaces `SemanticSearchResult` (source / extrait / score) et `SemanticSearchResponse` (query / rag_enabled / results)
+- `frontend/src/api/search.ts` — `fetchSemanticSearch(query, k=5)` via `apiClient.request`
+- `frontend/src/pages/SearchPage.tsx` — formulaire de recherche (Input + Button, soumission via state `query`, React Query `['semantic-search', query]` activé si ≥ 2 caractères) ; résultats en `Card` (source nettoyée + badge score coloré selon seuil 0.8/0.6 + extrait) ; états `search-idle` / `search-spinner` / `search-error` / `search-rag-disabled` / `search-empty` / `search-results`
+- `frontend/src/App.tsx` — route `/recherche` (ProtectedRoute) + NavItem "Recherche"
+- `frontend/vite.config.ts` — proxy `/semantic-search` → `http://localhost:8000`
+- `tests/api/test_semantic_search.py` — 5 tests CI : 200 + résultats mappés (rag_enabled=true), rag désactivé (rag_service None), paramètre `k` propagé, 422 query absente, 422 query trop courte
+- `frontend/src/__tests__/SearchPage.test.tsx` — 6 tests Vitest : rendu formulaire + état initial, `fetchSemanticSearch` appelé avec la requête, affichage des passages, état vide, avertissement RAG désactivé, message d'erreur API
+
+**Version** : 9.6.0
+**Tests** : 1406 CI verts (hors e2e et evals) — +5 tests Sprint 106 ; 223 Vitest verts — +6 tests Sprint 106
+
+---
+
+### Sprint 101 — Nettoyage `.claude/skills/` (clôture dette technique Sprint 100) ✅
+
+**Objectif :** Résoudre les deux points en suspens signalés en fin de Sprint 100 — le dépôt git imbriqué `.claude/skills/.git` (gitlink cassé sans `.gitmodules`) et le dossier orphelin `.claude/skills/investment/` — afin qu'un `git clone` du dépôt public ne récupère pas un submodule cassé.
+
+**Constat :** Vérification du dépôt distant — les deux points étaient **déjà résolus** par les commits intermédiaires `3ec7548` (« intégrer SKILL.md dans le repo principal — retire gitlink cassé ») et `d81c5dc`. C'étaient des artefacts purement locaux (synchronisation OneDrive de la machine de Yves), jamais présents sur le distant ni dans l'historique versionné.
+
+**Livrables :**
+- Vérification : 158 fichiers trackés sous `.claude/skills/` (dont les 16 SKILL.md), `.claude/skills` est un arbre normal (mode `040000`) et non un gitlink (mode `160000`) ; aucun `.git` imbriqué, aucun `.gitmodules`, aucun dossier `investment/` orphelin
+- `ROADMAP.md` — note de fin de Sprint 100 mise à jour pour pointer vers cette résolution ; état courant passé à v9.5.1 ; Sprint actif → 102
+- `prompt-mise-a-jour-roadmap.md` — réécrit pour le Sprint 102, retrait des avertissements périmés sur le `.git` imbriqué et le dossier orphelin
+
+**Version** : 9.5.1
+**Tests** : 1401 CI verts + 217 Vitest verts (inchangé — sprint de vérification et documentation, aucun changement de code applicatif)
+
+---
 
 ### Sprint 96 — Estimation rapide total_count via pg_class ✅
 
@@ -294,7 +429,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 - `tests/orchestrator/` (5 fichiers) — tests orchestrateur + intégration
 - `tests/load/test_load_smoke.py` — déplacé dans load/ existant
 
-**Note :** `.claude/skills/.git` (dépôt git imbriqué sans .gitmodules) — signalé à l'utilisateur pour décision ; `.claude/skills/investment/` — dossier orphelin, idem.
+**Note :** `.claude/skills/.git` (dépôt git imbriqué sans .gitmodules) — signalé à l'utilisateur pour décision ; `.claude/skills/investment/` — dossier orphelin, idem. → Résolus depuis : voir Sprint 101 ci-dessous.
 
 **Version** : 9.5.0
 **Tests** : 1401 CI verts (inchangé — réorganisation structurelle uniquement) ; 217 Vitest verts (inchangé)

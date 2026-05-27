@@ -220,6 +220,7 @@ export interface ScreenEntry {
   workflow_utilise: string
   cost_usd: number
   depuis_cache: boolean
+  analyzed_at: string | null
   erreur: string | null
 }
 
@@ -479,6 +480,56 @@ export interface AlertEntry {
 
 export interface AlertsResponse {
   alerts: AlertEntry[]
+}
+
+// ---- Métriques agrégées /metrics (Dashboard v2 — Sprint 107) ----
+// Champs en snake_case : ils reflètent la réponse JSON FastAPI (pas d'alias camelCase côté API)
+export interface TickerMetrics {
+  ticker: string
+  analyses: number
+  cost_usd: number
+}
+
+export interface MetricsResponse {
+  period_days: number
+  total_analyses: number
+  total_cost_usd: number
+  avg_cost_per_analysis: number
+  cache_hit_ratio_avg: number
+  top_tickers: TickerMetrics[]
+  skills_usage: Record<string, number>
+  skills_cost: Record<string, number>
+  cache_by_workflow: Record<string, number>
+  // coût USD total par jour (clé YYYY-MM-DD) — tendance quotidienne (Sprint 112)
+  daily_cost: Record<string, number>
+}
+
+// ---- Drill-down coût par skill /metrics/skill-analyses (Sprint 112) ----
+export interface SkillAnalysisEntry {
+  analysis_id: string
+  ticker: string
+  workflow_name: string
+  cost_usd: number
+  created_at: string
+}
+
+export interface SkillAnalysesResponse {
+  skill: string
+  period_days: number
+  entries: SkillAnalysisEntry[]
+}
+
+// ---- Recherche sémantique RAG (Sprint 106) ----
+export interface SemanticSearchResult {
+  source: string
+  extrait: string
+  score: number
+}
+
+export interface SemanticSearchResponse {
+  query: string
+  rag_enabled: boolean
+  results: SemanticSearchResult[]
 }
 
 export const WORKFLOWS: WorkflowOption[] = [

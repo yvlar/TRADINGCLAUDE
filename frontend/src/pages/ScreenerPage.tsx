@@ -4,6 +4,8 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { WorkflowSelector } from '../components/WorkflowSelector'
 import { ScreenerTable } from '../components/ScreenerTable'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 import { postScreen, exportScreen, downloadScreenerPdf } from '../api/analyze'
 import type { ScreenRequest, ScreenResult } from '../types'
 
@@ -65,6 +67,7 @@ export default function ScreenerPage() {
   }
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold mb-1">Screener multi-tickers</h2>
@@ -114,6 +117,10 @@ export default function ScreenerPage() {
         </div>
       )}
 
+      {screenMutation.isPending && (
+        <SkeletonTable rows={5} cols={7} />
+      )}
+
       {result && (
         <>
           <div className="flex gap-3">
@@ -151,5 +158,6 @@ export default function ScreenerPage() {
         </>
       )}
     </div>
+    </PageTransition>
   )
 }

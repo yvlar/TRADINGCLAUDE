@@ -4,6 +4,7 @@ import { AnalyzeForm } from '../components/AnalyzeForm'
 import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
 import { Badge } from '../components/ui/badge'
+import { PageTransition, StaggerItem } from '../components/PageTransition'
 import { streamAnalyze, postReport } from '../api/analyze'
 import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
@@ -106,53 +107,59 @@ export default function AnalyzePage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <h2 className="text-xl font-bold">Analyse individuelle</h2>
-          {depuisCache && (
-            <Badge variant="secondary" data-testid="cache-badge">
-              Score depuis cache (&lt;24h)
-            </Badge>
-          )}
+    <PageTransition>
+      <div className="space-y-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-xl font-bold">Analyse individuelle</h2>
+            {depuisCache && (
+              <Badge variant="secondary" data-testid="cache-badge">
+                Score depuis cache (&lt;24h)
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Saisissez un ticker et les ratios Graham pour lancer l'analyse multi-skills.
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Saisissez un ticker et les ratios Graham pour lancer l'analyse multi-skills.
-        </p>
+
+        <StaggerItem index={0}>
+          <AnalyzeForm onSubmit={handleSubmit} isLoading={isStreaming} />
+        </StaggerItem>
+
+        {streamError && (
+          <div
+            data-testid="error-message"
+            className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm animate-fade-in-up"
+          >
+            Erreur : {streamError}
+          </div>
+        )}
+
+        {isStreaming && (
+          <StreamingProgress
+            completedSkills={completedSkills}
+            activeSkill={activeSkill}
+            partialResult={partialResult}
+          />
+        )}
+
+        {result && (
+          <div className="animate-fade-in-up">
+            <AnalysisResult
+              result={result}
+              onDownloadPdf={handleDownloadPdf}
+              isPdfLoading={pdfMutation.isPending}
+            />
+          </div>
+        )}
+
+        {pdfMutation.isError && (
+          <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
+            Erreur PDF : {(pdfMutation.error as Error).message}
+          </div>
+        )}
       </div>
-
-      <AnalyzeForm onSubmit={handleSubmit} isLoading={isStreaming} />
-
-      {streamError && (
-        <div
-          data-testid="error-message"
-          className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm"
-        >
-          Erreur : {streamError}
-        </div>
-      )}
-
-      {isStreaming && (
-        <StreamingProgress
-          completedSkills={completedSkills}
-          activeSkill={activeSkill}
-          partialResult={partialResult}
-        />
-      )}
-
-      {result && (
-        <AnalysisResult
-          result={result}
-          onDownloadPdf={handleDownloadPdf}
-          isPdfLoading={pdfMutation.isPending}
-        />
-      )}
-
-      {pdfMutation.isError && (
-        <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
-          Erreur PDF : {(pdfMutation.error as Error).message}
-        </div>
-      )}
-    </div>
+    </PageTransition>
   )
 }

@@ -33,6 +33,7 @@ from app.api.endpoints.performance import router as performance_router
 from app.api.endpoints.report import router as report_router
 from app.api.endpoints.screen import router as screen_router
 from app.api.endpoints.screener_report import router as screener_report_router
+from app.api.endpoints.semantic_search import router as semantic_search_router
 from app.api.endpoints.telemetry import router as telemetry_router
 from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.watchlist import router as watchlist_router
@@ -49,6 +50,7 @@ from app.orchestrator.core import (
     MetricsResponse,
     Orchestrator,
     PagedHistoryResponse,
+    SkillAnalysesResponse,
 )
 from app.rag.client import RagClient
 from app.rag.embeddings import EmbeddingClient
@@ -487,6 +489,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.compare_service = compare_service
     app.state.orchestrator = orchestrator
     app.state.db_pool = db_pool
+    app.state.rag_service = rag_service
     app.state.qdrant_url = qdrant_url
     app.state.yahoo_extractor = yahoo_extractor
     app.state.sedar_extractor = sedar_extractor
@@ -547,6 +550,7 @@ app.include_router(performance_router)
 app.include_router(jobs_router)
 app.include_router(report_router)
 app.include_router(screen_router)
+app.include_router(semantic_search_router)
 app.include_router(telemetry_router)
 app.include_router(watchlist_router)
 app.include_router(ws_metrics_router)
@@ -722,6 +726,27 @@ async def metrics(
         raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
     orchestrator: Orchestrator = request.app.state.orchestrator
     return await orchestrator.get_metrics(days=days)
+
+
+@app.get(
+    "/metrics/skill-analyses",
+    response_model=SkillAnalysesResponse,
+    summary="Analyses ayant utilisé un skill donné (drill-down Sprint 112)",
+)
+async def metrics_skill_analyses(
+    request: Request,
+    skill: str = Query(..., min_length=1, max_length=100),
+    days: int = 30,
+) -> SkillAnalysesResponse:
+    """
+    Liste les analyses ayant utilisé `skill` sur la période (drill-down du camembert coût).
+    - `skill` : identifiant du skill (ex: `graham_analysis`)
+    - `days` : fenêtre de temps en jours (défaut 30, max 365)
+    """
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=422, detail="days doit être entre 1 et 365")
+    orchestrator: Orchestrator = request.app.state.orchestrator
+    return await orchestrator.get_skill_analyses(skill=skill, days=days)
 
 
 @app.get(

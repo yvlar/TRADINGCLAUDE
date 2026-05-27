@@ -300,6 +300,26 @@ class MetricsResponse(BaseModel):
     cache_hit_ratio_avg: float
     top_tickers: list[TickerMetrics]
     skills_usage: dict[str, int]
+    # coût USD attribué par skill (coût de l'analyse réparti également entre ses skills)
+    skills_cost: dict[str, float] = {}
+    # taux de cache moyen agrégé par workflow_name
+    cache_by_workflow: dict[str, float] = {}
+    # coût USD total par jour (clé YYYY-MM-DD) — tendance quotidienne (Sprint 112)
+    daily_cost: dict[str, float] = {}
+
+
+class SkillAnalysisEntry(BaseModel):
+    analysis_id: str
+    ticker: str
+    workflow_name: str
+    cost_usd: float
+    created_at: str
+
+
+class SkillAnalysesResponse(BaseModel):
+    skill: str
+    period_days: int
+    entries: list[SkillAnalysisEntry]
 
 
 class Orchestrator:
@@ -1670,12 +1690,48 @@ class Orchestrator:
 
         skill_rows = await self._db.fetch(
             """
-            SELECT skill, COUNT(*) AS nb
+            SELECT skill,
+                   COUNT(*) AS nb,
+                   COALESCE(
+                       SUM(cost_usd / NULLIF(jsonb_array_length(skills_used), 0)), 0
+                   ) AS cost
             FROM analysis_history,
                  jsonb_array_elements_text(skills_used) AS skill
             WHERE created_at >= NOW() - ($1 || ' days')::interval
             GROUP BY skill
             ORDER BY nb DESC
+            """,
+            str(days),
+        )
+
+        workflow_rows = await self._db.fetch(
+            """
+            SELECT
+                workflow_name,
+                COALESCE(AVG(
+                    CASE
+                        WHEN tokens_input + tokens_cache_read + tokens_cache_creation > 0
+                        THEN tokens_cache_read::float
+                             / (tokens_input + tokens_cache_read + tokens_cache_creation)
+                        ELSE 0
+                    END
+                ), 0) AS cache_ratio
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY workflow_name
+            ORDER BY workflow_name
+            """,
+            str(days),
+        )
+
+        daily_rows = await self._db.fetch(
+            """
+            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                   COALESCE(SUM(cost_usd), 0)                            AS cost
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY day
+            ORDER BY day
             """,
             str(days),
         )
@@ -1698,6 +1754,48 @@ class Orchestrator:
                 for row in ticker_rows
             ],
             skills_usage={row["skill"]: int(row["nb"]) for row in skill_rows},
+            skills_cost={
+                row["skill"]: round(float(row["cost"]), 6) for row in skill_rows
+            },
+            cache_by_workflow={
+                row["workflow_name"]: round(float(row["cache_ratio"]), 4)
+                for row in workflow_rows
+            },
+            daily_cost={
+                row["day"]: round(float(row["cost"]), 6) for row in daily_rows
+            },
+        )
+
+    async def get_skill_analyses(
+        self, skill: str, days: int = 30, limit: int = 100
+    ) -> SkillAnalysesResponse:
+        """Liste les analyses ayant utilisé `skill` sur la période (drill-down Sprint 112)."""
+        rows = await self._db.fetch(
+            """
+            SELECT id, ticker, workflow_name, cost_usd, created_at
+            FROM analysis_history
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+              AND skills_used @> $2::jsonb
+            ORDER BY created_at DESC
+            LIMIT $3
+            """,
+            str(days),
+            _json.dumps([skill]),
+            limit,
+        )
+        return SkillAnalysesResponse(
+            skill=skill,
+            period_days=days,
+            entries=[
+                SkillAnalysisEntry(
+                    analysis_id=str(row["id"]),
+                    ticker=row["ticker"],
+                    workflow_name=row["workflow_name"],
+                    cost_usd=round(float(row["cost_usd"]), 6),
+                    created_at=row["created_at"].isoformat(),
+                )
+                for row in rows
+            ],
         )
 
     async def get_history(

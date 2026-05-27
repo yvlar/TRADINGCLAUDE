@@ -21,6 +21,30 @@ vi.mock('../components/MetricsDashboard', () => ({
   MetricsDashboard: () => <div data-testid="metrics-dashboard" />,
 }))
 
+vi.mock('../api/metrics', () => ({
+  fetchMetrics: vi.fn().mockResolvedValue({
+    period_days: 30,
+    total_analyses: 0,
+    total_cost_usd: 0,
+    avg_cost_per_analysis: 0,
+    cache_hit_ratio_avg: 0,
+    top_tickers: [],
+    skills_usage: {},
+    skills_cost: {},
+    cache_by_workflow: {},
+    daily_cost: {},
+  }),
+  fetchSkillAnalyses: vi.fn().mockResolvedValue({
+    skill: 'graham_analysis',
+    period_days: 30,
+    entries: [],
+  }),
+}))
+
+vi.mock('../api/alerts', () => ({
+  fetchAlerts: vi.fn().mockResolvedValue({ alerts: [] }),
+}))
+
 // TickerComparisonChart utilise recharts SVG non disponible en jsdom
 vi.mock('../components/TickerComparisonChart', () => ({
   TickerComparisonChart: () => <div data-testid="ticker-comparison-chart-mock" />,

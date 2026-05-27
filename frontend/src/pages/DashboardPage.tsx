@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
+import { PageTransition } from '../components/PageTransition'
 import { MetricsDashboard } from '../components/MetricsDashboard'
 import { CompositeScoreHistory } from '../components/CompositeScoreHistory'
 import { CompositeScoreChart } from '../components/CompositeScoreChart'
 import { TickerComparisonChart } from '../components/TickerComparisonChart'
+import { TopTickersChart } from '../components/TopTickersChart'
+import { SkillCostPieChart } from '../components/SkillCostPieChart'
+import { CacheByWorkflowChart } from '../components/CacheByWorkflowChart'
+import { AlertsTimelineChart } from '../components/AlertsTimelineChart'
+import { DailyCostTrendChart } from '../components/DailyCostTrendChart'
+import { SkillAnalysesDrilldown } from '../components/SkillAnalysesDrilldown'
 import { ConflictsList } from '../components/ConflictsList'
 import { loadRecentAnalyses } from '../lib/recentAnalyses'
 import { getCompositeHistory, fetchEvalDrift } from '../api/analyze'
+import { fetchMetrics } from '../api/metrics'
+import { fetchAlerts } from '../api/alerts'
 import type { CompositeHistoryPoint, EvalDriftResult, RecentAnalysis } from '../types'
 
 function compositeColor(label: string): string {
@@ -94,6 +103,110 @@ function QualitySection() {
         <TickerQualityCard key={a.ticker} analysis={a} />
       ))}
     </div>
+  )
+}
+
+const PERIOD_OPTIONS = [7, 30, 90] as const
+
+function DetailedMetricsSection() {
+  const [days, setDays] = useState<number>(30)
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(null)
+
+  const metrics = useQuery({
+    queryKey: ['metrics', days],
+    queryFn: () => fetchMetrics(days),
+  })
+
+  const alerts = useQuery({
+    queryKey: ['alerts', 'timeline'],
+    queryFn: () => fetchAlerts(200),
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold">Métriques détaillées</h3>
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            data-testid="metrics-period-select"
+            aria-label="Période en jours"
+          >
+            {PERIOD_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {d} jours
+              </option>
+            ))}
+          </select>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Top tickers analysés
+            </p>
+            <TopTickersChart
+              tickers={metrics.data?.top_tickers ?? []}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Coût par skill (USD) — cliquer pour le détail
+            </p>
+            <SkillCostPieChart
+              skillsCost={metrics.data?.skills_cost ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+              onSkillClick={setSelectedSkill}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Taux de cache par workflow
+            </p>
+            <CacheByWorkflowChart
+              cacheByWorkflow={metrics.data?.cache_by_workflow ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Alertes dans le temps
+            </p>
+            <AlertsTimelineChart
+              alerts={alerts.data?.alerts ?? []}
+              isLoading={alerts.isLoading}
+              isError={alerts.isError}
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Tendance du coût total par jour (USD)
+            </p>
+            <DailyCostTrendChart
+              dailyCost={metrics.data?.daily_cost ?? {}}
+              isLoading={metrics.isLoading}
+              isError={metrics.isError}
+            />
+          </div>
+        </div>
+        {selectedSkill && (
+          <div className="mt-6">
+            <SkillAnalysesDrilldown
+              skill={selectedSkill}
+              days={days}
+              onClose={() => setSelectedSkill(null)}
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -292,23 +405,27 @@ function EvalDriftSection() {
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold mb-1">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">
-          Métriques live et qualité IA — composite_score, conflits inter-skills, historique.
-        </p>
+    <PageTransition>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold mb-1">Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            Métriques live et qualité IA — composite_score, conflits inter-skills, historique.
+          </p>
+        </div>
+
+        <MetricsDashboard />
+
+        <DetailedMetricsSection />
+
+        <CompositeChartSection />
+
+        <ComparisonSection />
+
+        <EvalDriftSection />
+
+        <QualitySection />
       </div>
-
-      <MetricsDashboard />
-
-      <CompositeChartSection />
-
-      <ComparisonSection />
-
-      <EvalDriftSection />
-
-      <QualitySection />
-    </div>
+    </PageTransition>
   )
 }

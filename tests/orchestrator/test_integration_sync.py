@@ -4,7 +4,13 @@ from __future__ import annotations
 import uuid
 
 from app.api.main import _VERSION, app
-from app.orchestrator.core import HistoryEntry, HistoryResponse, MetricsResponse
+from app.orchestrator.core import (
+    HistoryEntry,
+    HistoryResponse,
+    MetricsResponse,
+    SkillAnalysesResponse,
+    SkillAnalysisEntry,
+)
 
 TICKER_TEST = "TEST"
 
@@ -156,6 +162,55 @@ async def test_metrics_total_non_negatif(client):
     r = await client.get("/metrics?days=30")
     assert r.status_code == 200
     assert r.json()["total_analyses"] >= 0
+
+
+async def test_metrics_expose_skills_cost_et_cache_by_workflow(client):
+    """Sprint 107 — les nouveaux agrégats sont sérialisés dans la réponse /metrics."""
+    app.state.orchestrator.get_metrics.return_value = MetricsResponse(
+        period_days=30,
+        total_analyses=2,
+        total_cost_usd=0.02,
+        avg_cost_per_analysis=0.01,
+        cache_hit_ratio_avg=0.6,
+        top_tickers=[],
+        skills_usage={"graham_analysis": 2},
+        skills_cost={"graham_analysis": 0.012},
+        cache_by_workflow={"value_graham": 0.72},
+    )
+    r = await client.get("/metrics?days=30")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["skills_cost"] == {"graham_analysis": 0.012}
+    assert body["cache_by_workflow"] == {"value_graham": 0.72}
+
+
+async def test_metrics_skill_analyses_drilldown(client):
+    """Sprint 112 — /metrics/skill-analyses retourne les analyses d'un skill."""
+    app.state.orchestrator.get_skill_analyses.return_value = SkillAnalysesResponse(
+        skill="graham_analysis",
+        period_days=30,
+        entries=[
+            SkillAnalysisEntry(
+                analysis_id="abc",
+                ticker="BNS.TO",
+                workflow_name="value_graham",
+                cost_usd=0.012,
+                created_at="2026-05-25T10:00:00+00:00",
+            )
+        ],
+    )
+    r = await client.get("/metrics/skill-analyses?skill=graham_analysis&days=30")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["skill"] == "graham_analysis"
+    assert len(body["entries"]) == 1
+    assert body["entries"][0]["ticker"] == "BNS.TO"
+
+
+async def test_metrics_skill_analyses_skill_requis(client):
+    """Sprint 112 — skill absent → 422."""
+    r = await client.get("/metrics/skill-analyses?days=30")
+    assert r.status_code == 422
 
 
 async def test_extract_endpoint_existe(client):

@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { HistoryTable } from '../components/HistoryTable'
+import { SkeletonTable } from '../components/ui/skeleton'
+import { PageTransition } from '../components/PageTransition'
 import { getHistoryPaged, downloadTickerPdf, deleteAnalysis } from '../api/analyze'
 import { downloadAnnotationsCsv, downloadAnnotationsXlsx } from '../api/annotations'
 import { apiClient, ApiError } from '../api/client'
@@ -164,6 +166,7 @@ export default function HistoryPage() {
   const isSearchMode = !!(submitted?.q && !submitted?.ticker)
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold mb-1">Historique des analyses</h2>
@@ -299,6 +302,8 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {historyQuery.isLoading && submitted && <SkeletonTable rows={pageSize} cols={6} />}
+
       {entries.length > 0 && (
         <>
           <HistoryTable
@@ -346,5 +351,6 @@ export default function HistoryPage() {
         </p>
       )}
     </div>
+    </PageTransition>
   )
 }

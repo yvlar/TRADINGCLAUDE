@@ -1,14 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { AnimatedNumber } from './ui/animated-number'
+import { SkeletonCardGrid } from './ui/skeleton'
 import { useMetrics } from '../api/ws'
 
 function MetricCard({
   label,
-  value,
+  numericValue,
+  displayValue,
+  formatter,
   sub,
 }: {
   label: string
-  value: string | number
+  numericValue?: number
+  displayValue?: string
+  formatter?: (n: number) => string
   sub?: string
 }) {
   return (
@@ -17,7 +23,13 @@ function MetricCard({
         <CardTitle>{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-bold tabular-nums">{value}</p>
+        <p className="text-3xl font-bold">
+          {numericValue !== undefined ? (
+            <AnimatedNumber value={numericValue} formatter={formatter} />
+          ) : (
+            <span className="tabular-nums">{displayValue}</span>
+          )}
+        </p>
         {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
       </CardContent>
     </Card>
@@ -49,35 +61,35 @@ export function MetricsDashboard() {
         </div>
       )}
 
-      {!data && !error && (
-        <p className="text-muted-foreground text-sm">En attente des données...</p>
-      )}
+      {!data && !error && <SkeletonCardGrid count={5} />}
 
       {data && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <MetricCard
             label="Jobs en cours"
-            value={data.jobs_en_cours}
+            numericValue={data.jobs_en_cours}
             sub="actifs maintenant"
           />
           <MetricCard
             label="Jobs échoués 1h"
-            value={data.jobs_echoues_1h}
+            numericValue={data.jobs_echoues_1h}
             sub="dernière heure"
           />
           <MetricCard
             label="Coût total"
-            value={`$${data.cout_total_1h_usd.toFixed(3)}`}
+            numericValue={data.cout_total_1h_usd}
+            formatter={(n) => `$${n.toFixed(3)}`}
             sub="aujourd'hui (USD)"
           />
           <MetricCard
             label="Taux cache"
-            value={`${(data.cache_hit_ratio * 100).toFixed(0)}%`}
+            numericValue={data.cache_hit_ratio * 100}
+            formatter={(n) => `${n.toFixed(0)}%`}
             sub="hits Redis"
           />
           <MetricCard
             label="Analyses 24h"
-            value={data.analyses_24h}
+            numericValue={data.analyses_24h}
             sub="requêtes"
           />
         </div>
