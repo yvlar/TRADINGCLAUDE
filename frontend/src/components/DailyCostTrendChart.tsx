@@ -7,6 +7,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART } from '../lib/colors'
 
 interface Props {
   dailyCost: Record<string, number>
@@ -24,9 +26,9 @@ function toSeries(dailyCost: Record<string, number>): { date: string; cost: numb
 export function DailyCostTrendChart({ dailyCost, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="daily-cost-loading">
-        Chargement...
-      </p>
+      <div data-testid="daily-cost-loading">
+        <Skeleton className="h-[220px] w-full" />
+      </div>
     )
   }
 
@@ -52,24 +54,24 @@ export function DailyCostTrendChart({ dailyCost, isLoading, isError }: Props) {
     <div data-testid="daily-cost-chart">
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={48}
             tickFormatter={(value) => `$${Number(value).toFixed(3)}`}
           />
           <Tooltip
-            cursor={{ stroke: '#1e293b' }}
+            cursor={{ stroke: CHART.cursor }}
             contentStyle={{
-              background: '#0f172a',
-              border: '1px solid #334155',
+              background: CHART.tooltipBg,
+              border: `1px solid ${CHART.tooltipBorder}`,
               borderRadius: 6,
               fontSize: 12,
             }}
@@ -78,7 +80,7 @@ export function DailyCostTrendChart({ dailyCost, isLoading, isError }: Props) {
           <Line
             type="monotone"
             dataKey="cost"
-            stroke="#4ade80"
+            stroke={CHART.bull}
             strokeWidth={2}
             dot={false}
             isAnimationActive={false}

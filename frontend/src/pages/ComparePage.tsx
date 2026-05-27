@@ -26,9 +26,9 @@ const ROWS: Row[] = [
 function verdictBadgeClass(value: string | null | undefined): string {
   if (!value) return 'bg-muted text-muted-foreground'
   const v = value.toUpperCase()
-  if (v === 'FORT' || v === 'COMPOUNDER' || v === 'WIDE' || v === 'ACHETER') return 'bg-green-100 text-green-800'
-  if (v === 'MODERE' || v === 'NARROW' || v === 'CONSERVER') return 'bg-yellow-100 text-yellow-800'
-  if (v === 'FAIBLE' || v === 'REJETER' || v === 'NONE' || v === 'EVITER') return 'bg-red-100 text-red-800'
+  if (v === 'FORT' || v === 'COMPOUNDER' || v === 'WIDE' || v === 'ACHETER') return 'bg-bull/15 text-bull'
+  if (v === 'MODERE' || v === 'NARROW' || v === 'CONSERVER') return 'bg-neutral/15 text-neutral'
+  if (v === 'FAIBLE' || v === 'REJETER' || v === 'NONE' || v === 'EVITER') return 'bg-bear/15 text-bear'
   return 'bg-muted text-muted-foreground'
 }
 
@@ -204,7 +204,7 @@ export default function ComparePage() {
                   <th
                     key={c.ticker}
                     className={`text-center p-2 border-b border-border font-semibold ${
-                      i === bestScoreIndex ? 'bg-yellow-50' : ''
+                      i === bestScoreIndex ? 'bg-primary/10' : ''
                     }`}
                     data-testid={`compare-col-${c.ticker}`}
                   >
@@ -232,7 +232,7 @@ export default function ComparePage() {
                         {tickerErrors[c.ticker] && (
                           <p
                             data-testid={`analyze-error-${c.ticker}`}
-                            className="text-xs text-red-600 font-normal"
+                            className="text-xs text-bear font-normal"
                           >
                             {tickerErrors[c.ticker]}
                           </p>
@@ -254,7 +254,7 @@ export default function ComparePage() {
                     return (
                       <td
                         key={c.ticker}
-                        className={`text-center p-2 ${isHighlighted ? 'bg-yellow-100 font-semibold' : ''}`}
+                        className={`text-center p-2 ${isHighlighted ? 'bg-primary/10 font-semibold' : ''}`}
                         data-testid={`compare-cell-${row.key}-${c.ticker}`}
                       >
                         {isBadgeRow(row.key) && val !== null ? (

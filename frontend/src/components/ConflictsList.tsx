@@ -17,7 +17,7 @@ export function ConflictsList({ conflicts }: ConflictsListProps) {
   return (
     <ul data-testid="conflicts-list" className="space-y-1">
       {conflicts.map((c, i) => (
-        <li key={i} className="text-xs text-yellow-400 flex items-start gap-1">
+        <li key={i} className="text-xs text-neutral flex items-start gap-1">
           <span aria-hidden="true">⚠</span>
           <span>{c}</span>
         </li>

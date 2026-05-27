@@ -7,11 +7,8 @@ import {
   ResponsiveContainer,
   type PieSectorDataItem,
 } from 'recharts'
-
-const SLICE_COLORS = [
-  '#60a5fa', '#4ade80', '#fb923c', '#c084fc', '#f87171',
-  '#facc15', '#2dd4bf', '#f472b6', '#a3e635', '#38bdf8',
-]
+import { Skeleton } from './ui/skeleton'
+import { CHART, SERIES } from '../lib/colors'
 
 interface Props {
   skillsCost: Record<string, number>
@@ -23,9 +20,9 @@ interface Props {
 export function SkillCostPieChart({ skillsCost, isLoading, isError, onSkillClick }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="skill-cost-loading">
-        Chargement...
-      </p>
+      <div data-testid="skill-cost-loading">
+        <Skeleton className="h-[260px] w-full" />
+      </div>
     )
   }
 
@@ -70,13 +67,13 @@ export function SkillCostPieChart({ skillsCost, isLoading, isError, onSkillClick
             cursor={onSkillClick ? 'pointer' : undefined}
           >
             {data.map((entry, i) => (
-              <Cell key={entry.skill} fill={SLICE_COLORS[i % SLICE_COLORS.length]} />
+              <Cell key={entry.skill} fill={SERIES[i % SERIES.length]} />
             ))}
           </Pie>
           <Tooltip
             contentStyle={{
-              background: '#0f172a',
-              border: '1px solid #334155',
+              background: CHART.tooltipBg,
+              border: `1px solid ${CHART.tooltipBorder}`,
               borderRadius: 6,
               fontSize: 12,
             }}

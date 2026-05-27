@@ -62,7 +62,6 @@ describe('CompositeScoreChart', () => {
   it('affiche l\'état de chargement', () => {
     render(<CompositeScoreChart data={[]} isLoading />)
     expect(screen.getByTestId('chart-loading')).toBeInTheDocument()
-    expect(screen.getByText('Chargement...')).toBeInTheDocument()
   })
 
   it('affiche un message d\'erreur', () => {

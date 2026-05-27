@@ -53,21 +53,27 @@ function verdictVariant(verdict: string): 'success' | 'danger' | 'warning' | 'se
 }
 
 interface StreamingProgressProps {
+  /** Skills planifiés (event `plan`) — détermine le pipeline complet et le dénominateur. */
+  plannedSkills?: string[]
   completedSkills: string[]
   activeSkill: string | null
   partialResult: Partial<AnalyzeResponse>
 }
 
 export function StreamingProgress({
+  plannedSkills = [],
   completedSkills,
   activeSkill,
   partialResult,
 }: StreamingProgressProps) {
-  const allVisible = activeSkill ? [...completedSkills, activeSkill] : completedSkills
-  const total = allVisible.length
+  // Pipeline ordonné : liste planifiée si disponible, sinon repli sur ce qui a été observé.
+  const fallback = activeSkill ? [...completedSkills, activeSkill] : completedSkills
+  const order = plannedSkills.length > 0 ? plannedSkills : fallback
+
+  const total = order.length
   const done = completedSkills.length
 
-  if (allVisible.length === 0) return null
+  if (order.length === 0) return null
 
   const progressPct = total > 0 ? Math.round((done / total) * 100) : 0
 
@@ -86,9 +92,10 @@ export function StreamingProgress({
         </span>
       </div>
 
-      {allVisible.map((skillId, index) => {
+      {order.map((skillId, index) => {
         const isActive = skillId === activeSkill
         const isDone = completedSkills.includes(skillId)
+        const isPending = !isActive && !isDone
         const verdict = isDone ? skillVerdict(skillId, partialResult) : undefined
         const label = SKILL_LABELS[skillId] ?? skillId
         const delay = Math.min(index * 40, 300)
@@ -99,7 +106,7 @@ export function StreamingProgress({
             className="animate-fade-in-up"
             style={{ animationDelay: `${delay}ms` }}
           >
-            <Card className={isActive ? 'border-primary/60' : ''}>
+            <Card className={isActive ? 'border-primary/60' : isPending ? 'opacity-60' : ''}>
               <CardContent className="pt-3 pb-3">
                 <div className="flex items-center gap-2">
                   {isActive ? (
@@ -111,15 +118,23 @@ export function StreamingProgress({
                       <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75 animate-ping" />
                       <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
                     </span>
-                  ) : (
+                  ) : isDone ? (
                     <span
                       data-testid={`skill-done-${skillId}`}
-                      className="text-green-400 text-sm shrink-0"
+                      className="text-bull text-sm shrink-0"
                     >
                       ✓
                     </span>
+                  ) : (
+                    <span
+                      data-testid={`skill-pending-${skillId}`}
+                      className="h-3 w-3 shrink-0 rounded-full border border-muted-foreground/40"
+                      aria-label="En attente"
+                    />
                   )}
-                  <span className="text-sm font-medium">{label}</span>
+                  <span className={`text-sm font-medium ${isPending ? 'text-muted-foreground' : ''}`}>
+                    {label}
+                  </span>
                   {verdict && (
                     <Badge
                       variant={verdictVariant(verdict)}

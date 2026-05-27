@@ -7,6 +7,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { Skeleton } from './ui/skeleton'
+import { CHART } from '../lib/colors'
 
 interface Props {
   cacheByWorkflow: Record<string, number>
@@ -17,9 +19,9 @@ interface Props {
 export function CacheByWorkflowChart({ cacheByWorkflow, isLoading, isError }: Props) {
   if (isLoading) {
     return (
-      <p className="text-xs text-muted-foreground py-4" data-testid="cache-workflow-loading">
-        Chargement...
-      </p>
+      <div data-testid="cache-workflow-loading">
+        <Skeleton className="h-[140px] w-full" />
+      </div>
     )
   }
 
@@ -47,32 +49,32 @@ export function CacheByWorkflowChart({ cacheByWorkflow, isLoading, isError }: Pr
     <div data-testid="cache-workflow-chart">
       <ResponsiveContainer width="100%" height={Math.max(140, data.length * 36)}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
           <XAxis
             type="number"
             domain={[0, 100]}
             unit="%"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
           />
           <YAxis
             type="category"
             dataKey="workflow"
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
+            tick={{ fontSize: 10, fill: CHART.axis }}
             tickLine={false}
             width={130}
           />
           <Tooltip
-            cursor={{ fill: '#1e293b' }}
+            cursor={{ fill: CHART.cursor }}
             contentStyle={{
-              background: '#0f172a',
-              border: '1px solid #334155',
+              background: CHART.tooltipBg,
+              border: `1px solid ${CHART.tooltipBorder}`,
               borderRadius: 6,
               fontSize: 12,
             }}
             formatter={(value) => [`${value}%`, 'Taux de cache'] as [string, string]}
           />
-          <Bar dataKey="pct" fill="#4ade80" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+          <Bar dataKey="pct" fill={CHART.bull} radius={[0, 4, 4, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

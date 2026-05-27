@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 113 complété**
+**Dernière mise à jour : 2026-05-27 — Sprint 114 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.0.0 |
+| **Version** | 10.1.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 114 — à définir |
-| **Dernier sprint complété** | Sprint 113 — Global Micro-UX Refresh ✅ |
+| **Sprint actif** | Sprint 115 — à définir |
+| **Dernier sprint complété** | Sprint 114 — Quick wins UX/UI (tokens, skeletons, a11y, progression) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -114,6 +114,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 114 — Quick wins UX/UI (tokens sémantiques, skeletons, accessibilité, progression) ✅
+
+**Objectif :** Lot de quick wins issus d'un audit UX/UI senior — combler quatre lacunes transverses sans changer la structure des pages : (A1) tokeniser les couleurs financières positif/négatif/neutre et supprimer toute couleur en dur (utilities Tailwind + hex recharts) ; (A2) corriger la barre de progression du streaming qui affichait un pourcentage trompeur ; (A3) uniformiser les états de chargement (squelettes partout, fin des « Chargement… » texte) ; (A4) accessibilité de base (mouvement réduit + tri de tableau au clavier).
+
+**Livrables :**
+- **A1 — Tokens sémantiques** : `frontend/src/index.css` — variables `--bull` / `--bear` / `--neutral` (`:root`) + mappage `--color-bull/bear/neutral` dans `@theme inline` (génère `text-bull`, `bg-bull/15`, `border-bear/40`, etc.). Nouveau module `frontend/src/lib/colors.ts` — `CHART` (bull/bear/neutral + grid/axis/tooltip/cursor) et `SERIES` (palette catégorielle) : source unique des couleurs recharts (les attributs SVG ne résolvent pas `var()`). Remplacement de **~80 hex** et **~43 utilities** `text-green-400`/`#4ade80`/… par les tokens dans badge, ScreenerTable, HistoryTable, WatchlistTable, AnalysisResult, ConflictsList, StreamingProgress, MetricsDashboard, AnalyzeForm, DashboardPage, ComparePage, AdminPage, RegisterPage et les 10 composants de graphiques recharts
+- **A2 — Progression fidèle** : `app/orchestrator/core.py` — méthode `Orchestrator._planned_skill_ids()` (liste ordonnée des skills qui s'exécuteront réellement, mêmes conditions que l'exécution) + nouvel event SSE `plan` (`{"skills": [...]}`) émis au début de `stream_company_analysis`. Frontend : type `SSEPlan` + branche `plan` dans `AnalyzePage`, `StreamingProgress` utilise désormais la liste planifiée comme dénominateur (`done/total` correct) et affiche les skills **en attente** (pastille creuse) en plus de terminés (✓) et actif (ping)
+- **A3 — Squelettes partout** : remplacement des 11 placeholders texte « Chargement… » par `Skeleton`/`SkeletonTable` (testids préservés) dans `CompositeScoreChart`, `EsgHistoryChart`, `TickerComparisonChart`, `SkillCostPieChart`, `TopTickersChart`, `CacheByWorkflowChart`, `DailyCostTrendChart`, `AlertsTimelineChart`, `CompositeScoreHistory`, `SkillAnalysesDrilldown`
+- **A4 — Accessibilité** : `index.css` — bloc `@media (prefers-reduced-motion: reduce)` neutralisant animations/transitions (WCAG 2.3.3) ; `ScreenerTable` — en-têtes de tri refondus en `<button>` focusables + `aria-sort` sur le `<th>`, icônes de tri `aria-hidden`
+- **Tests** : `tests/orchestrator/test_planned_skills.py` (5 tests — workflow/flags/dépendance munger↔thesis/esg hors workflow/workflow inconnu) ; `frontend/src/__tests__/StreamingProgress.test.tsx` (2 tests — dénominateur planifié + repli) ; 3 tests chart adaptés (assertion texte → testid skeleton) + `ComparePage.test` (highlight `bg-primary`)
+
+**Version** : 10.1.0
+**Tests** : 1423 CI verts (+5 backend) ; 296 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff clean
+
+---
 
 ### Sprint 113 — Global Micro-UX Refresh ✅
 

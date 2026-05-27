@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { getCompositeHistory } from '../api/analyze'
+import { Skeleton } from './ui/skeleton'
 
 function scoreLabelColor(label: string): string {
-  if (label === 'FORT') return 'text-green-400'
-  if (label === 'MODÉRÉ' || label === 'MODERE') return 'text-yellow-400'
-  return 'text-red-400'
+  if (label === 'FORT') return 'text-bull'
+  if (label === 'MODÉRÉ' || label === 'MODERE') return 'text-neutral'
+  return 'text-bear'
 }
 
 interface CompositeScoreHistoryProps {
@@ -19,7 +20,13 @@ export function CompositeScoreHistory({ ticker }: CompositeScoreHistoryProps) {
   })
 
   if (isLoading) {
-    return <p className="text-xs text-muted-foreground">Chargement...</p>
+    return (
+      <div className="space-y-1" data-testid="composite-history-loading">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-4/6" />
+      </div>
+    )
   }
 
   if (isError) {

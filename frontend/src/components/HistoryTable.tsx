@@ -74,10 +74,10 @@ export function HistoryTable({
                       <span
                         className={
                           entry.defensive_score >= 6
-                            ? 'text-green-400 font-semibold'
+                            ? 'text-bull font-semibold'
                             : entry.defensive_score >= 4
-                            ? 'text-yellow-400 font-semibold'
-                            : 'text-red-400 font-semibold'
+                            ? 'text-neutral font-semibold'
+                            : 'text-bear font-semibold'
                         }
                       >
                         {entry.defensive_score}/8

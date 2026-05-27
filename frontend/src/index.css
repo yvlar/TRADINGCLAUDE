@@ -48,6 +48,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
+  /* Couleurs sémantiques financières — source unique positif/négatif/neutre */
+  --color-bull: hsl(var(--bull));
+  --color-bear: hsl(var(--bear));
+  --color-neutral: hsl(var(--neutral));
+
   /* Animations disponibles comme classes Tailwind */
   --animate-shimmer:        shimmer 1.8s ease-in-out infinite;
   --animate-fade-in-up:     fade-in-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -76,6 +81,10 @@
     --input: 222 47% 18%;
     --ring: 217 91% 60%;
     --radius: 0.5rem;
+    /* Sémantique financière : bull (positif), bear (négatif), neutral (modéré) */
+    --bull: 142 71% 58%;
+    --bear: 0 89% 71%;
+    --neutral: 38 92% 56%;
   }
 }
 
@@ -101,5 +110,17 @@
     background-size: 200% 100%;
     animation: var(--animate-shimmer);
     border-radius: var(--radius-md);
+  }
+}
+
+/* Accessibilité — respecte la préférence système de mouvement réduit (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
