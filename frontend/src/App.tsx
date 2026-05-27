@@ -22,14 +22,21 @@ function NavItem({ to, label }: { to: string; label: string }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+        `relative px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors duration-150 ${
           isActive
             ? 'text-foreground border-primary'
-            : 'text-muted-foreground border-transparent hover:text-foreground'
+            : 'text-muted-foreground border-transparent hover:text-foreground hover:border-primary/30'
         }`
       }
     >
-      {label}
+      {({ isActive }) => (
+        <>
+          {label}
+          {isActive && (
+            <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary animate-scale-in" />
+          )}
+        </>
+      )}
     </NavLink>
   )
 }

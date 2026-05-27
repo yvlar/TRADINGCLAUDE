@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader } from '../components/ui/card'
+import { PageTransition } from '../components/PageTransition'
 import { MetricsDashboard } from '../components/MetricsDashboard'
 import { CompositeScoreHistory } from '../components/CompositeScoreHistory'
 import { CompositeScoreChart } from '../components/CompositeScoreChart'
@@ -404,25 +405,27 @@ function EvalDriftSection() {
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold mb-1">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">
-          Métriques live et qualité IA — composite_score, conflits inter-skills, historique.
-        </p>
+    <PageTransition>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold mb-1">Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            Métriques live et qualité IA — composite_score, conflits inter-skills, historique.
+          </p>
+        </div>
+
+        <MetricsDashboard />
+
+        <DetailedMetricsSection />
+
+        <CompositeChartSection />
+
+        <ComparisonSection />
+
+        <EvalDriftSection />
+
+        <QualitySection />
       </div>
-
-      <MetricsDashboard />
-
-      <DetailedMetricsSection />
-
-      <CompositeChartSection />
-
-      <ComparisonSection />
-
-      <EvalDriftSection />
-
-      <QualitySection />
-    </div>
+    </PageTransition>
   )
 }

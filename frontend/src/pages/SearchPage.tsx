@@ -6,6 +6,8 @@ import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
+import { SkeletonCard } from '../components/ui/skeleton'
+import { PageTransition, StaggerItem } from '../components/PageTransition'
 import type { SemanticSearchResult } from '../types'
 
 function scoreBadgeVariant(score: number): 'success' | 'warning' | 'secondary' {
@@ -60,6 +62,7 @@ export default function SearchPage() {
   const ragDisabled = data !== undefined && !data.rag_enabled
 
   return (
+    <PageTransition>
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">Recherche sémantique</h1>
@@ -87,9 +90,9 @@ export default function SearchPage() {
           Entrez une requête d'au moins 2 caractères pour interroger le corpus.
         </p>
       ) : isLoading ? (
-        <p data-testid="search-spinner" className="text-muted-foreground">
-          Recherche en cours...
-        </p>
+        <div className="space-y-3" data-testid="search-spinner">
+          {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
       ) : isError ? (
         <p data-testid="search-error" className="text-destructive">
           Impossible d'effectuer la recherche.
@@ -105,10 +108,13 @@ export default function SearchPage() {
       ) : (
         <div data-testid="search-results" className="space-y-3">
           {results.map((result, i) => (
-            <ResultCard key={`${result.source}-${i}`} result={result} index={i} />
+            <StaggerItem key={`${result.source}-${i}`} index={i}>
+              <ResultCard result={result} index={i} />
+            </StaggerItem>
           ))}
         </div>
       )}
     </div>
+    </PageTransition>
   )
 }

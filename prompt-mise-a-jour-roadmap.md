@@ -1,22 +1,20 @@
-# Sprint 113 — à définir
+# Sprint 114 — à définir
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v9.9.0 — Sprint 112 complété)
+## État du projet (v10.0.0 — Sprint 113 complété)
 
 Le dépôt est propre, publiable sur GitHub, et aucune dette technique n'est en suspens.
 
-**Nouveauté Sprint 112** — Le Dashboard v2 gagne deux outils de pilotage du budget API Claude :
-- **Drill-down coût par skill** — clic sur une tranche du camembert « coût par skill » → tableau des analyses
-  ayant utilisé ce skill sur la période (date / ticker / workflow / coût). Backend :
-  `GET /metrics/skill-analyses?skill=&days=30` (`Orchestrator.get_skill_analyses`, filtre jsonb
-  `skills_used @> [skill]`) ; frontend : `SkillAnalysesDrilldown` (React Query) + prop `onSkillClick` sur
-  `SkillCostPieChart`
-- **Tendance du coût total par jour** — courbe `DailyCostTrendChart` (LineChart pleine largeur) alimentée par
-  le nouveau champ `MetricsResponse.daily_cost` (dict `YYYY-MM-DD → coût USD`, calculé par une requête
-  `GROUP BY date_trunc('day', created_at)` dans `get_metrics()`)
+**Nouveauté Sprint 113** — Global Micro-UX Refresh : toutes les 11 pages React gagnent un système cohérent d'animations et de micro-interactions :
+- **Système d'animations CSS** — 5 `@keyframes` (`shimmer`, `fade-in-up`, `scale-in`, `slide-in-right`, `count-pulse`) + classe `.skeleton-shimmer` (gradient 200% animé) déclarés dans `index.css` comme utilities Tailwind
+- **Skeleton loaders** — `SkeletonTable`, `SkeletonCard`, `SkeletonCardGrid`, `SkeletonChart` remplacent tous les états "Chargement..." par des blocs shimmer correspondant au layout réel (DashboardPage, HistoryPage, ScreenerPage, WatchlistPage, EsgPage, AlertsPage, SearchPage, ComparePage)
+- **AnimatedNumber** — count-up `requestAnimationFrame` cubic-out + pulsation CSS sur les 5 métriques WebSocket du Dashboard
+- **PageTransition + StaggerItem** — fade-in-up à chaque navigation ; cascade décalée 55 ms/item sur les listes (SearchPage résultats, AnalyzePage form, StreamingProgress skills)
+- **UI primitives** — boutons `active:scale-95` (press feedback), badges `animate-scale-in` (pop au montage), cartes `hover:border-primary/30` + box-shadow glow, `StreamingProgress` avec barre de progression globale (done/total) et indicateur `animate-ping`
+- **Navigation** — indicateur actif `animate-scale-in` + hover `border-primary/30`
 
 **Fonctionnalités actives** :
 - 18 skills (16 tier2 + 2 tier1), orchestrateur multi-workflow
@@ -27,20 +25,20 @@ Le dépôt est propre, publiable sur GitHub, et aucune dette technique n'est en 
 - Tableau de bord alertes Celery (Sprint 99) + page Alertes `/alerts`
 - RAG Qdrant, Langfuse, Redis cache, Celery beat
 - Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages
-- 1418 CI pytest verts + 272 Vitest verts + 4 jobs CI GitHub Actions opérationnels
+- 1418 CI pytest verts + 294 Vitest verts + 4 jobs CI GitHub Actions opérationnels
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (100 lignes, pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v9.9.0, Sprint 112 ✅
+2. `ROADMAP.md` — état courant v10.0.0, Sprint 113 ✅
 3. `.claude/rules/` — 16 fichiers de règles path-scoped (conventions, architecture, tests)
 4. `docs/cheatsheet.md` — toutes les commandes opérationnelles
 
 ---
 
-## TÂCHE — Sprint 113
+## TÂCHE — Sprint 114
 
 **Ce sprint est à définir par Yves.** Choisir l'un des sprints suggérés ci-dessous, ou en spécifier un autre.
 
@@ -57,37 +55,37 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
   et `cd frontend && node node_modules/vitest/vitest.mjs run`
 - Lint/typecheck : `node node_modules/typescript/bin/tsc --noEmit` + `node node_modules/eslint/bin/eslint.js src`
   (frontend), `.venv/bin/ruff check app/ tests/` (backend, après `pip install ruff`)
-- ⚠️ `cd frontend` persiste le cwd entre commandes — penser à revenir à la racine (`cd /home/user/TRADINGCLAUDE`) avant les commandes backend
+- ⚠️ `cd frontend` persiste le cwd entre commandes — penser à revenir à la racine avant les commandes backend
 - La stack Docker (Postgres/Redis/Qdrant) n'est pas démarrée → pas de test navigateur live possible dans le conteneur
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés)
 
-### Sprint 113 — Export analyse individuelle en PDF enrichi
+### Sprint 114 — Export analyse individuelle en PDF enrichi
 **Objectif** : Générer un PDF par analyse (`GET /ticker-report/{ticker}?analysis_id=X`) incluant les verdicts skill par skill, les ratios clés, l'annotation existante, et le score ESG. Complète la boucle « analyser → lire → exporter » sans quitter l'interface.
 **Complexité** : Moyenne
 **Justification** : Le PDF par ticker (Sprint 63) couvre 90 jours d'historique, mais pas une analyse individuelle. Valeur immédiate : archivage et partage d'une thèse précise.
 
-### Sprint 114 — Recherche sémantique v2 : filtre par skill + surlignage
-**Objectif** : Enrichir la page `/recherche` (Sprint 106) avec un filtre par skill source (déduit du `source_file`), le surlignage des termes de la requête dans les extraits, et un lien « Voir le skill » vers la page d'analyse correspondante. Optionnel : exposer `skill_id` et `section` dans la réponse `/semantic-search` (nécessite d'enrichir `RagClient.search` → `Citation`).
+### Sprint 115 — Recherche sémantique v2 : filtre par skill + surlignage
+**Objectif** : Enrichir la page `/recherche` (Sprint 106) avec un filtre par skill source (déduit du `source_file`), le surlignage des termes de la requête dans les extraits, et un lien « Voir le skill » vers la page d'analyse correspondante.
 **Complexité** : Moyenne
 **Justification** : Le Sprint 106 a posé les fondations ; filtrer par framework et surligner les correspondances augmente nettement la valeur pédagogique de la recherche.
 
-### Sprint 115 — Persistance d'un historique de coût quotidien
-**Objectif** : Persister la tendance de coût quotidien (Sprint 112) dans une table `daily_cost_history` alimentée par une tâche Celery beat, au lieu de recalculer `daily_cost` à la volée dans `get_metrics()`. Permet des fenêtres longues (1 an) sans scanner `analysis_history` à chaque requête, et prépare des graphiques de budget cumulé.
+### Sprint 116 — Persistance d'un historique de coût quotidien
+**Objectif** : Persister la tendance de coût quotidien (Sprint 112) dans une table `daily_cost_history` alimentée par une tâche Celery beat, au lieu de recalculer `daily_cost` à la volée dans `get_metrics()`. Permet des fenêtres longues (1 an) sans scanner `analysis_history` à chaque requête.
 **Complexité** : Moyenne
-**Justification** : Le Sprint 112 calcule `daily_cost` en direct ; au-delà de quelques centaines de milliers de lignes, l'agrégation par jour devient coûteuse. Une table pré-agrégée découple la lecture du volume d'historique.
+**Justification** : Le Sprint 112 calcule `daily_cost` en direct ; au-delà de quelques centaines de milliers de lignes, l'agrégation par jour devient coûteuse.
 
-### Sprint 116 — Notifications push navigateur (Web Push API)
+### Sprint 117 — Notifications push navigateur (Web Push API)
 **Objectif** : Ajouter des notifications push navigateur pour les alertes Celery critiques (ESG dégradé, composite_score en chute). Fonctionne directement dans le navigateur sans configuration Slack.
 **Complexité** : Élevée
-**Justification** : Les alertes sont générées, listées dans `/alerts` (Sprint 99) et visualisées dans le temps sur le Dashboard (Sprint 107), mais l'utilisateur doit consulter la page pour les voir. Une notification push ferme la boucle en temps réel.
+**Justification** : Les alertes sont générées, listées dans `/alerts` et visualisées sur le Dashboard, mais l'utilisateur doit consulter la page pour les voir. Une notification push ferme la boucle en temps réel.
 
-### Sprint 117 — Persistance des préférences Screener côté serveur
+### Sprint 118 — Persistance des préférences Screener côté serveur
 **Objectif** : Migrer le tri et les filtres Screener (aujourd'hui en localStorage, Sprint 109) vers une table `user_preferences` PostgreSQL afin qu'ils suivent l'utilisateur entre navigateurs/appareils. Endpoints `GET/PUT /preferences/screener`.
 **Complexité** : Moyenne
-**Justification** : Le Sprint 109 persiste les préférences localement ; les lier au compte authentifié (Sprint Login) offre une vraie continuité multi-appareils et prépare le terrain pour d'autres préférences UI.
+**Justification** : Le Sprint 109 persiste les préférences localement ; les lier au compte authentifié (Sprint Login) offre une vraie continuité multi-appareils.
 
 ---
 
@@ -95,6 +93,6 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v9.9.0), et les règles .claude/rules/ avant de commencer.
-Sprint actif : 113 — [à compléter par Yves]
+Lis CLAUDE.md, ROADMAP.md (v10.0.0), et les règles .claude/rules/ avant de commencer.
+Sprint actif : 114 — [à compléter par Yves]
 ```

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-26 — Sprint 112 complété**
+**Dernière mise à jour : 2026-05-26 — Sprint 113 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 9.9.0 |
+| **Version** | 10.0.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 113 — à définir |
-| **Dernier sprint complété** | Sprint 112 — Coût par skill : drill-down et tendance ✅ |
+| **Sprint actif** | Sprint 114 — à définir |
+| **Dernier sprint complété** | Sprint 113 — Global Micro-UX Refresh ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -75,6 +75,7 @@
 - **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
 - **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
 - **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
+- **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -113,6 +114,31 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 113 — Global Micro-UX Refresh ✅
+
+**Objectif :** Doter les 11 pages de l'interface React d'un système cohérent d'animations, de micro-interactions et de squelettes de chargement, sans modifier la palette ni la structure des pages. Chaque action répond désormais avec un retour physique (press, pulsation) et chaque attente réseau est représentée par un squelette shimmer correspondant au layout réel.
+
+**Livrables :**
+- `frontend/src/index.css` — 5 `@keyframes` CSS (`shimmer`, `fade-in-up`, `scale-in`, `slide-in-right`, `count-pulse`) + 5 entrées `--animate-*` dans `@theme inline` (disponibles comme classes Tailwind) + classe `@layer components .skeleton-shimmer` (gradient 200 % animé)
+- `frontend/src/components/ui/skeleton.tsx` — 6 composants : `Skeleton` (rect shimmer aria-hidden), `SkeletonRow` (ligne de tableau N colonnes), `SkeletonCard` (3 rects), `SkeletonCardGrid` (grille de N cartes), `SkeletonChart` (bloc graphique), `SkeletonTable` (tableau complet N×N)
+- `frontend/src/components/ui/animated-number.tsx` — `AnimatedNumber` : count-up `requestAnimationFrame` cubic-out vers la valeur cible + pulsation CSS à l'arrivée
+- `frontend/src/components/PageTransition.tsx` — `PageTransition` (fade-in-up au montage) + `StaggerItem` (délai proportionnel à l'index, plafonné 400 ms)
+- `frontend/src/components/ui/button.tsx` — `active:scale-95` press feedback
+- `frontend/src/components/ui/badge.tsx` — `animate-scale-in` à chaque montage
+- `frontend/src/components/ui/card.tsx` — hover : `border-primary/30` + glow box-shadow subtil (`transition-[border-color,box-shadow]`)
+- `frontend/src/components/StreamingProgress.tsx` — barre de progression globale (done/total), `animate-ping` sur l'indicateur actif, stagger 40 ms par skill
+- `frontend/src/App.tsx` — indicateur de navigation animé (`animate-scale-in` sur l'underline actif) + hover `border-primary/30`
+- `frontend/src/components/MetricsDashboard.tsx` — `AnimatedNumber` sur les 5 métriques WebSocket, `SkeletonCardGrid` pendant le chargement initial
+- **11 pages** — `PageTransition` wrapper + `SkeletonTable`/`SkeletonCard` sur les états de chargement : `AnalyzePage`, `DashboardPage`, `HistoryPage`, `ScreenerPage`, `WatchlistPage`, `EsgPage`, `AlertsPage`, `SearchPage` (squelettes + `StaggerItem` sur résultats), `ComparePage`
+- `frontend/src/__tests__/Skeleton.test.tsx` — 9 tests (dimensions, colonnes, aria-hidden, classe shimmer)
+- `frontend/src/__tests__/AnimatedNumber.test.tsx` — 5 tests (valeur initiale, className, formatter, nodeName, tabular-nums)
+- `frontend/src/__tests__/PageTransition.test.tsx` — 8 tests (rendu, animate-fade-in-up, className supplémentaire, StaggerItem délai croissant, plafond 400 ms)
+
+**Version** : 10.0.0
+**Tests** : 1418 CI verts (inchangé — sprint frontend pur) ; 294 Vitest verts (+22 tests Sprint 113)
+
+---
 
 ### Sprint 112 — Coût par skill : drill-down et tendance ✅
 
