@@ -414,17 +414,29 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <MetricsDashboard />
-
-        <DetailedMetricsSection />
-
-        <CompositeChartSection />
-
-        <ComparisonSection />
-
-        <EvalDriftSection />
-
-        <QualitySection />
+        <div
+          className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+          data-testid="dashboard-grid"
+        >
+          <div className="lg:col-span-12">
+            <MetricsDashboard />
+          </div>
+          <div className="lg:col-span-12">
+            <DetailedMetricsSection />
+          </div>
+          <div className="lg:col-span-6">
+            <CompositeChartSection />
+          </div>
+          <div className="lg:col-span-6">
+            <ComparisonSection />
+          </div>
+          <div className="lg:col-span-6">
+            <EvalDriftSection />
+          </div>
+          <div className="lg:col-span-6">
+            <QualitySection />
+          </div>
+        </div>
       </div>
     </PageTransition>
   )

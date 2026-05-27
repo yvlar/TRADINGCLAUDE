@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-27 — Sprint 114 complété**
+**Dernière mise à jour : 2026-05-27 — Sprint 115 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.1.0 |
+| **Version** | 10.2.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 115 — à définir |
-| **Dernier sprint complété** | Sprint 114 — Quick wins UX/UI (tokens, skeletons, a11y, progression) ✅ |
+| **Sprint actif** | Sprint 116 — à définir |
+| **Dernier sprint complété** | Sprint 115 — Layout pleine largeur + grille Dashboard 12 colonnes ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -76,6 +76,7 @@
 - **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
 - **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
 - **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
+- **Layout pleine largeur (Sprint 115)** — shell applicatif fluide `max-w-shell` (token `--container-shell` = 96rem, point de réglage unique) remplaçant `max-w-5xl` dans `App.tsx` ; en-tête sticky en pleine largeur avec contenu interne aligné sur la même largeur que le `<main>` ; **Dashboard en grille responsive 12 colonnes** (`lg:grid-cols-12`, `items-start`) — métriques live et métriques détaillées en pleine largeur (`lg:col-span-12`), sections composite/comparaison/eval-drift/qualité en demi-largeur (`lg:col-span-6`) au lieu d'une pile verticale
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -114,6 +115,24 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 115 — Layout pleine largeur + grille Dashboard 12 colonnes ✅
+
+**Objectif :** Exploiter les grands écrans façon plateforme financière en remplaçant le conteneur étroit `max-w-5xl` (frein n°1 à la densité d'information identifié à l'audit UX) par un shell fluide large, et en transformant le Dashboard d'une pile verticale de sections en une grille responsive 12 colonnes.
+
+**Livrables :**
+- `frontend/src/index.css` — nouveau token de thème `--container-shell: 96rem` dans `@theme inline` (génère l'utilitaire `max-w-shell`) : point de réglage unique de la largeur du shell applicatif (Tailwind 4 a retiré `max-w-screen-*` ; un token `--container-*` est l'équivalent idiomatique et configurable)
+- `frontend/src/App.tsx` — `<main>` passe de `max-w-5xl` à `max-w-shell mx-auto w-full` (full-width shell, `data-testid="app-main"`) ; en-tête sticky restructuré : la barre `bg-card border-b` reste pleine largeur (full-bleed) mais son contenu interne (logo + nav + déconnexion) est enveloppé dans un conteneur `max-w-shell mx-auto w-full` pour aligner son bord gauche sur celui du contenu principal
+- `frontend/src/pages/DashboardPage.tsx` — la pile verticale `space-y-6` des sections devient une grille `grid grid-cols-1 lg:grid-cols-12 gap-6 items-start` (`data-testid="dashboard-grid"`) : `MetricsDashboard` et `DetailedMetricsSection` en `lg:col-span-12` (conservent leurs grilles internes), `CompositeChartSection` / `ComparisonSection` / `EvalDriftSection` / `QualitySection` en `lg:col-span-6` (deux par rangée sur grand écran) ; `items-start` évite l'étirement des cartes voisines à hauteur égale
+- `frontend/src/__tests__/App.test.tsx` — 2 tests Vitest (le `<main>` porte `max-w-shell` + `mx-auto` et plus `max-w-5xl` ; titre de l'application rendu ; `../api/auth` mocké)
+- `frontend/src/__tests__/DashboardPage.test.tsx` — +1 test Vitest (la grille `dashboard-grid` porte `lg:grid-cols-12`)
+
+**Version** : 10.2.0
+**Tests** : 1423 CI verts (inchangé — sprint frontend pur) ; 299 Vitest verts (+3 Sprint 115) ; tsc 0 erreur ; ESLint 0 ; ruff clean
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant, et la suite backend complète (1423 verts, ruff `All checks passed`).
+
+---
 
 ### Sprint 114 — Quick wins UX/UI (tokens sémantiques, skeletons, accessibilité, progression) ✅
 

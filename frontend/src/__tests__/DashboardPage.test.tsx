@@ -100,6 +100,12 @@ describe('DashboardPage', () => {
     expect(screen.getByTestId('metrics-dashboard')).toBeInTheDocument()
   })
 
+  it('dispose les sections dans une grille responsive 12 colonnes', () => {
+    render(<DashboardPage />, { wrapper })
+    const grid = screen.getByTestId('dashboard-grid')
+    expect(grid.className).toContain('lg:grid-cols-12')
+  })
+
   it('affiche le message vide si aucune analyse récente', () => {
     render(<DashboardPage />, { wrapper })
     expect(screen.getByTestId('no-recent-analyses')).toBeInTheDocument()

@@ -48,6 +48,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
+  /* Largeur maximale du shell applicatif — point de réglage unique du layout pleine largeur (génère max-w-shell) */
+  --container-shell: 96rem;
+
   /* Couleurs sémantiques financières — source unique positif/négatif/neutre */
   --color-bull: hsl(var(--bull));
   --color-bear: hsl(var(--bear));
