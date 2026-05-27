@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
 jobs:
   test-backend:
     name: Backend — pytest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +38,8 @@ jobs:
   test-frontend:
     name: Frontend — Vitest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: frontend
@@ -54,6 +61,8 @@ jobs:
   lint:
     name: Lint — ruff + ESLint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +93,8 @@ jobs:
   typecheck:
     name: Typecheck — mypy + tsc
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 

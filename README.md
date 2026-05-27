@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Claude API](https://img.shields.io/badge/Claude%20API-Tool%20Use-7C3AED)](https://docs.anthropic.com)
-[![Version](https://img.shields.io/badge/version-v9.4.0-2563EB)](ROADMAP.md)
+[![Version](https://img.shields.io/badge/version-v10.3.0-2563EB)](ROADMAP.md)
 
 # TradingClaude — Copilote d'analyse financière IA
 
@@ -12,7 +12,7 @@
 
 TradingClaude est un outil d'analyse fondamentale IA — pas un bot de trading algorithmique. Il structure et accélère la recherche sur les actions cotées (TSX, NYSE, NASDAQ) en appliquant simultanément plusieurs grilles d'analyse rigoureuses. Concrètement, une requête `POST /analyze` sur `BNS.TO` déclenche 16 frameworks en parallèle : Graham, Buffett, Dorsey, Klarman, Damodaran, et plus encore. La philosophie du projet est de transformer une discipline value investing reproductible en checklist IA exécutable — inspirée du four-pillar (ETF passif, thématique, valeur, systématique).
 
-**Version :** 9.4.0 — Phase 3 (Pipeline de synthèse) · **Tests :** 1 401 CI verts · 217 Vitest verts
+**Version :** 10.3.0 — Phase 3 (Pipeline de synthèse) · **Tests :** 1 423 CI verts · 307 Vitest verts
 
 ---
 
@@ -96,6 +96,7 @@ graph TD
 | **Watchlist** | Surveillance de positions, seuils ESG et prix configurables, sparkline composite 30j |
 | **Alertes Celery** | ESG dégradation, composite baisse, prix seuil — centralisées dans `GET /alerts` |
 | **Exports** | PDF (ticker, screener, watchlist, rapport mensuel), Excel/CSV (watchlist, annotations) |
+| **Palette ⌘K** | Navigation clavier (Ctrl+K / ⌘K) — pages, analyses récentes, ticker rapide, recherche RAG inline |
 | **Authentification** | Cookie JWT httpOnly + refresh token rotation + CSRF double-submit + argon2 |
 | **Observabilité** | Langfuse (optionnel), métriques WebSocket live, eval drift Celery |
 | **Multi-users** | Clés API Bearer, gestion admin (`/admin/keys`), rétrocompat variable `API_KEY` env |
@@ -137,7 +138,7 @@ graph TD
 ## Prérequis
 
 - Docker + Docker Compose
-- Node.js 20+ (frontend uniquement)
+- Node.js 22+ (frontend uniquement)
 - Python 3.11+ (développement local hors Docker)
 - Clé API Anthropic (`ANTHROPIC_API_KEY`)
 - Optionnel : `OPENAI_API_KEY` (RAG Qdrant), `LANGFUSE_SECRET_KEY` (observabilité), `SLACK_WEBHOOK_URL` (alertes Slack)
@@ -226,6 +227,7 @@ Voir `.env.example` pour la liste complète avec valeurs exemples.
 | `/register` | RegisterPage | Inscription email/mot de passe |
 | `/forgot-password` | ForgotPasswordPage | Demande réinitialisation mot de passe |
 | `/reset-password` | ResetPasswordPage | Réinitialisation via token signé (itsdangerous) |
+| `/recherche` | SearchPage | Recherche sémantique RAG en langage naturel — résultats avec score de similarité |
 
 ---
 
@@ -283,6 +285,8 @@ DELETE /admin/keys/{id}                  Révoquer une clé
 # Observabilité
 GET    /healthz                          Processus + PostgreSQL + Qdrant
 GET    /metrics?days=30                  Coûts cumulés, cache hit rate, top tickers
+GET    /metrics/skill-analyses           Drill-down coût/analyses par skill
+GET    /semantic-search?q=&k=5          Recherche sémantique RAG (rag_enabled=false si OPENAI_API_KEY absent)
 GET    /telemetry/summary|costs|cache|latency
 GET    /telemetry/eval-drift             Dérive des evals vs golden dataset
 ```
@@ -408,4 +412,4 @@ MIT — voir [LICENSE](LICENSE).
 
 ---
 
-*TradingClaude — Yves Larivière, Québec · v9.4.0 · Phase 3 active · Dernière mise à jour : 2026-05-23*
+*TradingClaude — Yves Larivière, Québec · v10.3.0 · Phase 3 active · Dernière mise à jour : 2026-05-27*

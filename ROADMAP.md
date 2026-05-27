@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-27 — Sprint 116 complété**
+**Dernière mise à jour : 2026-05-27 — Sprint 117 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.3.0 |
+| **Version** | 10.4.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 117 — à définir |
-| **Dernier sprint complété** | Sprint 116 — Palette de commandes ⌘K ✅ |
+| **Sprint actif** | Sprint 118 — à définir |
+| **Dernier sprint complété** | Sprint 117 — Repo public-ready (gouvernance + README + CHANGELOG) ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -116,6 +116,23 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 117 — Repo public-ready (gouvernance + README + CHANGELOG) ✅
+
+**Objectif :** Rendre le dépôt GitHub public de façon sécuritaire et professionnelle — audit complet, fichiers de gouvernance open source, durcissement CI/CD.
+
+**Livrables :**
+- `README.md` — mis à jour vers v10.3.0 : version badge, tests counts (1 423 CI / 307 Vitest), SearchPage `/recherche`, palette ⌘K dans les fonctionnalités, Node 22, `GET /semantic-search` et `GET /metrics/skill-analyses` dans les endpoints
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1 bilingue (FR/EN), contact ivess49@gmail.com
+- `CHANGELOG.md` — historique structuré Keep a Changelog depuis v1.0.0 (Phase 0) jusqu'à v10.3.0 (Sprint 116), groupé par version mineure avec sprint de référence
+- `.github/workflows/ci.yml` — `permissions: contents: read` au niveau workflow + sur chaque job (principe de moindre privilège)
+- `.gitignore` — ajout des patterns manquants : `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.crt`, `*.cer` (certificats), `*~$*`, `*.tmp` (artefacts OneDrive), `backend_data/`, `data_export/` (dumps données)
+- `.github/CODEOWNERS` — `* @yvlar` (code review obligatoire par le mainteneur sur toute PR)
+
+**Version** : 10.4.0
+**Tests** : 1 423 CI verts (inchangé — sprint documentation/infrastructure) ; 307 Vitest verts (inchangé)
+
+---
 
 ### Sprint 116 — Palette de commandes ⌘K ✅
 
