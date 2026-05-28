@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-27 — Sprint 118 complété**
+**Dernière mise à jour : 2026-05-28 — Sprint 119 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.5.0 |
+| **Version** | 10.6.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 119 — à définir |
-| **Dernier sprint complété** | Sprint 118 — Refonte UI Earnings Quality + Thèse d'investissement ✅ |
+| **Sprint actif** | Sprint 120 — à définir |
+| **Dernier sprint complété** | Sprint 119 — Refonte UI Dorsey Moat + Buffett Quality + Valorisation ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -79,6 +79,7 @@
 - **Layout pleine largeur (Sprint 115)** — shell applicatif fluide `max-w-shell` (token `--container-shell` = 96rem, point de réglage unique) remplaçant `max-w-5xl` dans `App.tsx` ; en-tête sticky en pleine largeur avec contenu interne aligné sur la même largeur que le `<main>` ; **Dashboard en grille responsive 12 colonnes** (`lg:grid-cols-12`, `items-start`) — métriques live et métriques détaillées en pleine largeur (`lg:col-span-12`), sections composite/comparaison/eval-drift/qualité en demi-largeur (`lg:col-span-6`) au lieu d'une pile verticale
 - **Palette de commandes ⌘K (Sprint 116)** — `CommandPalette` déclenchée par Ctrl+K / ⌘K : navigation entre les 10 pages, action « Analyser [ticker] » → `/?ticker=`, analyses récentes depuis localStorage, recherche sémantique RAG inline (debounce 400 ms) ; bouton déclencheur dans l'en-tête avec hint clavier ; ticker pré-rempli dans `AnalyzeForm` via `?ticker=` URL param
 - **UI Earnings Quality + Thèse d'investissement (Sprint 118)** — `EarningsQualitySection` (5 cadres analytiques : F-Score 9 critères, C-Score 6 signaux, M-Score, Z-Score, Sloan) et `ThesisSection` (3 scénarios bull/base/bear probabilisés, kill criteria, devil's advocate, narrative) remplacent l'affichage JSON brut générique
+- **UI Dorsey Moat + Buffett Quality + Valorisation (Sprint 119)** — `DorseyMoatSection` (type de moat WIDE/NARROW/NONE, 5 sources d'avantage concurrentiel avec intensité, durabilité ROIC), `BuffettQualitySection` (4 filtres séquentiels ✓/✗, owner earnings par action, quality score /4) et `ValuationSection` (fourchette basse/centrale/haute, 3 méthodes DCF/comparables/sectoriel, matrice de sensibilité WACC × croissance, marge de sécurité composite) remplacent l'affichage JSON brut générique
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -117,6 +118,25 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 119 — Refonte UI Dorsey Moat + Buffett Quality + Valorisation ✅
+
+**Objectif :** Appliquer le pattern Sprint 118 aux trois skills fréquemment utilisés dans `value_graham` et `compounder_buffett` qui restaient affichés en JSON brut — créer des composants React structurés typés depuis les schemas Pydantic backend.
+
+**Livrables :**
+- `frontend/src/types/index.ts` — ajout des types structurés `MoatSource`, `DorseyMoatOutput`, `BuffettFiltre`, `BuffettQualityOutput`, `ValuationMethod`, `SensitivityMatrix`, `StockValuationOutput` ; `AnalyzeResponse.dorsey`, `.buffett` et `.valuation` typés précisément (plus `SkillOutput` générique)
+- `frontend/src/components/DorseyMoatSection.tsx` — en-tête avec badge type de moat (WIDE/NARROW/NONE) + barre de confiance ; durabilité ROIC ; grille des 5 sources d'avantage concurrentiel (intangibles, coûts de transfert, effets de réseau, avantages de coûts, échelle efficiente) avec présence ✓/✗, badge d'intensité (FORTE/MODÉRÉE/FAIBLE/ABSENTE) et justification ; red flags ; recommandations
+- `frontend/src/components/BuffettQualitySection.tsx` — en-tête avec verdict badge (COMPOUNDER/QUALITE_CORRECTE/REJETER) + quality score /4 + barre de confiance ; owner earnings par action mis en évidence ; 4 filtres séquentiels ✓/✗ avec score et justification ; red flags ; recommandations
+- `frontend/src/components/ValuationSection.tsx` — en-tête avec verdict badge (SOUS_EVALUE/JUSTE_VALEUR/SUREVALUE) + marge de sécurité composite ± % ; fourchette basse/centrale/haute (3 colonnes, centrale mise en évidence) ; 3 méthodes de triangulation (DCF/comparables/sectoriel) avec valeur + hypothèses ; matrice de sensibilité WACC × croissance terminale ; recommandations
+- `frontend/src/components/AnalysisResult.tsx` — branchement sur `DorseyMoatSection`, `BuffettQualitySection` et `ValuationSection` (plus `SkillSection` générique pour ces trois skills)
+- `frontend/src/__tests__/DorseyMoatSection.test.tsx` — 6 tests Vitest (toggle, 5 sources, durabilité ROIC, drapeaux rouges, recommandations, masquage drapeaux vides)
+- `frontend/src/__tests__/BuffettQualitySection.test.tsx` — 6 tests Vitest (toggle + score, 4 filtres, owner earnings, owner earnings null → N/A, drapeaux + recommandations, verdict REJETER)
+- `frontend/src/__tests__/ValuationSection.test.tsx` — 6 tests Vitest (toggle + marge, fourchette, 3 méthodes, matrice de sensibilité, recommandations, marge négative SUREVALUE)
+
+**Version** : 10.6.0
+**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 337 Vitest verts (+18 Sprint 119) ; tsc 0 erreur ; ESLint 0 ; ruff 0
+
+---
 
 ### Sprint 118 — Refonte UI Earnings Quality + Thèse d'investissement ✅
 

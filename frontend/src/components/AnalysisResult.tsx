@@ -6,6 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import type { AnalyzeResponse, CompositeScore, GrahamCriterion, SkillOutput } from '../types'
 import { EarningsQualitySection } from './EarningsQualitySection'
 import { ThesisSection } from './ThesisSection'
+import { DorseyMoatSection } from './DorseyMoatSection'
+import { BuffettQualitySection } from './BuffettQualitySection'
+import { ValuationSection } from './ValuationSection'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -209,9 +212,9 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
       {result.earnings_quality && (
         <EarningsQualitySection output={result.earnings_quality} />
       )}
-      {result.dorsey && <SkillSection title="Dorsey Moat" output={result.dorsey} />}
-      {result.buffett && <SkillSection title="Buffett Quality" output={result.buffett} />}
-      {result.valuation && <SkillSection title="Valorisation" output={result.valuation} />}
+      {result.dorsey && <DorseyMoatSection output={result.dorsey} />}
+      {result.buffett && <BuffettQualitySection output={result.buffett} />}
+      {result.valuation && <ValuationSection output={result.valuation} />}
       {result.lynch && <div data-testid="lynch-category"><SkillSection title="Lynch Categories" output={result.lynch} /></div>}
       {result.fisher && <SkillSection title="Fisher Scuttlebutt" output={result.fisher} />}
       {result.klarman && <SkillSection title="Klarman Marge Sécurité" output={result.klarman} />}
