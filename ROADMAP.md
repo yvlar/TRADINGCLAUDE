@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-28 — Sprint 121 complété**
+**Dernière mise à jour : 2026-05-28 — Sprint 122 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.8.0 |
+| **Version** | 10.9.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 122 — Export analyse individuelle en PDF enrichi |
-| **Dernier sprint complété** | Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅ |
+| **Sprint actif** | Sprint 123 — Code-splitting des routes + lazy-load recharts |
+| **Dernier sprint complété** | Sprint 122 — Export analyse individuelle en PDF enrichi ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -38,7 +38,7 @@
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
 - `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
-- `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63)
+- `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63) ; **paramètre `analysis_id` optionnel (Sprint 122)** : cible une analyse précise (404 si absente/ticker différent), reconstruction multi-skills (16 outputs tier2, skill corrompu ignoré) + PDF enrichi (verdicts skill par skill, ratios clés, annotation, score ESG) ; sans `analysis_id` = comportement inchangé (rétrocompatible)
 - Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
 - RAG Qdrant activé si `OPENAI_API_KEY` présente (collection `investment_knowledge`)
 - Langfuse activé si `LANGFUSE_SECRET_KEY` présente
@@ -55,6 +55,7 @@
 - **Page Dashboard** — métriques live WebSocket (jobs, coûts, cache hit ratio) + section Eval Drift (Sprint 66)
 - **Page Admin** — gestion des clés API (créer/lister/révoquer), gestion erreur 403 (Sprint 67)
 - **Bouton "Télécharger PDF"** dans HistoryPage (par ticker, gestion 404 + loading) (Sprint 68)
+- **Bouton "Exporter cette analyse"** dans AnalysisResult (AnalyzePage) — `downloadTickerPdf(ticker, 90, analysis_id)` → PDF enrichi de l'analyse courante ; masqué pour un score depuis cache composite (Sprint 122)
 - **Bouton "PDF"** par ticker dans WatchlistPage (data-testid + gestion 404) (Sprint 68)
 - **Badge "Score depuis cache (<24h)"** dans AnalyzePage quand `depuis_cache_composite=True` (Sprint 69)
 - **Skill ESG simplifié** — 15 critères proxy (5E+5S+5G), `POST /analyze` avec `esg_input` (Sprint 70)

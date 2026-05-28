@@ -1,22 +1,23 @@
-# Sprint 122 — Export analyse individuelle en PDF enrichi
+# Sprint 123 — Code-splitting des routes + lazy-load recharts
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.8.0 — Sprint 121 complété)
+## État du projet (v10.9.0 — Sprint 122 complété)
 
-La refonte UI est **terminée** : les 16 skills tier2 ont désormais un rendu UI structuré. Le composant générique `SkillSection` (qui affichait du JSON brut) a été **retiré** — plus aucun skill n'est affiché en JSON brut.
-
-**Nouveauté Sprint 121** — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité :
-- **`FisherSection.tsx`** — badge qualité de direction (libellé FR exceptionnelle/bonne/adéquate/médiocre), score Fisher /30, liste des 15 points (titre + commentaire + score /2 coloré)
-- **`DamodaranSection.tsx`** — échelle possible→plausible→probable (niveau atteint mis en évidence, état incohérent en rouge), solidité de la narrative /10, ERP implicite en %, divergences story vs numbers en badges
-- **`MarksSection.tsx`** — jauge du pendule de sentiment −5/+5 avec marqueur, position dans le cycle (libellé FR), badge timing, second-level thinking ; score coloré selon la logique contrariante (négatif = opportunité)
-- **`PabraiSection.tsx`** — asymétrie upside/downside (×), Kelly fractionnel (% ou N/A), score heads-I-win /9, grille des 9 principes Dhandho ✓/✗ + commentaire
-- **`CanadianTaxSection.tsx`** — badge compte recommandé (CELI/REER/CELIAPP/non-enregistré, libellé FR + sigle EN), taux d'inclusion gain en capital, retenue US, badge Smith Manœuvre
-- **Types TypeScript** structurés (`FisherOutput`, `FisherPoint`, `DamodaranOutput`, `MarksOutput`, `DhandhoPrincipe`, `PabraiOutput`, `CanadianTaxOutput`) — `AnalyzeResponse.fisher`, `.damodaran`, `.marks`, `.pabrai` et `.canadian_tax` ne sont plus `SkillOutput` générique
-- **30 tests Vitest** — 6 par composant
-- **AnalysisResult.tsx** — branché sur les cinq nouveaux composants ; `SkillSection` et l'import `SkillOutput` retirés
+**Nouveauté Sprint 122** — Export d'une analyse individuelle précise en PDF enrichi :
+- **Endpoint** — `GET /ticker-report/{ticker}` accepte un paramètre optionnel `analysis_id` :
+  - fourni → charge **cette** ligne de `analysis_history` (`WHERE id = $1::uuid AND ticker = $2`), 404 si absente, ticker différent ou id mal formé ; l'historique composite devient optionnel
+  - absent → comportement inchangé (dernière analyse + historique 90 j, 404 si aucune donnée composite) — **rétrocompatible**
+- **Reconstruction multi-skills** — `_reconstruct_analyze_response` parse désormais **les 16 outputs tier2** présents dans `result` (plus seulement Graham/Buffett/Dorsey) via un mapping `result_key → champ AnalyzeResponse → classe Pydantic` ; un skill dont le JSON ne valide pas est ignoré (`model_validate` tolérant, pas d'échec global) ; n'exige plus la présence de Graham
+- **PDF enrichi** (`PdfReportService.generate_ticker_report`, nouveaux params `ratios` / `annotation` / `esg_score`) :
+  - **tableau « Verdicts par skill »** (skill / verdict / détail court) pour chaque skill présent
+  - **tableau « Ratios clés »** depuis `input_data` (GrahamRatios : cours, BPA, valeur comptable, P/E, P/B, dette/capitaux, croissance BPA 10 a, ratio de liquidité)
+  - **annotation existante** (table `annotations`, Sprint 78) si présente
+  - **score ESG** depuis le `result` (output `esg`), sinon dernier point `esg_score_history`
+- **Frontend** — bouton « Exporter cette analyse » dans `AnalysisResult` (AnalyzePage) appelant `downloadTickerPdf(ticker, 90, analysis_id)` ; masqué pour un score depuis cache composite (`analysis_id` ∈ {`cached`, `cached_composite`})
+- **Tests** — +9 pytest (reconstruction multi-skills, skill corrompu ignoré, result illisible, `analysis_id` 200/404 inconnu/404 mismatch/404 mal formé, PDF enrichi), +2 Vitest (export appelle `downloadTickerPdf` avec `analysis_id` ; bouton masqué si cache)
 
 **Fonctionnalités actives** :
 - 18 skills (16 tier2 + 2 tier1), orchestrateur multi-workflow, streaming SSE skill par skill avec event `plan`
@@ -25,45 +26,40 @@ La refonte UI est **terminée** : les 16 skills tier2 ont désormais un rendu UI
 - Dashboard v2 — métriques détaillées + drill-down coût par skill + tendance quotidienne, grille responsive 12 colonnes
 - Recherche sémantique RAG `/recherche` (Sprint 106)
 - Tableau de bord alertes Celery (Sprint 99) + page Alertes `/alerts`
+- Rapports PDF : ticker (par ticker **ou par analyse précise** depuis Sprint 122), screener, watchlist, mensuel
 - RAG Qdrant, Langfuse, Redis cache, Celery beat
 - Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages + auth, shell pleine largeur `max-w-shell`, design tokens sémantiques, palette de commandes ⌘K
-- **Repo public-ready** — README · CODE_OF_CONDUCT · CHANGELOG · CODEOWNERS · CI permissions minimales
 - **UI skills 100 % riche** — les 16 skills tier2 rendus en composants structurés ; plus aucun JSON brut
-- 1 423 CI pytest verts + 391 Vitest verts + 4 jobs CI GitHub Actions opérationnels
+- 1 432 CI pytest verts + 393 Vitest verts + 4 jobs CI GitHub Actions opérationnels
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v10.8.0, Sprint 121 ✅
-3. `.claude/rules/` — 16 fichiers de règles path-scoped (conventions, architecture, tests)
+2. `ROADMAP.md` — état courant v10.9.0, Sprint 122 ✅
+3. `.claude/rules/conventions-frontend.md` — React 18, TS strict, structure pages/composants
 4. `docs/cheatsheet.md` — toutes les commandes opérationnelles
-5. `app/api/endpoints/ticker_report.py` + `app/services/pdf_report_service.py` — point de départ exact du sprint
+5. `frontend/src/App.tsx` (ou le routeur racine) + `frontend/src/pages/` — point de départ exact du sprint
 
 ---
 
-## TÂCHE — Sprint 122 : Export analyse individuelle en PDF enrichi
+## TÂCHE — Sprint 123 : Code-splitting des routes + lazy-load recharts
 
-**Objectif** : permettre l'export PDF d'**une analyse précise** (pas seulement l'historique 90 jours). Aujourd'hui `GET /ticker-report/{ticker}?days=90` agrège l'historique `composite_score` et reconstruit la **dernière** analyse en ne parsant que 3 skills (Graham/Buffett/Dorsey — voir `_reconstruct_analyze_response`). Le sprint ajoute le ciblage par `analysis_id` et un PDF riche.
+**Objectif** : accélérer le Time-To-Interactive de la première vue (Analyse) en isolant chaque page et la librairie recharts du bundle initial. Toutes les pages sont aujourd'hui importées statiquement dans le routeur — le navigateur télécharge tout le code (y compris recharts, lourd) avant d'afficher la première page.
 
 ### Spécification
 
-1. **Endpoint** — étendre `GET /ticker-report/{ticker}` avec un paramètre optionnel `analysis_id: str | None = None` :
-   - si `analysis_id` fourni → charger **cette** ligne précise de `analysis_history` (`WHERE id = $1 AND ticker = $2`), 404 si absente/mismatch ticker
-   - si absent → comportement actuel inchangé (dernière analyse + historique 90 j) — **rétrocompatibilité obligatoire**
-2. **Reconstruction complète** — généraliser `_reconstruct_analyze_response` pour parser **tous** les skills présents dans `result` (les 16 outputs tier2), pas seulement Graham/Buffett/Dorsey. Réutiliser les schemas Pydantic existants (`model_validate` tolérant : un skill qui ne parse pas est ignoré, pas d'échec global).
-3. **Enrichissement du PDF** (`PdfReportService.generate_ticker_report`) — ajouter, pour une analyse ciblée :
-   - **verdicts skill par skill** (un tableau : skill / verdict / détail court)
-   - **ratios clés** (depuis l'input/ratios Graham : eps, bvps, pe, pb, roe, debt_equity…)
-   - **annotation existante** si présente (table annotations, Sprint 78 — `GET /annotations` / service associé)
-   - **score ESG** si présent dans le `result` ou via `last_esg_score`
-4. **Frontend (optionnel si le temps le permet)** — bouton « Exporter cette analyse » dans `AnalysisResult` / `HistoryPage` passant `analysis_id` à `downloadTickerPdf()`.
+1. **`React.lazy` + `Suspense` par route** — convertir les imports statiques de pages (`AnalyzePage`, `ScreenerPage`, `HistoryPage`, `WatchlistPage`, `DashboardPage`, `ComparePage`, `EsgPage`, `AlertsPage`, `SearchPage`, `AdminPage`, pages auth…) en imports dynamiques `React.lazy(() => import('./pages/...'))`. Envelopper le `<Routes>` (ou chaque `<Route element>`) dans un `<Suspense>` avec un fallback skeleton cohérent avec le design system.
+2. **Fallback skeleton** — créer un composant `RouteFallback` (ou réutiliser un skeleton existant) affiché pendant le chargement d'un chunk de page. Doit respecter `max-w-shell` et les design tokens.
+3. **Isoler recharts** — s'assurer que les composants utilisant recharts (`TickerComparisonChart`, graphiques Dashboard, etc.) ne sont chargés que dans les pages concernées (Dashboard, Comparer). Vérifier qu'aucun import statique de recharts ne subsiste dans le bundle d'entrée (App/routeur/composants partagés). Au besoin, `lazy`-charger le composant graphique lui-même.
+4. **Vérifier le découpage** — confirmer via `npm run build` que des chunks séparés sont générés par page et que recharts est dans son propre chunk (analyser la sortie Vite/rollup).
 
 ### Tests obligatoires (pyramide)
-- **Intégration** : `GET /ticker-report/{ticker}?analysis_id=<id>` → 200 + `application/pdf` ; 404 si id inconnu ; 404 si id appartient à un autre ticker ; rétrocompat sans `analysis_id`
-- **Unitaire** : `_reconstruct_analyze_response` parse correctement un `result` multi-skills et ignore un skill corrompu
-- Patcher `call_claude_with_retry` partout (règle `tests-pyramide.md`) — aucun appel Claude réel
+- **Composant** : un test Vitest vérifiant que le routeur monte une page lazy après résolution du `Suspense` (le fallback skeleton apparaît puis la page) — utiliser `findBy*` / `waitFor`
+- **Composant** : un test garantissant que le fallback `RouteFallback` se rend sans erreur
+- Tous les tests existants doivent rester verts (le lazy-loading ne doit pas casser les tests de pages — adapter les `render` avec `Suspense` si nécessaire)
+- ⚠️ Mock des appels API Claude inchangé (règle `tests-pyramide.md`)
 
 ### Note d'environnement (session web)
 
@@ -71,23 +67,18 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 - Backend : `python -m venv .venv --system-site-packages && .venv/bin/pip install -r requirements-ci.txt ruff`
   (la version Debian de `cryptography` casse un `pip install` global → utiliser un venv `--system-site-packages`)
 - Frontend : `node_modules/` est présent mais le binaire natif rollup manque
-  (`npm install @rollup/rollup-linux-x64-gnu --no-save` corrige l'erreur de démarrage de Vitest)
+  (`npm install @rollup/rollup-linux-x64-gnu --no-save` corrige l'erreur de démarrage de Vitest **et** de `npm run build`)
 - Lancer les tests : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals`
   et `cd frontend && node node_modules/vitest/vitest.mjs run`
 - Lint/typecheck : `node node_modules/typescript/bin/tsc --noEmit` + `node node_modules/eslint/bin/eslint.js src`
   (frontend), `.venv/bin/ruff check app/ tests/` (backend)
+- Build (pour vérifier le découpage) : `cd frontend && node node_modules/vite/bin/vite.js build`
 - ⚠️ `cd frontend` persiste le cwd entre commandes — penser à revenir à la racine avant les commandes backend
 - La stack Docker (Postgres/Redis/Qdrant) n'est pas démarrée → pas de test navigateur live possible dans le conteneur
-- **reportlab** est déjà la dépendance PDF du projet — ne pas en introduire une autre
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés)
-
-### Sprint 123 — Code-splitting des routes + lazy-load recharts
-**Objectif** : `React.lazy` + `Suspense` (fallback skeleton) par page, isolant recharts du bundle initial pour accélérer le TTI de la première vue (Analyse).
-**Complexité** : Faible
-**Justification** : Toutes les pages sont importées statiquement aujourd'hui ; quick win de performance perçue, purement frontend, sans infrastructure à modifier.
 
 ### Sprint 124 — Persistance des préférences Screener côté serveur
 **Objectif** : Migrer tri + filtres Screener du localStorage (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié. Endpoints `GET/PUT /preferences/screener`.
@@ -109,13 +100,19 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 **Complexité** : Faible
 **Justification** : La donnée existe mais n'est pas rendue ; valeur immédiate pour repérer les thèses contradictoires.
 
+### Sprint 128 — Comparaison de deux analyses d'un même ticker (diff temporel)
+**Objectif** : `GET /ticker-report/{ticker}/diff?from_id=&to_id=` produisant un PDF (ou JSON) qui compare deux analyses persistées du même ticker — évolution des verdicts skill par skill, du composite_score et des ratios clés.
+**Complexité** : Moyenne
+**Justification** : Capitalise sur la reconstruction multi-skills du Sprint 122 ; donne une lecture « avant/après » d'une thèse dans le temps.
+
 ---
 
 ## Template de démarrage
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.8.0), et les règles .claude/rules/ avant de commencer.
-Sprint actif : 122 — Export analyse individuelle en PDF enrichi (ciblage par analysis_id,
-reconstruction multi-skills, PDF avec verdicts skill par skill + ratios + annotation + ESG).
+Lis CLAUDE.md, ROADMAP.md (v10.9.0), et les règles .claude/rules/ avant de commencer.
+Sprint actif : 123 — Code-splitting des routes + lazy-load recharts (React.lazy + Suspense
+par page, fallback skeleton RouteFallback, isolation de recharts hors du bundle d'entrée,
+vérification du découpage via vite build).
 ```

@@ -101,9 +101,17 @@ interface AnalysisResultProps {
   result: AnalyzeResponse
   onDownloadPdf?: () => void
   isPdfLoading?: boolean
+  onExportAnalysis?: () => void
+  isExportLoading?: boolean
 }
 
-export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: AnalysisResultProps) {
+export function AnalysisResult({
+  result,
+  onDownloadPdf,
+  isPdfLoading,
+  onExportAnalysis,
+  isExportLoading,
+}: AnalysisResultProps) {
   const g = result.graham
 
   return (
@@ -126,6 +134,17 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
             {onDownloadPdf && (
               <Button variant="outline" size="sm" onClick={onDownloadPdf} disabled={isPdfLoading}>
                 {isPdfLoading ? 'Génération...' : '⬇ PDF'}
+              </Button>
+            )}
+            {onExportAnalysis && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onExportAnalysis}
+                disabled={isExportLoading}
+                data-testid="export-analysis-pdf"
+              >
+                {isExportLoading ? 'Génération...' : 'Exporter cette analyse'}
               </Button>
             )}
           </div>

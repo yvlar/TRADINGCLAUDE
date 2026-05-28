@@ -106,8 +106,16 @@ export async function exportScreen(
   })
 }
 
-export async function downloadTickerPdf(ticker: string, days = 90): Promise<Blob> {
-  return apiClient.requestBlob(`/ticker-report/${encodeURIComponent(ticker)}?days=${days}`)
+export async function downloadTickerPdf(
+  ticker: string,
+  days = 90,
+  analysisId?: string,
+): Promise<Blob> {
+  const params = new URLSearchParams({ days: String(days) })
+  if (analysisId) params.set('analysis_id', analysisId)
+  return apiClient.requestBlob(
+    `/ticker-report/${encodeURIComponent(ticker)}?${params.toString()}`,
+  )
 }
 
 export async function downloadScreenerPdf(request: ScreenRequest): Promise<Blob> {

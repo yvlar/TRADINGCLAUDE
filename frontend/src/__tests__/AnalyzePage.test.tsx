@@ -14,6 +14,7 @@ vi.mock('../api/analyze', async (importOriginal) => {
     streamAnalyze: vi.fn(),
     getExtract: vi.fn().mockRejectedValue(new Error('not mocked')),
     postReport: vi.fn().mockResolvedValue(new Blob()),
+    downloadTickerPdf: vi.fn().mockResolvedValue(new Blob()),
   }
 })
 
@@ -72,6 +73,8 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('AnalyzePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test')
+    window.URL.revokeObjectURL = vi.fn()
   })
 
   it('affiche le formulaire et le titre', () => {
@@ -144,6 +147,50 @@ describe('AnalyzePage', () => {
       expect(screen.getByTestId('error-message')).toBeInTheDocument()
     })
     expect(screen.getByTestId('error-message')).toHaveTextContent('Connexion refusée')
+  })
+
+  it('« Exporter cette analyse » appelle downloadTickerPdf avec analysis_id', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(analyzeApi.streamAnalyze).mockImplementation(async function* () {
+      yield { type: 'complete' as const, data: _MOCK_RESPONSE }
+    })
+
+    render(<AnalyzePage />, { wrapper })
+
+    await user.type(screen.getByLabelText('Ticker'), 'BNS')
+    await user.click(screen.getByText('Analyser'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-analysis-pdf')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByTestId('export-analysis-pdf'))
+
+    await waitFor(() => {
+      expect(analyzeApi.downloadTickerPdf).toHaveBeenCalledWith('BNS', 90, 'uuid-test-1')
+    })
+  })
+
+  it('masque « Exporter cette analyse » pour un score depuis cache', async () => {
+    const user = userEvent.setup()
+
+    vi.mocked(analyzeApi.streamAnalyze).mockImplementation(async function* () {
+      yield {
+        type: 'cached' as const,
+        data: { ..._MOCK_RESPONSE, analysis_id: 'cached_composite' },
+      }
+    })
+
+    render(<AnalyzePage />, { wrapper })
+
+    await user.type(screen.getByLabelText('Ticker'), 'BNS')
+    await user.click(screen.getByText('Analyser'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('result-ticker')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('export-analysis-pdf')).not.toBeInTheDocument()
   })
 
   it('appelle streamAnalyze avec le ticker saisi', async () => {
