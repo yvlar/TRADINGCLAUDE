@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-28 — Sprint 119 complété**
+**Dernière mise à jour : 2026-05-28 — Sprint 120 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.6.0 |
+| **Version** | 10.7.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 120 — à définir |
-| **Dernier sprint complété** | Sprint 119 — Refonte UI Dorsey Moat + Buffett Quality + Valorisation ✅ |
+| **Sprint actif** | Sprint 121 — à définir |
+| **Dernier sprint complété** | Sprint 120 — Refonte UI Lynch + Greenblatt + Munger + Klarman ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -80,6 +80,7 @@
 - **Palette de commandes ⌘K (Sprint 116)** — `CommandPalette` déclenchée par Ctrl+K / ⌘K : navigation entre les 10 pages, action « Analyser [ticker] » → `/?ticker=`, analyses récentes depuis localStorage, recherche sémantique RAG inline (debounce 400 ms) ; bouton déclencheur dans l'en-tête avec hint clavier ; ticker pré-rempli dans `AnalyzeForm` via `?ticker=` URL param
 - **UI Earnings Quality + Thèse d'investissement (Sprint 118)** — `EarningsQualitySection` (5 cadres analytiques : F-Score 9 critères, C-Score 6 signaux, M-Score, Z-Score, Sloan) et `ThesisSection` (3 scénarios bull/base/bear probabilisés, kill criteria, devil's advocate, narrative) remplacent l'affichage JSON brut générique
 - **UI Dorsey Moat + Buffett Quality + Valorisation (Sprint 119)** — `DorseyMoatSection` (type de moat WIDE/NARROW/NONE, 5 sources d'avantage concurrentiel avec intensité, durabilité ROIC), `BuffettQualitySection` (4 filtres séquentiels ✓/✗, owner earnings par action, quality score /4) et `ValuationSection` (fourchette basse/centrale/haute, 3 méthodes DCF/comparables/sectoriel, matrice de sensibilité WACC × croissance, marge de sécurité composite) remplacent l'affichage JSON brut générique
+- **UI Lynch + Greenblatt + Munger + Klarman (Sprint 120)** — `LynchCategoriesSection` (catégorie parmi 6 + ratio PEG coloré + badge tenbagger + score de croissance /5), `GreenblattSection` (ROC + rendement des bénéfices en %, situations spéciales), `MungerSection` (biais cognitifs détectés avec impact MINEUR/MODERE/MAJEUR, risque lollapalooza, analyse par inversion) et `KlarmanSection` (type de situation qualifié, décote vs valeur intrinsèque, scores marge de sécurité + préservation du capital /10) remplacent l'affichage JSON brut générique
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -118,6 +119,29 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 120 — Refonte UI Lynch + Greenblatt + Munger + Klarman ✅
+
+**Objectif :** Poursuivre le pattern des Sprints 118/119 sur le dernier lot de skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend pour les quatre frameworks identifiés comme prioritaires : Lynch (catégorie + PEG), Greenblatt (rang ROC + earnings yield), Munger (biais cognitifs détectés), Klarman (marge de sécurité + downside).
+
+**Livrables :**
+- `frontend/src/types/index.ts` — ajout des types structurés `LynchCategoriesOutput`, `GreenblattOutput`, `BiaisCognitif`, `MungerOutput`, `KlarmanOutput` ; `AnalyzeResponse.lynch`, `.greenblatt`, `.munger` et `.klarman` typés précisément (plus `SkillOutput` générique)
+- `frontend/src/components/LynchCategoriesSection.tsx` — en-tête avec badge catégorie (libellé FR des 6 archétypes : croissance lente/pilier/croissance rapide/cyclique/redressement/jeu d'actifs) + verdict badge (EXCELLENT/BON/MOYEN/EVITER) ; ratio PEG mis en évidence et coloré (< 1 bull, 1-2 neutral, > 2 bear, N/A si null) ; badge tenbagger potentiel ; score de qualité de croissance /5 ; recommandations
+- `frontend/src/components/GreenblattSection.tsx` — en-tête avec verdict badge (TOP_DECILE/BON/MOYEN/EVITER) ; ROC et rendement des bénéfices affichés en % avec couleur seuillée ; situations spéciales en badges ; recommandations
+- `frontend/src/components/MungerSection.tsx` — en-tête avec verdict comportemental badge (CONFIANCE_JUSTIFIEE/BIAIS_DETECTE/ALERTE_ROUGE) + badge lollapalooza si risque ; grille des biais cognitifs détectés (nom + badge d'impact MINEUR/MODERE/MAJEUR + description) ou message si aucun ; analyse par inversion ; recommandations
+- `frontend/src/components/KlarmanSection.tsx` — en-tête avec badge type de situation qualifié (libellé FR : net-net/actifs cachés/en détresse/situation spéciale/valeur classique) + verdict badge (OPPORTUNITE_FORTE/OPPORTUNITE_MODEREE/ATTENDRE/PASSER) ; décote vs valeur intrinsèque en % (colorée selon le signe) ; barres scores marge de sécurité + préservation du capital /10 ; recommandations
+- `frontend/src/components/AnalysisResult.tsx` — branchement sur `LynchCategoriesSection`, `GreenblattSection`, `MungerSection` et `KlarmanSection` (plus `SkillSection` générique pour ces quatre skills)
+- `frontend/src/__tests__/LynchCategoriesSection.test.tsx` — 6 tests Vitest (catégorie + verdict + toggle fermé, PEG ouvert, PEG null → N/A, badge tenbagger présent, badge tenbagger masqué, score + recommandations)
+- `frontend/src/__tests__/GreenblattSection.test.tsx` — 6 tests Vitest (verdict + toggle, ROC %, earnings yield %, situations spéciales, situations vides masquées, recommandations)
+- `frontend/src/__tests__/MungerSection.test.tsx` — 6 tests Vitest (verdict + toggle, badge lollapalooza présent, badge lollapalooza masqué, biais détectés, message si aucun biais, inversion + recommandations)
+- `frontend/src/__tests__/KlarmanSection.test.tsx` — 6 tests Vitest (situation + verdict + toggle, décote %, décote null masquée, deux scores /10, recommandations, libellé situation NET_NET)
+
+**Version** : 10.7.0
+**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 361 Vitest verts (+24 Sprint 120) ; tsc 0 erreur ; ESLint 0 ; ruff clean
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (+24), et la suite backend complète (1 423 verts, ruff `All checks passed`).
+
+---
 
 ### Sprint 119 — Refonte UI Dorsey Moat + Buffett Quality + Valorisation ✅
 

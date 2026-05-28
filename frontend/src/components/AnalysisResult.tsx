@@ -9,6 +9,10 @@ import { ThesisSection } from './ThesisSection'
 import { DorseyMoatSection } from './DorseyMoatSection'
 import { BuffettQualitySection } from './BuffettQualitySection'
 import { ValuationSection } from './ValuationSection'
+import { LynchCategoriesSection } from './LynchCategoriesSection'
+import { GreenblattSection } from './GreenblattSection'
+import { MungerSection } from './MungerSection'
+import { KlarmanSection } from './KlarmanSection'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -215,15 +219,15 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
       {result.dorsey && <DorseyMoatSection output={result.dorsey} />}
       {result.buffett && <BuffettQualitySection output={result.buffett} />}
       {result.valuation && <ValuationSection output={result.valuation} />}
-      {result.lynch && <div data-testid="lynch-category"><SkillSection title="Lynch Categories" output={result.lynch} /></div>}
+      {result.lynch && <LynchCategoriesSection output={result.lynch} />}
       {result.fisher && <SkillSection title="Fisher Scuttlebutt" output={result.fisher} />}
-      {result.klarman && <SkillSection title="Klarman Marge Sécurité" output={result.klarman} />}
-      {result.greenblatt && <SkillSection title="Greenblatt Magic Formula" output={result.greenblatt} />}
+      {result.klarman && <KlarmanSection output={result.klarman} />}
+      {result.greenblatt && <GreenblattSection output={result.greenblatt} />}
       {result.damodaran && <SkillSection title="Damodaran Narrative" output={result.damodaran} />}
       {result.marks && <SkillSection title="Marks Cycles" output={result.marks} />}
       {result.pabrai && <SkillSection title="Pabrai Dhandho" output={result.pabrai} />}
       {result.thesis && <ThesisSection output={result.thesis} />}
-      {result.munger && <SkillSection title="Munger Biais Cognitifs" output={result.munger} />}
+      {result.munger && <MungerSection output={result.munger} />}
       {result.canadian_tax && <SkillSection title="Fiscalité CA/QC" output={result.canadian_tax} />}
     </div>
   )
