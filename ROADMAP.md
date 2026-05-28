@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-28 — Sprint 120 complété**
+**Dernière mise à jour : 2026-05-28 — Sprint 121 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.7.0 |
+| **Version** | 10.8.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 121 — à définir |
-| **Dernier sprint complété** | Sprint 120 — Refonte UI Lynch + Greenblatt + Munger + Klarman ✅ |
+| **Sprint actif** | Sprint 122 — Export analyse individuelle en PDF enrichi |
+| **Dernier sprint complété** | Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -81,6 +81,7 @@
 - **UI Earnings Quality + Thèse d'investissement (Sprint 118)** — `EarningsQualitySection` (5 cadres analytiques : F-Score 9 critères, C-Score 6 signaux, M-Score, Z-Score, Sloan) et `ThesisSection` (3 scénarios bull/base/bear probabilisés, kill criteria, devil's advocate, narrative) remplacent l'affichage JSON brut générique
 - **UI Dorsey Moat + Buffett Quality + Valorisation (Sprint 119)** — `DorseyMoatSection` (type de moat WIDE/NARROW/NONE, 5 sources d'avantage concurrentiel avec intensité, durabilité ROIC), `BuffettQualitySection` (4 filtres séquentiels ✓/✗, owner earnings par action, quality score /4) et `ValuationSection` (fourchette basse/centrale/haute, 3 méthodes DCF/comparables/sectoriel, matrice de sensibilité WACC × croissance, marge de sécurité composite) remplacent l'affichage JSON brut générique
 - **UI Lynch + Greenblatt + Munger + Klarman (Sprint 120)** — `LynchCategoriesSection` (catégorie parmi 6 + ratio PEG coloré + badge tenbagger + score de croissance /5), `GreenblattSection` (ROC + rendement des bénéfices en %, situations spéciales), `MungerSection` (biais cognitifs détectés avec impact MINEUR/MODERE/MAJEUR, risque lollapalooza, analyse par inversion) et `KlarmanSection` (type de situation qualifié, décote vs valeur intrinsèque, scores marge de sécurité + préservation du capital /10) remplacent l'affichage JSON brut générique
+- **UI Fisher + Damodaran + Marks + Pabrai + Fiscalité (Sprint 121)** — `FisherSection` (badge qualité de direction + les 15 points notés /2 + score Fisher /30), `DamodaranSection` (échelle possible→plausible→probable, solidité de la narrative /10, ERP implicite, divergences story vs numbers), `MarksSection` (jauge du pendule de sentiment −5/+5, position dans le cycle, second-level thinking), `PabraiSection` (asymétrie upside/downside, Kelly fractionnel, score heads-I-win /9, les 9 principes Dhandho ✓/✗) et `CanadianTaxSection` (compte recommandé CELI/REER/CELIAPP/non-enregistré, taux d'inclusion gain en capital, retenue US, badge Smith Manœuvre) remplacent l'affichage JSON brut générique — **plus aucun skill affiché en JSON brut**, le composant `SkillSection` générique est retiré
 
 #### Outillage Claude Code (Sprint 74)
 - **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
@@ -119,6 +120,27 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅
+
+**Objectif :** Clôturer la refonte UI démarrée aux Sprints 118-120 sur les cinq derniers skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend, puis retirer le composant générique devenu inutile.
+
+**Livrables :**
+- `frontend/src/types/index.ts` — ajout des types structurés `FisherPoint`, `FisherOutput`, `DamodaranOutput`, `MarksOutput`, `DhandhoPrincipe`, `PabraiOutput`, `CanadianTaxOutput` ; `AnalyzeResponse.fisher`, `.damodaran`, `.marks`, `.pabrai` et `.canadian_tax` typés précisément (plus `SkillOutput` générique)
+- `frontend/src/components/FisherSection.tsx` — en-tête avec badge qualité de direction (libellé FR : exceptionnelle/bonne/adéquate/médiocre) + verdict badge (ACHAT_FORT/ACHAT/CONSERVER/EVITER) ; score Fisher /30 ; liste des 15 points (titre + commentaire + score /2 coloré) ; recommandations
+- `frontend/src/components/DamodaranSection.tsx` — en-tête avec badge cohérence + verdict badge (NARRATIVE_FORTE/ACCEPTABLE/FAIBLE/INCOHERENTE) ; échelle possible→plausible→probable (niveau atteint mis en évidence, état incohérent en rouge) ; solidité de la narrative /10 ; ERP implicite en % (masqué si null) ; divergences en badges ; recommandations
+- `frontend/src/components/MarksSection.tsx` — en-tête avec badge position de cycle (libellé FR : pessimisme excessif/pessimisme/neutre/optimisme/euphorie) + badge timing (ACHETER_AGRESSIF/ACHETER_PRUDEMMENT/ATTENDRE/REDUIRE/VENDRE) ; jauge du pendule −5→+5 avec marqueur et score coloré selon la logique contrariante ; second-level thinking ; recommandations
+- `frontend/src/components/PabraiSection.tsx` — en-tête avec verdict badge (DHANDHO_FORT/DHANDHO_MOYEN/PAS_DHANDHO) ; asymétrie upside/downside (×, colorée) ; Kelly fractionnel en % (N/A si null) ; score heads-I-win /9 ; grille des 9 principes Dhandho (✓/✗ + commentaire) ; recommandations
+- `frontend/src/components/CanadianTaxSection.tsx` — en-tête avec badge compte recommandé (libellé FR + sigle EN : CELI (TFSA)/REER (RRSP)/CELIAPP (FHSA)/non-enregistré) ; justification fiscale ; taux d'inclusion du gain en capital en % ; badge Smith Manœuvre si applicable ; retenue à la source US (masquée si null) ; recommandations
+- `frontend/src/components/AnalysisResult.tsx` — branchement sur les cinq nouveaux composants ; **retrait du composant `SkillSection` générique et de l'import `SkillOutput`** (plus aucun skill en JSON brut)
+- `frontend/src/__tests__/FisherSection.test.tsx`, `DamodaranSection.test.tsx`, `MarksSection.test.tsx`, `PabraiSection.test.tsx`, `CanadianTaxSection.test.tsx` — 6 tests Vitest chacun (30 au total)
+
+**Version** : 10.8.0
+**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 391 Vitest verts (+30 Sprint 121) ; tsc 0 erreur ; ESLint 0 ; ruff clean
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (+30), et la suite backend complète (1 423 verts, ruff `All checks passed`).
+
+---
 
 ### Sprint 120 — Refonte UI Lynch + Greenblatt + Munger + Klarman ✅
 

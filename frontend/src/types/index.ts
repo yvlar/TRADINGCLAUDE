@@ -311,6 +311,85 @@ export interface KlarmanOutput {
   cost_usd: number
 }
 
+// ---- Fisher Scuttlebutt Output (Sprint 121) ----
+export interface FisherPoint {
+  point: number // 1-15
+  titre: string
+  score: number // 0-2
+  commentaire: string
+}
+
+export interface FisherOutput {
+  ticker: string
+  fisher_score: number // 0-30 (somme des 15 points)
+  points_evalues: FisherPoint[] // exactement 15
+  management_quality: string // EXCEPTIONNEL|BON|ADEQUAT|MEDIOCRE
+  verdict: string // ACHAT_FORT|ACHAT|CONSERVER|EVITER
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Damodaran Narrative & Numbers Output (Sprint 121) ----
+export interface DamodaranOutput {
+  ticker: string
+  test_coherence: string // POSSIBLE|PLAUSIBLE|PROBABLE|INCOHERENT
+  erp_implied: number | null // prime de risque actions implicite
+  narrative_strength: number // 0-10
+  divergences_detectees: string[]
+  verdict: string // NARRATIVE_FORTE|NARRATIVE_ACCEPTABLE|NARRATIVE_FAIBLE|NARRATIVE_INCOHERENTE
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Marks Cycles & Risk Output (Sprint 121) ----
+export interface MarksOutput {
+  position_cycle: string // PESSIMISME_EXCESSIF|PESSIMISME|NEUTRE|OPTIMISME|EUPHORIE
+  pendule_score: number // -5 à +5 ; négatif = opportunité contrariante
+  second_level_insight: string
+  recommandation_timing: string // ACHETER_AGRESSIF|ACHETER_PRUDEMMENT|ATTENDRE|REDUIRE|VENDRE
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Pabrai Dhandho Output (Sprint 121) ----
+export interface DhandhoPrincipe {
+  nom: string
+  satisfait: boolean
+  commentaire: string
+}
+
+export interface PabraiOutput {
+  ticker: string
+  principes_dhandho: DhandhoPrincipe[] // exactement 9
+  heads_i_win_score: number // 0-9 (principes satisfaits)
+  asymetrie: number // upside / abs(downside), >= 0
+  kelly_fractionnel: number | null // Kelly / 4, ou null si non calculable
+  verdict: string // DHANDHO_FORT|DHANDHO_MOYEN|PAS_DHANDHO
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Canadian Tax Output (Sprint 121) ----
+export interface CanadianTaxOutput {
+  ticker: string
+  compte_recommande: string // CELI | REER | CELIAPP | NON_ENREGISTRE
+  justification_fiscale: string
+  impact_retenue_us: string | null // retenue à la source US si applicable
+  strategie_smith_manoeuvre: boolean
+  taux_inclusion_gain_capital: number // 0.50 = 50% inclusion
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
 // ---- Score composite pondéré (Sprint 38) ----
 export interface CompositeScore {
   score: number
@@ -366,14 +445,14 @@ export interface AnalyzeResponse {
   valuation: StockValuationOutput | null
   thesis: ThesisBuilderOutput | null
   munger: MungerOutput | null
-  canadian_tax: SkillOutput | null
+  canadian_tax: CanadianTaxOutput | null
   lynch: LynchCategoriesOutput | null
-  fisher: SkillOutput | null
+  fisher: FisherOutput | null
   klarman: KlarmanOutput | null
   greenblatt: GreenblattOutput | null
-  damodaran: SkillOutput | null
-  marks: SkillOutput | null
-  pabrai: SkillOutput | null
+  damodaran: DamodaranOutput | null
+  marks: MarksOutput | null
+  pabrai: PabraiOutput | null
   esg: SkillOutput | null
   cost_usd: number
   created_at: string
