@@ -193,6 +193,9 @@ class ObservabilityService:
         Calcule p50/p95/p99 depuis le sorted set Redis.
         Si skill_id=None, agrège tous les skills.
         """
+        # zrange (stub redis) renvoie une union de types de listes — annoter évite
+        # que mypy infère list[Never] sur la branche else et rejette .extend()
+        raw_members: list[Any]
         if skill_id is not None:
             raw_members = await self._redis.zrange(
                 f"skill_traces:{skill_id}", 0, -1
