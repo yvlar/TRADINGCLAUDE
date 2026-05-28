@@ -1,19 +1,20 @@
-# Sprint 119 — à définir
+# Sprint 120 — à définir
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.5.0 — Sprint 118 complété)
+## État du projet (v10.6.0 — Sprint 119 complété)
 
-Le dépôt est public-ready et les deux skills les plus riches ont maintenant un rendu UI structuré.
+Le dépôt est public-ready et les cinq skills les plus riches ont maintenant un rendu UI structuré (plus de JSON brut).
 
-**Nouveauté Sprint 118** — Refonte UI Earnings Quality + Thèse d'investissement :
-- **`EarningsQualitySection.tsx`** — 5 cadres analytiques visualisés : F-Score Piotroski (9 critères ✓/✗), C-Score Montier (6 signaux), M-Score Beneish (8 ratios + seuil -1.78), Z-Score Altman, Sloan accruals ; barre de confiance % ; red flags ; recommandations prochaine étape
-- **`ThesisSection.tsx`** — 3 scénarios bull/base/bear côte à côte avec barres de probabilité, rendements cibles, hypothèses ; kill criteria liste ✗ ; devil's advocate box ; narrative en paragraphes
-- **Types TypeScript** structurés (`EarningsQualityOutput`, `ThesisBuilderOutput` et sous-types) — `AnalyzeResponse.earnings_quality` et `.thesis` ne sont plus `SkillOutput` générique
-- **12 tests Vitest** — 6 par composant (toggle, cadres analytiques, null handling, within pour sous-sections)
-- **AnalysisResult.tsx** — branché sur les nouveaux composants, plus de JSON brut pour ces deux skills
+**Nouveauté Sprint 119** — Refonte UI Dorsey Moat + Buffett Quality + Valorisation :
+- **`DorseyMoatSection.tsx`** — badge type de moat (WIDE/NARROW/NONE), barre de confiance, durabilité ROIC, grille des 5 sources d'avantage concurrentiel (intangibles, coûts de transfert, effets de réseau, avantages de coûts, échelle efficiente) avec présence ✓/✗, badge d'intensité et justification ; red flags ; recommandations
+- **`BuffettQualitySection.tsx`** — verdict (COMPOUNDER/QUALITE_CORRECTE/REJETER) + quality score /4 + barre de confiance ; owner earnings par action mis en évidence ; 4 filtres séquentiels ✓/✗ avec score et justification
+- **`ValuationSection.tsx`** — verdict (SOUS_EVALUE/JUSTE_VALEUR/SUREVALUE) + marge de sécurité composite ; fourchette basse/centrale/haute ; 3 méthodes (DCF/comparables/sectoriel) avec hypothèses ; matrice de sensibilité WACC × croissance
+- **Types TypeScript** structurés (`DorseyMoatOutput`, `BuffettQualityOutput`, `StockValuationOutput` et sous-types) — `AnalyzeResponse.dorsey`, `.buffett` et `.valuation` ne sont plus `SkillOutput` générique
+- **18 tests Vitest** — 6 par composant
+- **AnalysisResult.tsx** — branché sur les nouveaux composants, plus de JSON brut pour ces trois skills
 
 **Fonctionnalités actives** :
 - 18 skills (16 tier2 + 2 tier1), orchestrateur multi-workflow, streaming SSE skill par skill avec event `plan`
@@ -25,25 +26,25 @@ Le dépôt est public-ready et les deux skills les plus riches ont maintenant un
 - RAG Qdrant, Langfuse, Redis cache, Celery beat
 - Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages + auth, shell pleine largeur `max-w-shell`, design tokens sémantiques, palette de commandes ⌘K
 - **Repo public-ready** — README · CODE_OF_CONDUCT · CHANGELOG · CODEOWNERS · CI permissions minimales
-- **UI skills riches** — EarningsQualitySection + ThesisSection (plus JSON brut)
-- 1 423 CI pytest verts + 319 Vitest verts + 4 jobs CI GitHub Actions opérationnels
+- **UI skills riches** — EarningsQuality + Thèse + Dorsey Moat + Buffett Quality + Valorisation (plus JSON brut)
+- 1 423 CI pytest verts + 337 Vitest verts + 4 jobs CI GitHub Actions opérationnels
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v10.5.0, Sprint 118 ✅
+2. `ROADMAP.md` — état courant v10.6.0, Sprint 119 ✅
 3. `.claude/rules/` — 16 fichiers de règles path-scoped (conventions, architecture, tests)
 4. `docs/cheatsheet.md` — toutes les commandes opérationnelles
 
 ---
 
-## TÂCHE — Sprint 119
+## TÂCHE — Sprint 120
 
 **Ce sprint est à définir par Yves.** Choisir l'un des sprints suggérés ci-dessous, ou en spécifier un autre.
 
-Aucun point de dette technique n'est en suspens. La prochaine opportunité naturelle : continuer la refonte UI des autres skills (Dorsey, Buffett, Valorisation) ou améliorer le pipeline de données.
+Aucun point de dette technique n'est en suspens. Les skills encore affichés en JSON brut générique (`SkillSection`) : Lynch, Fisher, Klarman, Greenblatt, Damodaran, Marks, Pabrai, Munger, Fiscalité CA/QC — la refonte UI peut continuer, ou le projet peut pivoter vers le pipeline de données / l'export.
 
 ### Note d'environnement (session web)
 
@@ -65,27 +66,27 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 
 ## SPRINTS SUGGÉRÉS (non planifiés)
 
-### Sprint 119 — Refonte UI skills génériques (Dorsey, Buffett, Valorisation)
-**Objectif** : Appliquer le même pattern Sprint 118 aux trois autres skills fréquemment utilisés dans `value_graham` et `compounder_buffett` — créer `DorseyMoatSection`, `BuffettQualitySection`, `ValuationSection` avec types TS structurés depuis les schemas Pydantic backend.
+### Sprint 120 — Refonte UI skills restants (Lynch, Klarman, Greenblatt, Munger…)
+**Objectif** : Continuer le pattern Sprint 118/119 sur les skills encore en JSON brut — p. ex. `LynchCategoriesSection` (catégorie + PEG), `GreenblattSection` (rang ROC + earnings yield), `MungerSection` (biais cognitifs détectés), `KlarmanSection` (marge de sécurité + downside).
 **Complexité** : Moyenne
-**Justification** : Continuation directe du Sprint 118 — ces trois skills restent en JSON brut. Dorsey Moat a des sources d'avantage concurrentiel structurées, Buffett Quality a des `owner_earnings`, la Valorisation a trois méthodes (DCF/multiples/sectorielle) — toutes exploitables visuellement.
+**Justification** : Dernier lot de skills affichés en JSON brut générique ; complète la refonte UI entamée aux Sprints 118-119.
 
-### Sprint 120 — Export analyse individuelle en PDF enrichi
+### Sprint 121 — Export analyse individuelle en PDF enrichi
 **Objectif** : `GET /ticker-report/{ticker}?analysis_id=X` incluant verdicts skill par skill, ratios clés, annotation existante et score ESG. Complète la boucle « analyser → lire → exporter ».
 **Complexité** : Moyenne
 **Justification** : Le PDF par ticker (Sprint 63) couvre 90 jours d'historique, pas une analyse précise ; valeur immédiate d'archivage et de partage.
 
-### Sprint 121 — Code-splitting des routes + lazy-load recharts
+### Sprint 122 — Code-splitting des routes + lazy-load recharts
 **Objectif** : `React.lazy` + `Suspense` (fallback skeleton) par page, isolant recharts du bundle initial pour accélérer le TTI de la première vue (Analyse).
 **Complexité** : Faible
 **Justification** : Toutes les pages sont importées statiquement aujourd'hui ; quick win de performance perçue identifié à l'audit. Sans infrastructure à modifier, purement frontend.
 
-### Sprint 122 — Persistance des préférences Screener côté serveur
+### Sprint 123 — Persistance des préférences Screener côté serveur
 **Objectif** : Migrer tri + filtres Screener du localStorage (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié. Endpoints `GET/PUT /preferences/screener`.
 **Complexité** : Moyenne
 **Justification** : Lier les préférences au compte (Sprint Login) offre une continuité multi-appareils.
 
-### Sprint 123 — Annotations enrichies : tags + filtres
+### Sprint 124 — Annotations enrichies : tags + filtres
 **Objectif** : Ajouter un champ `tags` (liste de mots-clés libres) aux annotations, indexé GIN, filtrable via `GET /history?tags=value,growth`. Affichage chips dans `HistoryTable` et `AnnotationSection`.
 **Complexité** : Moyenne
 **Justification** : Les annotations (Sprint 78) sont du texte libre sans structure ; les tags permettent un filtrage sémantique du portefeuille sans RAG.
@@ -96,6 +97,6 @@ En session Claude Code sur le web, le conteneur est cloné à neuf et les dépen
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.5.0), et les règles .claude/rules/ avant de commencer.
-Sprint actif : 119 — [à compléter par Yves]
+Lis CLAUDE.md, ROADMAP.md (v10.6.0), et les règles .claude/rules/ avant de commencer.
+Sprint actif : 120 — [à compléter par Yves]
 ```

@@ -180,6 +180,77 @@ export interface ThesisBuilderOutput {
   cost_usd: number
 }
 
+// ---- Dorsey Moat Output (Sprint 119) ----
+export interface MoatSource {
+  source: string // "intangibles" | "switching_costs" | "network_effects" | "cost_advantages" | "efficient_scale"
+  present: boolean
+  intensite: string // "FORTE" | "MODÉRÉE" | "FAIBLE" | "ABSENTE"
+  justification: string
+}
+
+export interface DorseyMoatOutput {
+  ticker: string
+  moat_type: string // "WIDE" | "NARROW" | "NONE"
+  sources_identifiees: MoatSource[]
+  roic_durability: string // "FORTE" | "MODÉRÉE" | "FAIBLE"
+  verdict_detail: string
+  drapeaux_rouges: string[]
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+  confidence_score: number
+}
+
+// ---- Buffett Quality Output (Sprint 119) ----
+export interface BuffettFiltre {
+  filtre: string
+  passe: boolean
+  score: number
+  justification: string
+}
+
+export interface BuffettQualityOutput {
+  ticker: string
+  filtres: BuffettFiltre[]
+  owner_earnings: number | null // par action (comme l'EPS)
+  quality_score: number // 0-4
+  verdict: string // "COMPOUNDER" | "QUALITE_CORRECTE" | "REJETER"
+  verdict_detail: string
+  drapeaux_rouges: string[]
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+  confidence_score: number
+}
+
+// ---- Stock Valuation Output (Sprint 119) ----
+export interface ValuationMethod {
+  methode: string // "dcf" | "comparables" | "sectoriel"
+  valeur: number | null
+  hypotheses: string
+}
+
+export interface SensitivityMatrix {
+  wacc_range: number[]
+  growth_range: number[]
+  values: number[][]
+}
+
+export interface StockValuationOutput {
+  ticker: string
+  methodes: ValuationMethod[]
+  fourchette_basse: number
+  fourchette_centrale: number
+  fourchette_haute: number
+  marge_securite_composite: number // fraction : positif = sous-évalué
+  matrice_sensibilite: SensitivityMatrix
+  verdict: string // "SOUS_EVALUE" | "JUSTE_VALEUR" | "SUREVALUE"
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
 // ---- Score composite pondéré (Sprint 38) ----
 export interface CompositeScore {
   score: number
@@ -230,9 +301,9 @@ export interface AnalyzeResponse {
   skills_applied: string[]
   graham: GrahamAnalysisOutput | null
   earnings_quality: EarningsQualityOutput | null
-  dorsey: SkillOutput | null
-  buffett: SkillOutput | null
-  valuation: SkillOutput | null
+  dorsey: DorseyMoatOutput | null
+  buffett: BuffettQualityOutput | null
+  valuation: StockValuationOutput | null
   thesis: ThesisBuilderOutput | null
   munger: SkillOutput | null
   canadian_tax: SkillOutput | null
