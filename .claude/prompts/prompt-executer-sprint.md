@@ -21,9 +21,12 @@ PR est créée et la session abonnée aux événements.
 # Lecture obligatoire (avant d'écrire du code)
 1. `prompt-mise-a-jour-roadmap.md` — la tâche du sprint courant
 2. `CLAUDE.md` — index du projet et pointeurs vers `.claude/rules/`
-3. `ROADMAP.md` — état courant et version (court : ~état + 6 derniers sprints).
+3. `ROADMAP.md` — état courant et version (court : ~état + 4 derniers sprints).
    NE PAS lire `docs/roadmap-archive.md` à l'amorçage — c'est l'historique mort.
-4. Les fichiers `.claude/rules/` pertinents au périmètre touché
+4. UNIQUEMENT les règles `.claude/rules/` nommées par la section « LECTURE
+   OBLIGATOIRE » de la carte (déjà cadrées au périmètre du sprint). La table de
+   pointeurs de `CLAUDE.md` résume le reste — ne PAS pré-charger les 16 règles
+   « au cas où » ; n'ouvrir une règle non listée que si le périmètre l'impose.
 
 # Clarification préalable
 `prompt-mise-a-jour-roadmap.md` laisse souvent le sprint « à définir » avec une
@@ -87,7 +90,7 @@ et état CI initial rapporté.
 ## Bonnes pratiques de prompt engineering appliquées
 
 - **Rôle + objectif explicites** — ancre le contexte et donne un but mesurable plutôt qu'une suite d'ordres.
-- **Lecture obligatoire (grounding)** — prise de contexte forcée avant d'agir.
+- **Grounding ciblé** — prise de contexte forcée avant d'agir, mais limitée aux règles cadrées au périmètre (nommées par la carte) plutôt qu'au chargement des 16 règles à chaque session — économie de tokens sans perte de contexte utile.
 - **Gestion de l'ambiguïté** — point d'arrêt pour clarification quand le sprint est « à définir ».
 - **Décomposition séquencée** — actions floues transformées en étapes ordonnées avec dépendances.
 - **Critères de succès + vérification** — « definition of done » et gate tests/lint/typecheck.
