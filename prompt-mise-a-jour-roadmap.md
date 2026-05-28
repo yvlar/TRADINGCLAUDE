@@ -6,31 +6,9 @@
 
 ## État du projet (v10.9.0 — Sprint 122 complété)
 
-**Nouveauté Sprint 122** — Export d'une analyse individuelle précise en PDF enrichi :
-- **Endpoint** — `GET /ticker-report/{ticker}` accepte un paramètre optionnel `analysis_id` :
-  - fourni → charge **cette** ligne de `analysis_history` (`WHERE id = $1::uuid AND ticker = $2`), 404 si absente, ticker différent ou id mal formé ; l'historique composite devient optionnel
-  - absent → comportement inchangé (dernière analyse + historique 90 j, 404 si aucune donnée composite) — **rétrocompatible**
-- **Reconstruction multi-skills** — `_reconstruct_analyze_response` parse désormais **les 16 outputs tier2** présents dans `result` (plus seulement Graham/Buffett/Dorsey) via un mapping `result_key → champ AnalyzeResponse → classe Pydantic` ; un skill dont le JSON ne valide pas est ignoré (`model_validate` tolérant, pas d'échec global) ; n'exige plus la présence de Graham
-- **PDF enrichi** (`PdfReportService.generate_ticker_report`, nouveaux params `ratios` / `annotation` / `esg_score`) :
-  - **tableau « Verdicts par skill »** (skill / verdict / détail court) pour chaque skill présent
-  - **tableau « Ratios clés »** depuis `input_data` (GrahamRatios : cours, BPA, valeur comptable, P/E, P/B, dette/capitaux, croissance BPA 10 a, ratio de liquidité)
-  - **annotation existante** (table `annotations`, Sprint 78) si présente
-  - **score ESG** depuis le `result` (output `esg`), sinon dernier point `esg_score_history`
-- **Frontend** — bouton « Exporter cette analyse » dans `AnalysisResult` (AnalyzePage) appelant `downloadTickerPdf(ticker, 90, analysis_id)` ; masqué pour un score depuis cache composite (`analysis_id` ∈ {`cached`, `cached_composite`})
-- **Tests** — +9 pytest (reconstruction multi-skills, skill corrompu ignoré, result illisible, `analysis_id` 200/404 inconnu/404 mismatch/404 mal formé, PDF enrichi), +2 Vitest (export appelle `downloadTickerPdf` avec `analysis_id` ; bouton masqué si cache)
+**Nouveauté Sprint 122** — Export d'une analyse individuelle précise en PDF enrichi : `GET /ticker-report/{ticker}` accepte un `analysis_id` optionnel (cible une analyse précise, reconstruction multi-skills des 16 outputs tier2 avec skill corrompu ignoré, PDF enrichi : verdicts par skill + ratios clés + annotation + score ESG), bouton « Exporter cette analyse » côté frontend ; rétrocompatible sans `analysis_id`.
 
-**Fonctionnalités actives** :
-- 18 skills (16 tier2 + 2 tier1), orchestrateur multi-workflow, streaming SSE skill par skill avec event `plan`
-- Auth JWT cookie httpOnly + CSRF + argon2 (Sprint Login)
-- Screener v2 — tri persistant + filtres composite + fraîcheur + export filtré (Sprint 109/114)
-- Dashboard v2 — métriques détaillées + drill-down coût par skill + tendance quotidienne, grille responsive 12 colonnes
-- Recherche sémantique RAG `/recherche` (Sprint 106)
-- Tableau de bord alertes Celery (Sprint 99) + page Alertes `/alerts`
-- Rapports PDF : ticker (par ticker **ou par analyse précise** depuis Sprint 122), screener, watchlist, mensuel
-- RAG Qdrant, Langfuse, Redis cache, Celery beat
-- Frontend React 18 + Tailwind 4 + Vite 8 (port 5173) — 11 pages + auth, shell pleine largeur `max-w-shell`, design tokens sémantiques, palette de commandes ⌘K
-- **UI skills 100 % riche** — les 16 skills tier2 rendus en composants structurés ; plus aucun JSON brut
-- 1 432 CI pytest verts + 393 Vitest verts + 4 jobs CI GitHub Actions opérationnels
+> **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests vérifiés) : **`ROADMAP.md`** — source unique. Cette carte ne duplique pas l'état, elle y renvoie (cf. `.claude/rules/workflow-sprint.md`).
 
 ---
 

@@ -48,9 +48,13 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 3. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
    - Backend : `pytest` (hors e2e/evals) + `ruff check`
    - Frontend : Vitest + `tsc --noEmit` + ESLint (0 erreur / 0 warning)
-4. Revue indépendante : lancer `/code-review` sur le diff du sprint et traiter les
-   findings de correctness AVANT de committer. Des tests verts ne valent pas une
-   revue — ne pas s'auto-valider sur les seuls compteurs.
+4. Revue indépendante (contexte frais) : déléguer la revue du diff du sprint à un
+   sous-agent dédié (`Agent` lançant `/code-review` sur le diff), JAMAIS à la
+   session auteur — un relecteur qui partage le contexte d'écriture partage ses
+   angles morts. Traiter les findings de correctness AVANT de committer, puis
+   relancer une 2ᵉ passe de revue sur le diff corrigé. Tenir un court journal
+   `finding → résolution` (corrigé / écarté + raison), à reporter dans le corps
+   de la PR. Des tests verts (écrits par le même agent) ne valent pas une revue.
 5. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
    mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` dès qu'un
    5ᵉ bloc de sprint détaillé apparaît — n'en garder que ~4, cible < 200 lignes),
@@ -95,7 +99,7 @@ et état CI initial rapporté.
 - **Gestion de l'ambiguïté** — point d'arrêt pour clarification quand le sprint est « à définir ».
 - **Décomposition séquencée** — actions floues transformées en étapes ordonnées avec dépendances.
 - **Critères de succès + vérification** — « definition of done » et gate tests/lint/typecheck.
-- **Revue indépendante** — `/code-review` avant commit : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
+- **Revue indépendante à contexte frais** — `/code-review` délégué à un sous-agent (pas la session auteur, qui partage ses angles morts), 2ᵉ passe après corrections, journal `finding → résolution` dans la PR : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
 - **Phases découplées** — implémentation (A) puis PR + surveillance (B) ; la Phase B peut tourner dans une session fraîche pour éviter la pollution de contexte.
 - **Chiffres vérifiables** — compteurs de tests issus d'une vraie commande, pas d'une estimation (anti-hallucination).
 - **Environnement externalisé** — setup web dans un hook `SessionStart` idempotent plutôt que recopié à chaque sprint.
