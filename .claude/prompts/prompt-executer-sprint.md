@@ -52,8 +52,9 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
    findings de correctness AVANT de committer. Des tests verts ne valent pas une
    revue — ne pas s'auto-valider sur les seuls compteurs.
 5. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
-   mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` si plus de
-   ~6 sprints détaillés), réécrire `prompt-mise-a-jour-roadmap.md` pour le sprint
+   mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` dès qu'un
+   5ᵉ bloc de sprint détaillé apparaît — n'en garder que ~4, cible < 200 lignes),
+   réécrire `prompt-mise-a-jour-roadmap.md` pour le sprint
    suivant, et créer le commit. Les compteurs de tests doivent provenir d'une
    commande réelle (`pytest --co -q | wc -l`, liste Vitest), jamais d'une estimation.
 6. Pousser sur la branche de développement désignée (`git push -u origin <branche>`,

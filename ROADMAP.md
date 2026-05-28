@@ -45,75 +45,28 @@
 - Retry exponentiel sur erreurs 429/529 (`app/utils/retry.py`)
 - Prompt caching activé sur tous les system prompts
 
-#### Frontend React (localhost:5173)
-- **SPA React 18 + TypeScript** — `frontend/` — `npm run dev` → port 5173
-- Proxy Vite → API localhost:8000 (toutes routes `/analyze`, `/screen`, `/watchlist`, etc.)
-- **Page Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill
-- **Page Screener** — batch 2-20 tickers, tableau résultats trié par score ; **v2 (Sprint 109)** : tri persistant localStorage (5 colonnes : ticker/score/composite/fraîcheur/coût), filtres inline par label composite, colonne « Fraîcheur » (date relative + badge frais/périmé > 24h), export CSV des résultats filtrés côté client
-- **Page History** — historique analyses par ticker, téléchargement PDF
-- **Page Watchlist** — gestion positions surveillées, déclenchement analyses manuelles
-- **Page Dashboard** — métriques live WebSocket (jobs, coûts, cache hit ratio) + section Eval Drift (Sprint 66)
-- **Page Admin** — gestion des clés API (créer/lister/révoquer), gestion erreur 403 (Sprint 67)
-- **Bouton "Télécharger PDF"** dans HistoryPage (par ticker, gestion 404 + loading) (Sprint 68)
-- **Bouton "Exporter cette analyse"** dans AnalysisResult (AnalyzePage) — `downloadTickerPdf(ticker, 90, analysis_id)` → PDF enrichi de l'analyse courante ; masqué pour un score depuis cache composite (Sprint 122)
-- **Bouton "PDF"** par ticker dans WatchlistPage (data-testid + gestion 404) (Sprint 68)
-- **Badge "Score depuis cache (<24h)"** dans AnalyzePage quand `depuis_cache_composite=True` (Sprint 69)
-- **Skill ESG simplifié** — 15 critères proxy (5E+5S+5G), `POST /analyze` avec `esg_input` (Sprint 70)
-- **Bouton "Exporter PDF"** dans ScreenerPage — `GET /screener-report?tickers=&workflow=` → PDF reportlab + `downloadScreenerPdf()` (Sprint 71)
-- **Bouton "Exporter PDF"** dans WatchlistPage — `GET /watchlist/export.pdf` → PDF reportlab composite_score + verdicts + top picks + `downloadWatchlistPdf()` (Sprint 76)
-- **Rapport PDF screener planifié** — Celery `send_screener_pdf_report()` webhook multipart/form-data (Sprint 71)
-- **Section Comparaison multi-tickers** dans DashboardPage — `TickerComparisonChart` recharts, 2-5 tickers côte à côte, saisie CSV, `Promise.all` parallèle sur `/composite-history/` (Sprint 72)
-- **Recherche full-text HistoryPage** — champ `q` ILIKE cross-ticker (ticker partiel, workflow, verdict) + index GIN pg_trgm + notice résultats cross-ticker (Sprint 73)
-- **Filtre par plage de dates HistoryPage** — champs "Du" / "Au" ISO 8601, validation from>to, passés à `GET /history?from_dt=&to_dt=` (Sprint 79)
-- **Page Comparer** — tableau multi-skills côte à côte pour 2-5 tickers, données historiques uniquement (Sprint 80) ; bouton "Analyser" opt-in par ticker (Sprint 87) ; toggle "Streaming en direct" SSE skill par skill (Sprint 93)
-- **Page ESG** — scores ESG de la watchlist (tableau tritable, badges ESG_FORT/MODERE/FAIBLE, lien Analyser), route `/esg` (Sprint 82)
-- **Seuil ESG configurable** — colonne "Seuil ESG" dans WatchlistTable, édition inline (bouton ✎ + Input 0-15 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/esg-threshold` (Sprint 84)
-- **Seuil Prix configurable** — colonne "Seuil Prix (%)" dans WatchlistTable, édition inline (bouton ✎ + Input 0-100 + Sauvegarder/Annuler), `PATCH /watchlist/{id}/price-threshold`, valeur saisie en % convertie en décimal avant stockage (Sprint 91)
-- **Rapport PDF mensuel enrichi** — section ESG (Ticker / Score ESG / Verdict / Seuil) ajoutée en fin de PDF si au moins un ticker a un `last_esg_score` non-null (Sprint 88)
-- **Bouton Supprimer dans HistoryPage** — icône 🗑 par analyse avec `window.confirm`, suppression via `DELETE /history/{id}`, retrait immédiat du state local, notification 3s (Sprint 95)
-- **Auth** — Cookie httpOnly JWT (15 min) + refresh token rotation + CSRF double-submit ; pages /register, /forgot-password, /reset-password ; authMe() au montage pour restaurer la session (Sprint Login)
-- **Page Alertes** — `/alerts` : tableau des alertes Celery récentes (Horodatage / Ticker / Type badge / Valeur / Seuil / Message), `data-testid="alerts-table"`, `GET /alerts?limit=50` (Sprint 99)
-- **Page Recherche sémantique** — `/recherche` : champ de recherche en langage naturel sur le corpus RAG (`investment_knowledge`), résultats en cartes (source + score + extrait), badge de similarité coloré, états idle/chargement/erreur/vide/RAG-désactivé, `GET /semantic-search?q=&k=` (Sprint 106)
-- **Section Métriques détaillées (Dashboard v2)** — DashboardPage : sélecteur de période (7/30/90 j) + 4 graphiques recharts — top tickers analysés (barres horizontales), coût par skill (camembert), taux de cache par workflow (barres), alertes regroupées par jour (barres) ; alimentés par `GET /metrics` (enrichi) et `GET /alerts` (Sprint 107)
-- **Drill-down coût par skill + tendance quotidienne (Sprint 112)** — DashboardPage : clic sur une tranche du camembert « coût par skill » → tableau `SkillAnalysesDrilldown` des analyses ayant utilisé ce skill (date / ticker / workflow / coût, `GET /metrics/skill-analyses`) ; courbe `DailyCostTrendChart` (LineChart pleine largeur) de la tendance du coût total par jour (`daily_cost`)
-- **Global Micro-UX Refresh (Sprint 113)** — système d'animations CSS (`shimmer`, `fade-in-up`, `scale-in`, `count-pulse`) ; `Skeleton`/`SkeletonTable`/`SkeletonCard` pour chaque état de chargement sur les 11 pages ; `AnimatedNumber` (count-up cubic-out) sur les métriques WebSocket ; `PageTransition` + `StaggerItem` ; press feedback boutons (`active:scale-95`), hover glow cartes, `animate-scale-in` badges, barre de progression `StreamingProgress`, indicateur nav animé
-- **Layout pleine largeur (Sprint 115)** — shell applicatif fluide `max-w-shell` (token `--container-shell` = 96rem, point de réglage unique) remplaçant `max-w-5xl` dans `App.tsx` ; en-tête sticky en pleine largeur avec contenu interne aligné sur la même largeur que le `<main>` ; **Dashboard en grille responsive 12 colonnes** (`lg:grid-cols-12`, `items-start`) — métriques live et métriques détaillées en pleine largeur (`lg:col-span-12`), sections composite/comparaison/eval-drift/qualité en demi-largeur (`lg:col-span-6`) au lieu d'une pile verticale
-- **Palette de commandes ⌘K (Sprint 116)** — `CommandPalette` déclenchée par Ctrl+K / ⌘K : navigation entre les 10 pages, action « Analyser [ticker] » → `/?ticker=`, analyses récentes depuis localStorage, recherche sémantique RAG inline (debounce 400 ms) ; bouton déclencheur dans l'en-tête avec hint clavier ; ticker pré-rempli dans `AnalyzeForm` via `?ticker=` URL param
-- **UI Earnings Quality + Thèse d'investissement (Sprint 118)** — `EarningsQualitySection` (5 cadres analytiques : F-Score 9 critères, C-Score 6 signaux, M-Score, Z-Score, Sloan) et `ThesisSection` (3 scénarios bull/base/bear probabilisés, kill criteria, devil's advocate, narrative) remplacent l'affichage JSON brut générique
-- **UI Dorsey Moat + Buffett Quality + Valorisation (Sprint 119)** — `DorseyMoatSection` (type de moat WIDE/NARROW/NONE, 5 sources d'avantage concurrentiel avec intensité, durabilité ROIC), `BuffettQualitySection` (4 filtres séquentiels ✓/✗, owner earnings par action, quality score /4) et `ValuationSection` (fourchette basse/centrale/haute, 3 méthodes DCF/comparables/sectoriel, matrice de sensibilité WACC × croissance, marge de sécurité composite) remplacent l'affichage JSON brut générique
-- **UI Lynch + Greenblatt + Munger + Klarman (Sprint 120)** — `LynchCategoriesSection` (catégorie parmi 6 + ratio PEG coloré + badge tenbagger + score de croissance /5), `GreenblattSection` (ROC + rendement des bénéfices en %, situations spéciales), `MungerSection` (biais cognitifs détectés avec impact MINEUR/MODERE/MAJEUR, risque lollapalooza, analyse par inversion) et `KlarmanSection` (type de situation qualifié, décote vs valeur intrinsèque, scores marge de sécurité + préservation du capital /10) remplacent l'affichage JSON brut générique
-- **UI Fisher + Damodaran + Marks + Pabrai + Fiscalité (Sprint 121)** — `FisherSection` (badge qualité de direction + les 15 points notés /2 + score Fisher /30), `DamodaranSection` (échelle possible→plausible→probable, solidité de la narrative /10, ERP implicite, divergences story vs numbers), `MarksSection` (jauge du pendule de sentiment −5/+5, position dans le cycle, second-level thinking), `PabraiSection` (asymétrie upside/downside, Kelly fractionnel, score heads-I-win /9, les 9 principes Dhandho ✓/✗) et `CanadianTaxSection` (compte recommandé CELI/REER/CELIAPP/non-enregistré, taux d'inclusion gain en capital, retenue US, badge Smith Manœuvre) remplacent l'affichage JSON brut générique — **plus aucun skill affiché en JSON brut**, le composant `SkillSection` générique est retiré
+#### Frontend React (localhost:5173) — 11 pages + auth
+- SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
+- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill, badge « score depuis cache <24h »
+- **Screener** — batch 2-20 tickers, tri persistant + filtres composite + colonne fraîcheur (badge frais/périmé >24h) + export CSV filtré
+- **History** — historique par ticker, recherche full-text `q` cross-ticker (index GIN pg_trgm), filtre par plage de dates, suppression par analyse
+- **Watchlist** — positions surveillées, analyses manuelles, seuils ESG + prix éditables inline, score composite historique, export Excel
+- **Dashboard v2** — métriques live WebSocket + section détaillée (top tickers, coût par skill avec drill-down, cache par workflow, alertes/jour, tendance coût quotidien), grille responsive 12 colonnes, eval drift
+- **Comparer** — 2-5 tickers multi-skills côte à côte (historique ou analyse live opt-in, streaming SSE)
+- **ESG** `/esg` — scores ESG de la watchlist (tableau triable, badges ESG_FORT/MODERE/FAIBLE)
+- **Alertes** `/alerts` — tableau des alertes Celery récentes
+- **Recherche** `/recherche` — recherche sémantique RAG en langage naturel
+- **Admin** — gestion des clés API (créer/lister/révoquer)
+- **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe)
+- **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG)
+- **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121
 
-#### Outillage Claude Code (Sprint 74)
-- **`.claude/rules/`** — 16 fichiers de règles path-scoped remplaçant le CLAUDE.md monolithique (490 → 100 lignes)
-- **`docs/cheatsheet.md`** — référence exhaustive des commandes opérationnelles
-- **`.gitignore`** — exclusion `__pycache__/`, `.pyc`, `.venv/`, `.env`, `node_modules/`
-
-#### Corpus RAG ESG (Sprint 75)
-- **`.claude/skills/esg-simplified/`** — SKILL.md + 5 références (dette technique Sprint 70 fermée)
-- 16/16 skills tier2 maintenant documentés dans `.claude/skills/` — corpus RAG complet
+#### Outillage & corpus
+- `.claude/rules/` — 16 règles path-scoped (CLAUDE.md allégé) ; `docs/cheatsheet.md` — commandes opérationnelles ; `.gitignore` durci
+- `.claude/skills/` — 16/16 skills tier2 documentés (SKILL.md + references) → corpus RAG `investment_knowledge` complet
 
 ### Skills opérationnels
-| Skill | Fichier | Statut |
-|-------|---------|--------|
-| `graham_analysis` | `app/skills/tier2/graham_analysis/` | ✅ Production |
-| `earnings_quality` | `app/skills/tier2/earnings_quality/` | ✅ Production |
-| `dorsey_moat` | `app/skills/tier2/dorsey_moat/` | ✅ Production |
-| `buffett_quality` | `app/skills/tier2/buffett_quality/` | ✅ Production |
-| `stock_valuation_triangulation` | `app/skills/tier2/stock_valuation/` | ✅ Production |
-| `yahoo_finance_extractor` | `app/skills/tier1/yahoo_finance.py` | ✅ Production |
-| `sedar_plus_extractor` | `app/skills/tier1/sedar_plus.py` | ✅ Production |
-| `investment_thesis_builder` | `app/skills/tier2/thesis_builder/` | ✅ Production |
-| `munger_mental_models` | `app/skills/tier2/munger_mental/` | ✅ Production |
-| `canadian_tax_considerations` | `app/skills/tier2/canadian_tax/` | ✅ Production |
-| `lynch_categories` | `app/skills/tier2/lynch_categories/` | ✅ Production |
-| `fisher_scuttlebutt` | `app/skills/tier2/fisher_scuttlebutt/` | ✅ Production |
-| `klarman_margin` | `app/skills/tier2/klarman_margin/` | ✅ Production |
-| `greenblatt` | `app/skills/tier2/greenblatt/` | ✅ Production |
-| `damodaran_narrative` | `app/skills/tier2/damodaran_narrative/` | ✅ Production |
-| `marks_cycles` | `app/skills/tier2/marks_cycles/` | ✅ Production |
-| `pabrai_dhandho` | `app/skills/tier2/pabrai_dhandho/` | ✅ Production |
-| `esg_simplified` | `app/skills/tier2/esg_simplified/` | ✅ Production |
+18 skills en production (16 tier2 + 2 tier1). Catalogue détaillé (code API → chemin de code) : `.claude/rules/base-connaissances-skills.md` et `CLAUDE.md`.
 
 ---
 
@@ -202,43 +155,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 ---
 
-### Sprint 117 — Repo public-ready (gouvernance + README + CHANGELOG) ✅
-
-**Objectif :** Rendre le dépôt GitHub public de façon sécuritaire et professionnelle — audit complet, fichiers de gouvernance open source, durcissement CI/CD.
-
-**Livrables :**
-- `README.md` — mis à jour vers v10.3.0 : version badge, tests counts (1 423 CI / 307 Vitest), SearchPage `/recherche`, palette ⌘K dans les fonctionnalités, Node 22, `GET /semantic-search` et `GET /metrics/skill-analyses` dans les endpoints
-- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1 bilingue (FR/EN), contact ivess49@gmail.com
-- `CHANGELOG.md` — historique structuré Keep a Changelog depuis v1.0.0 (Phase 0) jusqu'à v10.3.0 (Sprint 116), groupé par version mineure avec sprint de référence
-- `.github/workflows/ci.yml` — `permissions: contents: read` au niveau workflow + sur chaque job (principe de moindre privilège)
-- `.gitignore` — ajout des patterns manquants : `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.crt`, `*.cer` (certificats), `*~$*`, `*.tmp` (artefacts OneDrive), `backend_data/`, `data_export/` (dumps données)
-- `.github/CODEOWNERS` — `* @yvlar` (code review obligatoire par le mainteneur sur toute PR)
-
-**Version** : 10.4.0
-**Tests** : 1 423 CI verts (inchangé — sprint documentation/infrastructure) ; 307 Vitest verts (inchangé)
-
----
-
-### Sprint 116 — Palette de commandes ⌘K ✅
-
-**Objectif :** Ajouter une command palette (`cmdk`) déclenchée par Ctrl+K / ⌘K permettant de naviguer entre les pages, d'analyser un ticker en un raccourci, d'accéder aux analyses récentes, et de consulter la base de connaissances RAG directement depuis le clavier.
-
-**Livrables :**
-- `frontend/src/components/CommandPalette.tsx` — composant `CommandPalette` : rendu via `createPortal` dans `document.body` ; groupes **Actions rapides** (Analyser / Comparer, visibles dès saisie), **Analyses récentes** (depuis `loadRecentAnalyses()`, affichées à l'ouverture vide), **Pages** (10 routes filtrées par query), **Base de connaissances** (résultats RAG `fetchSemanticSearch` debounce 400 ms, activé si ≥ 3 caractères) ; fermeture sur Escape / clic backdrop / sélection d'un item ; légende raccourcis (↵ ↑↓ ESC) en pied de palette
-- `frontend/src/App.tsx` — import `CommandPalette` + state `paletteOpen` dans `AppShell` ; `useEffect` global `keydown` sur `Ctrl+K` / `⌘K` (`e.preventDefault()`) ; bouton déclencheur dans l'en-tête (`data-testid="command-palette-trigger"`) avec hint clavier visible sur ≥ md
-- `frontend/src/components/AnalyzeForm.tsx` — prop optionnelle `initialTicker?: string` ; état `ticker` initialisé avec `initialTicker ?? ''`
-- `frontend/src/pages/AnalyzePage.tsx` — `useSearchParams` pour lire `?ticker=` (pré-rempli depuis la palette) ; `useEffect` pour nettoyer l'URL après lecture (`setSearchParams({}, { replace: true })`) ; `key={prefillTicker}` sur `<AnalyzeForm>` pour forcer le re-mont lors d'un nouveau ticker
-- `frontend/src/setupTests.ts` — polyfill `ResizeObserver` pour `cmdk` en jsdom
-- `frontend/src/__tests__/CommandPalette.test.tsx` — 8 tests Vitest (mock `cmdk` + `useNavigate` + `loadRecentAnalyses` + `fetchSemanticSearch`) : palette fermée/ouverte, pages navigation affichées, fermeture backdrop, analyses récentes, Analyser → `/?ticker=`, filtre pages par saisie, clic nav item
-- `frontend/src/__tests__/AnalyzePage.test.tsx` + `CacheIndicator.test.tsx` — ajout `MemoryRouter` dans le wrapper (requis par `useSearchParams`)
-- `frontend/package.json` — dépendance `cmdk@1.1.1` ajoutée
-
-**Version** : 10.3.0
-**Tests** : 1423 CI verts (inchangé — sprint frontend pur) ; 307 Vitest verts (+8 Sprint 116) ; tsc 0 erreur ; ESLint 0 ; ruff non modifié
-
----
-
-## Sprints antérieurs (Sprint 115 → Sprint 0)
+## Sprints antérieurs (Sprint 117 → Sprint 0)
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à
