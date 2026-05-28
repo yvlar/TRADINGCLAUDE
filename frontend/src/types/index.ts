@@ -251,6 +251,66 @@ export interface StockValuationOutput {
   cost_usd: number
 }
 
+// ---- Lynch Categories Output (Sprint 120) ----
+export interface LynchCategoriesOutput {
+  ticker: string
+  categorie: string // SLOW_GROWER|STALWART|FAST_GROWER|CYCLICAL|TURNAROUND|ASSET_PLAY
+  peg_ratio: number | null // pe / (eps_growth_5y * 100), null si croissance <= 0
+  tenbagger_potential: boolean
+  score_croissance: number // 0-5
+  verdict: string // EXCELLENT|BON|MOYEN|EVITER
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Greenblatt Magic Formula Output (Sprint 120) ----
+export interface GreenblattOutput {
+  ticker: string
+  roc: number // EBIT / (NWC + NFA), fraction
+  earnings_yield: number // EBIT / EV, fraction
+  verdict: string // TOP_DECILE|BON|MOYEN|EVITER
+  situations_speciales: string[]
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Munger Mental Models Output (Sprint 120) ----
+export interface BiaisCognitif {
+  nom: string
+  description: string
+  impact_sur_these: string // MINEUR | MODERE | MAJEUR
+}
+
+export interface MungerOutput {
+  ticker: string
+  biais_detectes: BiaisCognitif[]
+  inversion_analysis: string
+  lollapalooza_risk: boolean
+  verdict_comportemental: string // CONFIANCE_JUSTIFIEE | BIAIS_DETECTE | ALERTE_ROUGE
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
+// ---- Klarman Margin of Safety Output (Sprint 120) ----
+export interface KlarmanOutput {
+  ticker: string
+  situation_type_qualifie: string // NET_NET|ACTIFS_CACHES|DISTRESSED|SPECIAL_SITUATION|VALEUR_CLASSIQUE
+  marge_securite_score: number // 0-10
+  preservation_capital_score: number // 0-10
+  discount_to_intrinsic: number | null // fraction : positif = décote sous la valeur intrinsèque
+  verdict: string // OPPORTUNITE_FORTE|OPPORTUNITE_MODEREE|ATTENDRE|PASSER
+  verdict_detail: string
+  recommandation_prochaine_etape: string[]
+  citations: unknown[]
+  cost_usd: number
+}
+
 // ---- Score composite pondéré (Sprint 38) ----
 export interface CompositeScore {
   score: number
@@ -305,12 +365,12 @@ export interface AnalyzeResponse {
   buffett: BuffettQualityOutput | null
   valuation: StockValuationOutput | null
   thesis: ThesisBuilderOutput | null
-  munger: SkillOutput | null
+  munger: MungerOutput | null
   canadian_tax: SkillOutput | null
-  lynch: SkillOutput | null
+  lynch: LynchCategoriesOutput | null
   fisher: SkillOutput | null
-  klarman: SkillOutput | null
-  greenblatt: SkillOutput | null
+  klarman: KlarmanOutput | null
+  greenblatt: GreenblattOutput | null
   damodaran: SkillOutput | null
   marks: SkillOutput | null
   pabrai: SkillOutput | null
