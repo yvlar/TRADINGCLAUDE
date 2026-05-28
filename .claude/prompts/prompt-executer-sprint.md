@@ -12,15 +12,17 @@ Tu es un développeur Python/TypeScript senior sur le projet TradingClaude
 (copilote financier IA : FastAPI + 18 skills + RAG Qdrant + frontend React).
 
 # Objectif
-Exécuter le sprint décrit dans `prompt-mise-a-jour-roadmap.md`, puis ouvrir une
-pull request et t'abonner à son activité. Le sprint n'est « terminé » que lorsque
-le code passe tous les contrôles, la doc de fin de sprint est à jour, le commit
-est poussé, la PR est créée et la session abonnée aux événements.
+Exécuter le sprint décrit dans `prompt-mise-a-jour-roadmap.md` en DEUX phases :
+(A) implémenter, vérifier, documenter, committer et pousser ; (B) ouvrir la pull
+request et la surveiller. Le sprint n'est « terminé » que lorsque le code passe
+tous les contrôles, la doc de fin de sprint est à jour, le commit est poussé, la
+PR est créée et la session abonnée aux événements.
 
 # Lecture obligatoire (avant d'écrire du code)
 1. `prompt-mise-a-jour-roadmap.md` — la tâche du sprint courant
 2. `CLAUDE.md` — index du projet et pointeurs vers `.claude/rules/`
-3. `ROADMAP.md` — état courant et version
+3. `ROADMAP.md` — état courant et version (court : ~état + 6 derniers sprints).
+   NE PAS lire `docs/roadmap-archive.md` à l'amorçage — c'est l'historique mort.
 4. Les fichiers `.claude/rules/` pertinents au périmètre touché
 
 # Clarification préalable
@@ -29,20 +31,36 @@ liste de suggestions. Si c'est le cas, NE choisis pas à ma place : pose-moi la
 question (quel sprint exécuter ?) AVANT d'implémenter. Si une exigence est
 ambiguë, demande plutôt que de supposer.
 
-# Étapes (dans l'ordre)
+# Préparation de l'environnement
+L'environnement de la session web (venv backend + binaire natif rollup) est
+préparé automatiquement par le hook `SessionStart` (`scripts/setup-web-session.sh`,
+idempotent et best-effort). Si une commande échoue faute de dépendances, relancer
+`bash scripts/setup-web-session.sh`. Ne PAS re-documenter ces étapes dans
+`prompt-mise-a-jour-roadmap.md` — le script est la source de vérité.
+
+# Phase A — Implémentation (une session)
 1. Confirmer le sprint à exécuter (voir « Clarification préalable »).
-2. Préparer l'environnement de la session web (venv backend, binaire rollup
-   frontend) tel que documenté dans la note d'environnement du prompt.
-3. Implémenter le sprint en respectant les conventions (`.claude/rules/`) :
+2. Implémenter le sprint en respectant les conventions (`.claude/rules/`) :
    bilingue FR/EN, typage strict, async/await, tests obligatoires par livrable.
-4. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
+3. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
    - Backend : `pytest` (hors e2e/evals) + `ruff check`
    - Frontend : Vitest + `tsc --noEmit` + ESLint (0 erreur / 0 warning)
+4. Revue indépendante : lancer `/code-review` sur le diff du sprint et traiter les
+   findings de correctness AVANT de committer. Des tests verts ne valent pas une
+   revue — ne pas s'auto-valider sur les seuls compteurs.
 5. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
-   mettre à jour `ROADMAP.md`, réécrire `prompt-mise-a-jour-roadmap.md` pour le
-   sprint suivant, et créer le commit.
+   mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` si plus de
+   ~6 sprints détaillés), réécrire `prompt-mise-a-jour-roadmap.md` pour le sprint
+   suivant, et créer le commit. Les compteurs de tests doivent provenir d'une
+   commande réelle (`pytest --co -q | wc -l`, liste Vitest), jamais d'une estimation.
 6. Pousser sur la branche de développement désignée (`git push -u origin <branche>`,
    retry backoff sur erreur réseau).
+
+# Phase B — Pull request et surveillance (après le push)
+> Peut être menée dans une **session fraîche** pour repartir d'un contexte propre :
+> seuls la branche poussée et le numéro de PR sont nécessaires. Recommandé après
+> un gros sprint, quand le contexte de la Phase A est saturé.
+
 7. Ouvrir une PR vers `master` : titre court (< 70 car.), corps avec Résumé +
    Test plan ; via les outils GitHub MCP (jamais `gh`).
 8. S'abonner à l'activité de la PR (`subscribe_pr_activity`), puis vérifier l'état
@@ -73,5 +91,9 @@ et état CI initial rapporté.
 - **Gestion de l'ambiguïté** — point d'arrêt pour clarification quand le sprint est « à définir ».
 - **Décomposition séquencée** — actions floues transformées en étapes ordonnées avec dépendances.
 - **Critères de succès + vérification** — « definition of done » et gate tests/lint/typecheck.
+- **Revue indépendante** — `/code-review` avant commit : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
+- **Phases découplées** — implémentation (A) puis PR + surveillance (B) ; la Phase B peut tourner dans une session fraîche pour éviter la pollution de contexte.
+- **Chiffres vérifiables** — compteurs de tests issus d'une vraie commande, pas d'une estimation (anti-hallucination).
+- **Environnement externalisé** — setup web dans un hook `SessionStart` idempotent plutôt que recopié à chaque sprint.
 - **Contraintes négatives** — encode les pièges réels (node_modules tracké, branche désignée, hooks).
 - **Format de sortie spécifié** — titre/corps de PR, outils GitHub MCP imposés.

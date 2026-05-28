@@ -63,5 +63,17 @@
       "Bash(Start-Sleep -Seconds 5)",
       "Bash(python -m pytest tests/test_watchlist_xlsx_esg.py -v)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/setup-web-session.sh"
+          }
+        ]
+      }
+    ]
   }
 }
