@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -24,6 +25,7 @@ from app.services.composite_history_service import CompositeHistoryPoint
 
 if TYPE_CHECKING:
     from app.orchestrator.core import AnalyzeResponse
+    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,13 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             textColor=_GRIS,
             alignment=TA_CENTER,
         ),
+        "cellule": ParagraphStyle(
+            "cellule",
+            parent=base["Normal"],
+            fontSize=8,
+            leading=10,
+            alignment=TA_LEFT,
+        ),
     }
 
 
@@ -127,14 +136,113 @@ def _table_deux_colonnes(data: list[tuple[str, str]]) -> Table:
     return t
 
 
+def _fmt_num(valeur: float | None, gabarit: str = "{:.2f}") -> str:
+    """Formate un nombre optionnel ; retourne — si None."""
+    return gabarit.format(valeur) if valeur is not None else "—"
+
+
+def _build_verdicts_rows(la: "AnalyzeResponse") -> list[tuple[str, str, str]]:
+    """Construit les lignes (skill, verdict, détail) pour chaque skill présent dans l'analyse."""
+    rows: list[tuple[str, str, str]] = []
+    if la.graham is not None:
+        rows.append(("Graham", f"{la.graham.verdict} · {la.graham.defensive_score}/8", la.graham.verdict_detail))
+    if la.earnings_quality is not None:
+        rows.append(("Qualité des bénéfices", la.earnings_quality.verdict, la.earnings_quality.verdict_detail))
+    if la.dorsey is not None:
+        rows.append(("Moat (Dorsey)", la.dorsey.moat_type, la.dorsey.verdict_detail))
+    if la.buffett is not None:
+        rows.append(("Qualité (Buffett)", f"{la.buffett.verdict} · {la.buffett.quality_score}/4", la.buffett.verdict_detail))
+    if la.valuation is not None:
+        rows.append(("Valorisation", la.valuation.verdict, la.valuation.verdict_detail))
+    if la.thesis is not None:
+        rows.append(("Thèse", f"{la.thesis.verdict_final} · {la.thesis.position_size_pct:.1f}%", la.thesis.synthese_narrative))
+    if la.munger is not None:
+        rows.append(("Munger", la.munger.verdict_comportemental, la.munger.verdict_detail))
+    if la.canadian_tax is not None:
+        rows.append(("Fiscalité (compte)", la.canadian_tax.compte_recommande, la.canadian_tax.justification_fiscale))
+    if la.lynch is not None:
+        rows.append(("Lynch", f"{la.lynch.verdict} · {la.lynch.categorie}", la.lynch.verdict_detail))
+    if la.fisher is not None:
+        rows.append(("Fisher", f"{la.fisher.verdict} · {la.fisher.fisher_score}/30", la.fisher.verdict_detail))
+    if la.klarman is not None:
+        rows.append(("Klarman", la.klarman.verdict, la.klarman.verdict_detail))
+    if la.greenblatt is not None:
+        rows.append(("Greenblatt", la.greenblatt.verdict, la.greenblatt.verdict_detail))
+    if la.damodaran is not None:
+        rows.append(("Damodaran", la.damodaran.verdict, la.damodaran.verdict_detail))
+    if la.marks is not None:
+        rows.append(("Marks (timing)", la.marks.recommandation_timing, la.marks.verdict_detail))
+    if la.pabrai is not None:
+        rows.append(("Pabrai (Dhandho)", f"{la.pabrai.verdict} · {la.pabrai.heads_i_win_score}/9", la.pabrai.verdict_detail))
+    if la.esg is not None:
+        rows.append(("ESG", f"{la.esg.verdict} · {la.esg.esg_score}/15", la.esg.verdict_detail))
+    return rows
+
+
+def _table_verdicts(
+    rows: list[tuple[str, str, str]], cellule_style: ParagraphStyle
+) -> Table:
+    table_data: list[list] = [["Skill", "Verdict", "Détail"]]
+    for libelle, verdict, detail in rows:
+        table_data.append(
+            [
+                Paragraph(escape(libelle), cellule_style),
+                Paragraph(escape(verdict), cellule_style),
+                Paragraph(escape(detail) if detail else "—", cellule_style),
+            ]
+        )
+    t = Table(table_data, colWidths=[3.8 * cm, 4.2 * cm, 9 * cm], repeatRows=1)
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), _BLEU_TITRE),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, _GRIS),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, _FOND_GRIS]),
+            ]
+        )
+    )
+    return t
+
+
+def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
+    """Tableau des ratios clés Graham pour le PDF."""
+    return [
+        ("Cours", _fmt_num(r.price)),
+        ("BPA (TTM)", _fmt_num(r.eps_ttm)),
+        ("Valeur comptable / action", _fmt_num(r.book_value)),
+        ("P/E", _fmt_num(r.pe)),
+        ("P/B", _fmt_num(r.pb)),
+        ("Dette / Capitaux propres", _fmt_num(r.debt_equity)),
+        (
+            "Croissance BPA 10 ans",
+            f"{r.eps_growth_10y:.0%}" if r.eps_growth_10y is not None else "—",
+        ),
+        ("Ratio de liquidité", _fmt_num(r.current_ratio)),
+    ]
+
+
 class PdfReportService:
     async def generate_ticker_report(
         self,
         ticker: str,
         history: list[CompositeHistoryPoint],
         last_analysis: "AnalyzeResponse | None",
+        ratios: "GrahamRatios | None" = None,
+        annotation: str | None = None,
+        esg_score: float | None = None,
     ) -> bytes:
-        """Retourne le PDF en bytes — prêt pour StreamingResponse."""
+        """Retourne le PDF en bytes — prêt pour StreamingResponse.
+
+        ratios / annotation / esg_score enrichissent le rapport d'une analyse ciblée
+        (verdicts skill par skill, ratios clés, note, score ESG) — None = section omise.
+        """
         buffer = BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -194,6 +302,24 @@ class PdfReportService:
                 data.append(("Verdict Graham", last_analysis.graham.verdict or "—"))
             story.append(_table_deux_colonnes(data))
 
+        if ratios is not None:
+            story.append(Spacer(1, 0.5 * cm))
+            story.append(Paragraph("Ratios clés", styles["titre_section"]))
+            _hr(story)
+            story.append(_table_deux_colonnes(_build_ratios_rows(ratios)))
+
+        if esg_score is not None:
+            story.append(Spacer(1, 0.3 * cm))
+            story.append(
+                Paragraph(f"Score ESG : {esg_score:.1f}/15", styles["corps"])
+            )
+
+        if annotation:
+            story.append(Spacer(1, 0.5 * cm))
+            story.append(Paragraph("Annotation", styles["titre_section"]))
+            _hr(story)
+            story.append(Paragraph(escape(annotation), styles["corps"]))
+
         # --- Page 2 : Tableau évolution composite_score ---
         story.append(PageBreak())
         story.append(
@@ -248,6 +374,13 @@ class PdfReportService:
                 Paragraph(f"Résultats des skills — {ticker}", styles["titre_page"])
             )
             _hr(story)
+
+            verdicts_rows = _build_verdicts_rows(last_analysis)
+            if verdicts_rows:
+                story.append(Paragraph("Verdicts par skill", styles["titre_section"]))
+                _hr(story)
+                story.append(_table_verdicts(verdicts_rows, styles["cellule"]))
+                story.append(Spacer(1, 0.4 * cm))
 
             if last_analysis.graham is not None:
                 g = last_analysis.graham

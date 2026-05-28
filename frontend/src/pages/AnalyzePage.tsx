@@ -6,7 +6,7 @@ import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
 import { Badge } from '../components/ui/badge'
 import { PageTransition, StaggerItem } from '../components/PageTransition'
-import { streamAnalyze, postReport } from '../api/analyze'
+import { streamAnalyze, postReport, downloadTickerPdf } from '../api/analyze'
 import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
 
@@ -119,6 +119,27 @@ export default function AnalyzePage() {
     if (lastRequest) pdfMutation.mutate(lastRequest)
   }
 
+  const exportMutation = useMutation({
+    mutationFn: async (res: AnalyzeResponse) => {
+      const blob = await downloadTickerPdf(res.ticker, 90, res.analysis_id)
+      const date = new Date().toISOString().slice(0, 10)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${res.ticker}-analyse-${date}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+  })
+
+  // analysis_id de cache composite n'est pas une analyse persistée exportable
+  const canExportAnalysis =
+    !!result && !['cached', 'cached_composite'].includes(result.analysis_id)
+
+  function handleExportAnalysis() {
+    if (result) exportMutation.mutate(result)
+  }
+
   return (
     <PageTransition>
       <div className="space-y-6">
@@ -169,6 +190,8 @@ export default function AnalyzePage() {
               result={result}
               onDownloadPdf={handleDownloadPdf}
               isPdfLoading={pdfMutation.isPending}
+              onExportAnalysis={canExportAnalysis ? handleExportAnalysis : undefined}
+              isExportLoading={exportMutation.isPending}
             />
           </div>
         )}
