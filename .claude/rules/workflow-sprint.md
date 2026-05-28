@@ -18,6 +18,15 @@ Un sprint n'est **pas terminé** tant que ces trois étapes n'ont pas été comp
 - Mettre à jour **Dernier sprint complété** (numéro + nom + ✅)
 - Incrémenter la **version** (semver : patch pour petits ajouts, minor pour nouvelles fonctionnalités, major pour changements d'architecture)
 - Ajouter le sprint suivant dans la roadmap si absent
+- **Rotation vers l'archive** : `ROADMAP.md` ne garde que l'état courant + les
+  ~6 derniers sprints détaillés. Quand un 7ᵉ bloc apparaît, **déplacer** le plus
+  ancien vers `docs/roadmap-archive.md` (couper-coller, jamais recopier de mémoire).
+  Cible : `ROADMAP.md` < 300 lignes. Ne jamais lire l'archive à l'amorçage.
+- **Compteurs de tests vérifiables** : avant d'écrire « N CI verts » / « N Vitest »,
+  les obtenir par une **commande réelle**, jamais par estimation ni recopie :
+  - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals --co -q | tail -1`
+  - Frontend : `cd frontend && node node_modules/vitest/vitest.mjs list | wc -l`
+  Si un chiffre n'a pas été mesuré dans la session, l'omettre plutôt que l'inventer.
 
 ### 2. Réécrire `prompt-mise-a-jour-roadmap.md`
 
@@ -53,15 +62,15 @@ Après les deux mises à jour documentaires, créer un commit qui inclut **tous 
 
 ```bash
 # Stager les fichiers du projet (jamais node_modules, .env, fichiers temp)
-git add app/ frontend/src/ tests/ infra/ ROADMAP.md CLAUDE.md \
+git add app/ frontend/src/ tests/ infra/ scripts/ docs/ ROADMAP.md CLAUDE.md \
         prompt-mise-a-jour-roadmap.md requirements.txt .env.example \
-        .claude/rules/ .claude/settings.json .claude/settings.local.json
+        .claude/rules/ .claude/prompts/ .claude/settings.json .claude/settings.local.json
 
 # Commiter avec message structuré
 git commit -m "feat(sprintNN): <nom du sprint> — vX.Y.Z
 
 <description courte des livrables principaux>
-<tests : +N CI verts, +N Vitest verts>
+<tests : +N CI verts, +N Vitest verts — chiffres MESURÉS, voir étape 1>
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```

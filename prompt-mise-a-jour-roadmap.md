@@ -63,11 +63,11 @@
 
 ### Note d'environnement (session web)
 
-En session Claude Code sur le web, le conteneur est cloné à neuf et les dépendances ne sont pas installées :
-- Backend : `python -m venv .venv --system-site-packages && .venv/bin/pip install -r requirements-ci.txt ruff`
-  (la version Debian de `cryptography` casse un `pip install` global → utiliser un venv `--system-site-packages`)
-- Frontend : `node_modules/` est présent mais le binaire natif rollup manque
-  (`npm install @rollup/rollup-linux-x64-gnu --no-save` corrige l'erreur de démarrage de Vitest **et** de `npm run build`)
+En session Claude Code sur le web, le conteneur est cloné à neuf. La préparation
+des dépendances (venv backend `--system-site-packages` + binaire natif rollup) est
+**automatisée** par le hook `SessionStart` → `scripts/setup-web-session.sh`
+(idempotent). Si une commande échoue faute de dépendances, relancer
+`bash scripts/setup-web-session.sh`. Commandes utiles ensuite :
 - Lancer les tests : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals`
   et `cd frontend && node node_modules/vitest/vitest.mjs run`
 - Lint/typecheck : `node node_modules/typescript/bin/tsc --noEmit` + `node node_modules/eslint/bin/eslint.js src`
