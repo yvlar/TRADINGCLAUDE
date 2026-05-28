@@ -1,7 +1,7 @@
 # ROADMAP — Archive historique des sprints
 
 > Historique complet déplacé hors de `ROADMAP.md` (hygiène 2026-05-28) pour réduire le coût d'amorçage des sessions Claude Code.
-> `ROADMAP.md` ne conserve que l'état courant + les ~6 derniers sprints. **Ce fichier n'est pas lu à l'amorçage d'un sprint.**
+> `ROADMAP.md` ne conserve que l'état courant + les ~4 derniers sprints. **Ce fichier n'est pas lu à l'amorçage d'un sprint.**
 
 ---
 
