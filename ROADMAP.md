@@ -242,7 +242,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à
-l'amorçage d'un sprint, afin de réduire le coût en tokens. Seuls les ~6 derniers
+l'amorçage d'un sprint, afin de réduire le coût en tokens. Seuls les ~4 derniers
 sprints restent ici (section « Phases complétées » ci-dessus).
 
 ---
@@ -261,9 +261,9 @@ streaming SSE, scoring composite, etc.) sont documentées au fil des sprints dan
 1. **Après chaque sprint** : passer le sprint de 🔜 → ✅, mettre à jour le tableau
    « État courant » (Version, Sprint actif, Dernier sprint complété) et ajouter un
    bloc détaillé en tête de « Phases complétées ».
-2. **Rotation vers l'archive** : ne garder ici que les **~6 derniers sprints** en
+2. **Rotation vers l'archive** : ne garder ici que les **~4 derniers sprints** en
    détail. Déplacer les blocs plus anciens vers `docs/roadmap-archive.md`. Ce
-   fichier doit rester court (cible < 300 lignes) — c'est lui qui est lu à chaque
+   fichier doit rester court (cible < 200 lignes) — c'est lui qui est lu à chaque
    amorçage de session.
 3. **Pas de doublon** : un sprint n'apparaît qu'une seule fois. Ne jamais recopier
    l'historique de mémoire — **déplacer**, pas réécrire.

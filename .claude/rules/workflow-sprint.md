@@ -19,9 +19,10 @@ Un sprint n'est **pas terminé** tant que ces trois étapes n'ont pas été comp
 - Incrémenter la **version** (semver : patch pour petits ajouts, minor pour nouvelles fonctionnalités, major pour changements d'architecture)
 - Ajouter le sprint suivant dans la roadmap si absent
 - **Rotation vers l'archive** : `ROADMAP.md` ne garde que l'état courant + les
-  ~6 derniers sprints détaillés. Quand un 7ᵉ bloc apparaît, **déplacer** le plus
+  ~4 derniers sprints détaillés. Dès qu'un 5ᵉ bloc apparaît, **déplacer** le plus
   ancien vers `docs/roadmap-archive.md` (couper-coller, jamais recopier de mémoire).
-  Cible : `ROADMAP.md` < 300 lignes. Ne jamais lire l'archive à l'amorçage.
+  Cible : `ROADMAP.md` < 200 lignes (rechargé à chaque session — chaque ligne
+  superflue est un coût de tokens récurrent). Ne jamais lire l'archive à l'amorçage.
 - **Compteurs de tests vérifiables** : avant d'écrire « N CI verts » / « N Vitest »,
   les obtenir par une **commande réelle**, jamais par estimation ni recopie :
   - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals --co -q | tail -1`
@@ -35,8 +36,8 @@ Réécrire intégralement pour le sprint suivant — ce fichier est la carte d'e
 | Section | Contenu attendu |
 |---|---|
 | **Titre** | Numéro et nom du sprint suivant |
-| **État du projet** | Résumé de ce qui fonctionne maintenant (version, fonctionnalités actives) |
-| **LECTURE OBLIGATOIRE** | Fichiers critiques à lire avant de commencer (CLAUDE.md, ROADMAP.md, architecture) |
+| **État du projet** | 2-3 lignes MAX : version + la nouveauté du dernier sprint. NE PAS recopier la liste « Fonctionnalités actives » ni les compteurs de tests — pointer vers la section correspondante de `ROADMAP.md` (source unique). La carte ne duplique pas l'état, elle y renvoie. |
+| **LECTURE OBLIGATOIRE** | CLAUDE.md + ROADMAP.md, puis nommer explicitement les **1-2 règles `.claude/rules/`** réellement cadrées au périmètre du prochain sprint (pas une liste générique de toutes les règles) — c'est cette liste que la session exécutante chargera. |
 | **TÂCHE** | Spécification détaillée et complète du sprint suivant |
 | **SPRINTS SUGGÉRÉS** | 3-5 sprints non encore planifiés (voir format ci-dessous) |
 | **Template** | Instruction de démarrage pour la prochaine session |
