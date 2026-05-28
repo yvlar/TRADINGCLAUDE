@@ -1,9 +1,8 @@
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
-import type { AnalyzeResponse, CompositeScore, GrahamCriterion, SkillOutput } from '../types'
+import type { AnalyzeResponse, CompositeScore, GrahamCriterion } from '../types'
 import { EarningsQualitySection } from './EarningsQualitySection'
 import { ThesisSection } from './ThesisSection'
 import { DorseyMoatSection } from './DorseyMoatSection'
@@ -13,6 +12,11 @@ import { LynchCategoriesSection } from './LynchCategoriesSection'
 import { GreenblattSection } from './GreenblattSection'
 import { MungerSection } from './MungerSection'
 import { KlarmanSection } from './KlarmanSection'
+import { FisherSection } from './FisherSection'
+import { DamodaranSection } from './DamodaranSection'
+import { MarksSection } from './MarksSection'
+import { PabraiSection } from './PabraiSection'
+import { CanadianTaxSection } from './CanadianTaxSection'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -90,37 +94,6 @@ function CriteriaTable({ criteria }: { criteria: GrahamCriterion[] }) {
         ))}
       </TableBody>
     </Table>
-  )
-}
-
-function SkillSection({ title, output }: { title: string; output: SkillOutput }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Card>
-      <CardHeader>
-        <button
-          onClick={() => setOpen(!open)}
-          className="flex items-center justify-between w-full text-left"
-          aria-expanded={open}
-        >
-          <CardTitle>{title}</CardTitle>
-          <div className="flex items-center gap-2">
-            {verdictBadge(output.verdict)}
-            <span className="text-muted-foreground text-xs">{open ? '▲' : '▼'}</span>
-          </div>
-        </button>
-      </CardHeader>
-      {open && (
-        <CardContent>
-          {output.verdict_detail && (
-            <p className="text-sm text-muted-foreground mb-3">{output.verdict_detail}</p>
-          )}
-          <pre className="text-xs bg-background border border-border rounded-lg p-3 overflow-auto max-h-64 leading-relaxed text-muted-foreground">
-            {JSON.stringify(output, null, 2)}
-          </pre>
-        </CardContent>
-      )}
-    </Card>
   )
 }
 
@@ -220,15 +193,15 @@ export function AnalysisResult({ result, onDownloadPdf, isPdfLoading }: Analysis
       {result.buffett && <BuffettQualitySection output={result.buffett} />}
       {result.valuation && <ValuationSection output={result.valuation} />}
       {result.lynch && <LynchCategoriesSection output={result.lynch} />}
-      {result.fisher && <SkillSection title="Fisher Scuttlebutt" output={result.fisher} />}
+      {result.fisher && <FisherSection output={result.fisher} />}
       {result.klarman && <KlarmanSection output={result.klarman} />}
       {result.greenblatt && <GreenblattSection output={result.greenblatt} />}
-      {result.damodaran && <SkillSection title="Damodaran Narrative" output={result.damodaran} />}
-      {result.marks && <SkillSection title="Marks Cycles" output={result.marks} />}
-      {result.pabrai && <SkillSection title="Pabrai Dhandho" output={result.pabrai} />}
+      {result.damodaran && <DamodaranSection output={result.damodaran} />}
+      {result.marks && <MarksSection output={result.marks} />}
+      {result.pabrai && <PabraiSection output={result.pabrai} />}
       {result.thesis && <ThesisSection output={result.thesis} />}
       {result.munger && <MungerSection output={result.munger} />}
-      {result.canadian_tax && <SkillSection title="Fiscalité CA/QC" output={result.canadian_tax} />}
+      {result.canadian_tax && <CanadianTaxSection output={result.canadian_tax} />}
     </div>
   )
 }

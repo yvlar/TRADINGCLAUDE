@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — Sprint 121 (à définir) · dernier complété : Sprint 120 ✅ · v10.7.0 — Dernière mise à jour : 2026-05-28*
+*Phase 3 active — Sprint 122 (Export analyse individuelle PDF enrichi) · dernier complété : Sprint 121 ✅ · v10.8.0 — Dernière mise à jour : 2026-05-28*
 
 ---
 
