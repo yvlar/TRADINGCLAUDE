@@ -10,8 +10,10 @@
 |-------|--------|
 | **Version** | 10.11.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 125 — Annotations enrichies : tags + filtres |
+| **Sprint actif** | Sprint 125 — Durcissement sécurité auth & fail-safe (P0) |
 | **Dernier sprint complété** | Sprint 124 — Persistance des préférences Screener côté serveur ✅ |
+
+> **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité. Le Sprint 125 (Annotations) est reporté ; voir les sprints suggérés de `prompt-mise-a-jour-roadmap.md` pour la file complète issue de la revue.
 
 ### Ce qui fonctionne aujourd'hui
 
