@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-29 — Sprint 125 complété**
+**Dernière mise à jour : 2026-05-29 — Sprint 126 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -10,8 +10,10 @@
 |-------|--------|
 | **Version** | 10.12.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 126 — Vue « Portefeuille » agrégée |
-| **Dernier sprint complété** | Sprint 125 — Annotations enrichies : tags + filtres ✅ |
+| **Sprint actif** | Sprint 125 — Durcissement sécurité auth & fail-safe (P0) |
+| **Dernier sprint complété** | Sprint 126 — Annotations enrichies : tags + filtres ✅ |
+
+> **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, qui restent le **Sprint actif 125** (prioritaire). Le travail Annotations, déjà réalisé, a été **renuméroté Sprint 126** (complété) plutôt que de revendiquer le slot 125. La file complète issue de la revue est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -20,7 +22,7 @@
 - `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
-- `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 125)
+- `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 126)
 - `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107) + `daily_cost` (coût USD total par jour, clé YYYY-MM-DD) (Sprint 112)
 - `GET /metrics/skill-analyses?skill=&days=30` — drill-down : analyses ayant utilisé un skill donné sur la période (ticker / workflow / coût / date), filtre jsonb `skills_used @> [skill]`, 422 si `skill` absent (Sprint 112)
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
@@ -76,12 +78,12 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
-### Sprint 125 — Annotations enrichies : tags + filtres ✅
+### Sprint 126 — Annotations enrichies : tags + filtres ✅
 
-**Objectif :** Ajouter un champ `tags` (mots-clés libres) aux annotations, filtrable via `GET /history?tags=value,growth`, avec chips affichées/éditables dans `AnnotationSection` et en lecture seule dans `HistoryTable`. Les annotations (Sprint 78) étaient du texte libre sans structure ; les tags offrent un filtrage sémantique léger du portefeuille sans RAG.
+**Objectif :** Ajouter un champ `tags` (mots-clés libres) aux annotations, filtrable via `GET /history?tags=value,growth`, avec chips affichées/éditables dans `AnnotationSection` et en lecture seule dans `HistoryTable`. Les annotations (Sprint 78) étaient du texte libre sans structure ; les tags offrent un filtrage sémantique léger du portefeuille sans RAG. (Travail initialement cadré comme Sprint 125 ; renuméroté 126 après la re-priorisation sécurité P0.)
 
 **Livrables :**
-- `infra/postgres/migration_sprint125.sql` + bootstrap lifespan (`app/api/main.py`) — colonne `tags TEXT[] NOT NULL DEFAULT '{}'` + index GIN `idx_annotations_tags`. Type `TEXT[]` retenu (et non JSONB) : mapping natif asyncpg `list[str] ↔ text[]` + opérateur de confinement `@>` (match de TOUS les tags) sur index GIN `array_ops`
+- `infra/postgres/migration_sprint126.sql` + bootstrap lifespan (`app/api/main.py`) — colonne `tags TEXT[] NOT NULL DEFAULT '{}'` + index GIN `idx_annotations_tags`. Type `TEXT[]` retenu (et non JSONB) : mapping natif asyncpg `list[str] ↔ text[]` + opérateur de confinement `@>` (match de TOUS les tags) sur index GIN `array_ops`
 - `app/models/annotation.py` — `tags: list[str]` sur `Annotation` + `AnnotationCreate` ; `field_validator` autoritaire serveur (minuscules, sans espaces, sans doublons ni vides) — aligne la casse stockée sur le filtre `@>` sensible à la casse
 - `app/services/annotation_service.py` — `upsert` persiste les tags (`$3::text[]`), `get`/`get_all_with_ticker` les renvoient
 - `app/orchestrator/core.py` — `HistoryEntry.tags` ; `get_history` + `get_history_paged` (lignes ET comptage) joignent `annotations` (LEFT JOIN, `analysis_id` UNIQUE → pas de duplication) et filtrent `a.tags @> $N::text[]` ; helper `_row_to_history_entry` (dé-duplication du mapping, garde NULL → `[]`)
@@ -92,7 +94,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 - Tests : intégration `tests/api/test_history_tags_filter.py` (CSV→liste, minuscules, 422, jointure + `@>` lié, comptage) ; unitaire `tests/services/test_annotation_service.py` (upsert/get tags) ; endpoint `tests/api/test_annotations_endpoint.py` (round-trip + normalisation) ; composant `AnnotationSection` (ajout/retrait/erreur) + `HistoryTable` (chips) + `HistoryPage` (filtre tags)
 
 **Version** : 10.12.0
-**Tests** : 1 462 backend collectés (1 458 passés, 3 skipped, 1 xfailed — +14 Sprint 125) ; 406 Vitest verts (+6 Sprint 125) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+**Tests** : 1 462 backend collectés (1 458 passés, 3 skipped, 1 xfailed — +14) ; 406 Vitest verts (+6) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : la migration SQL et le filtre `@>` ne sont pas exercés live (syntaxe validée + jointure/binding `$N::text[]` vérifiés sur pool asyncpg mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
 

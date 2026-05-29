@@ -199,7 +199,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         """
     )
-    # Sprint 125 — tags filtrables sur les annotations (TEXT[] + index GIN, opérateur @>)
+    # Sprint 126 — tags filtrables sur les annotations (TEXT[] + index GIN, opérateur @>)
     await db_pool.execute(
         "ALTER TABLE annotations ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'"
     )

@@ -1,4 +1,4 @@
--- Sprint 125 — tags sur les annotations (filtrage sémantique léger de l'historique)
+-- Sprint 126 — tags sur les annotations (filtrage sémantique léger de l'historique)
 -- À appliquer sur une DB existante où la table `annotations` est déjà présente
 -- (créée par le bootstrap du lifespan FastAPI, cf. app/api/main.py).
 --

@@ -20,7 +20,7 @@ function makeEntry(id: string, tags: string[]): HistoryEntry {
   }
 }
 
-describe('HistoryTable — chips de tags (Sprint 125)', () => {
+describe('HistoryTable — chips de tags (Sprint 126)', () => {
   it('rend les chips en lecture seule quand l\'entrée porte des tags', () => {
     render(
       <HistoryTable

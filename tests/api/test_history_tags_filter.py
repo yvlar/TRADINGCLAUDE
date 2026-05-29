@@ -1,4 +1,4 @@
-"""Tests Sprint 125 — filtre GET /history?tags= et /history-paged?tags= (annotations enrichies)."""
+"""Tests Sprint 126 — filtre GET /history?tags= et /history-paged?tags= (annotations enrichies)."""
 from __future__ import annotations
 
 import json
