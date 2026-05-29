@@ -1,23 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import AnalyzePage from './pages/AnalyzePage'
-import ScreenerPage from './pages/ScreenerPage'
-import HistoryPage from './pages/HistoryPage'
-import DashboardPage from './pages/DashboardPage'
-import WatchlistPage from './pages/WatchlistPage'
-import AdminPage from './pages/AdminPage'
-import AlertsPage from './pages/AlertsPage'
-import ComparePage from './pages/ComparePage'
-import EsgPage from './pages/EsgPage'
-import SearchPage from './pages/SearchPage'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import ForgotPasswordPage from './pages/ForgotPasswordPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
+import { RouteFallback } from './components/RouteFallback'
 import { Button } from './components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
+// Imports dynamiques par page : chaque page (et recharts, embarqué par Dashboard/Esg/
+// Watchlist/Compare) forme un chunk séparé, exclu du bundle d'entrée (Sprint 123).
+const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
+const ScreenerPage = lazy(() => import('./pages/ScreenerPage'))
+const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const WatchlistPage = lazy(() => import('./pages/WatchlistPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const AlertsPage = lazy(() => import('./pages/AlertsPage'))
+const ComparePage = lazy(() => import('./pages/ComparePage'))
+const EsgPage = lazy(() => import('./pages/EsgPage'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -101,92 +104,94 @@ function AppShell() {
       </header>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <main data-testid="app-main" className="max-w-shell mx-auto w-full px-6 py-6">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <AnalyzePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/screener"
-            element={
-              <ProtectedRoute>
-                <ScreenerPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/historique"
-            element={
-              <ProtectedRoute>
-                <HistoryPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/watchlist"
-            element={
-              <ProtectedRoute>
-                <WatchlistPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/compare"
-            element={
-              <ProtectedRoute>
-                <ComparePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/esg"
-            element={
-              <ProtectedRoute>
-                <EsgPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/recherche"
-            element={
-              <ProtectedRoute>
-                <SearchPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/alerts"
-            element={
-              <ProtectedRoute>
-                <AlertsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AnalyzePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/screener"
+              element={
+                <ProtectedRoute>
+                  <ScreenerPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/historique"
+              element={
+                <ProtectedRoute>
+                  <HistoryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/watchlist"
+              element={
+                <ProtectedRoute>
+                  <WatchlistPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/compare"
+              element={
+                <ProtectedRoute>
+                  <ComparePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/esg"
+              element={
+                <ProtectedRoute>
+                  <EsgPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/recherche"
+              element={
+                <ProtectedRoute>
+                  <SearchPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/alerts"
+              element={
+                <ProtectedRoute>
+                  <AlertsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </Suspense>
       </main>
     </>
   )
