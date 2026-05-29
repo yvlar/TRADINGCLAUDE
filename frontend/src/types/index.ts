@@ -538,6 +538,19 @@ export interface ScreenRequest {
   max_parallel?: number
 }
 
+// ---- Préférences Screener (Sprint 124 — persistance serveur) ----
+export type ScreenerSortKey = 'score' | 'ticker' | 'cost' | 'composite' | 'freshness'
+
+export interface ScreenerSortState {
+  key: ScreenerSortKey
+  asc: boolean
+}
+
+export interface ScreenerPreferences {
+  sort: ScreenerSortState | null
+  filter: string[] | null
+}
+
 // ---- History ----
 export interface HistoryEntry {
   analysis_id: string

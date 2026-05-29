@@ -104,3 +104,15 @@ CREATE INDEX IF NOT EXISTS idx_history_gin_workflow  ON analysis_history USING G
 -- CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- CREATE INDEX IF NOT EXISTS idx_history_gin_ticker   ON analysis_history USING GIN(ticker gin_trgm_ops);
 -- CREATE INDEX IF NOT EXISTS idx_history_gin_workflow ON analysis_history USING GIN(workflow_name gin_trgm_ops);
+
+-- Préférences utilisateur côté serveur — Sprint 124
+-- La contrainte FK vers users(id) est posée par le bootstrap du lifespan
+-- (app/api/main.py) et par migration_sprint124.sql : la table `users` n'existe
+-- pas dans ce schéma Phase 0, elle est créée au démarrage de l'API.
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id    UUID        NOT NULL,
+    key        TEXT        NOT NULL,
+    value      JSONB       NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, key)
+);

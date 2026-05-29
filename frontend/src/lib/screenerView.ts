@@ -1,11 +1,8 @@
-import type { ScreenEntry } from '../types'
+import type { ScreenEntry, ScreenerSortKey, ScreenerSortState } from '../types'
 
-export type SortKey = 'score' | 'ticker' | 'cost' | 'composite' | 'freshness'
-
-export interface SortState {
-  key: SortKey
-  asc: boolean
-}
+// Définition canonique dans types/index.ts — réexport pour les consommateurs existants
+export type SortKey = ScreenerSortKey
+export type SortState = ScreenerSortState
 
 export const SORT_STORAGE_KEY = 'copilote_screener_sort'
 export const FILTER_STORAGE_KEY = 'copilote_screener_label_filter'
