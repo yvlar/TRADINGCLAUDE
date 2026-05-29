@@ -1,4 +1,4 @@
-# Sprint 125 — Annotations enrichies : tags + filtres
+# Sprint 125 — Durcissement sécurité auth & fail-safe (P0)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
@@ -6,9 +6,9 @@
 
 ## État du projet (v10.11.0 — Sprint 124 complété)
 
-**Nouveauté Sprint 124** — Les préférences du Screener (tri + filtres) sont persistées côté serveur dans une table `user_preferences` (JSONB, PK `(user_id, key)`) liée au compte authentifié ; `localStorage` reste un fallback hors-ligne / anti-flash. Endpoints `GET`/`PUT /preferences/screener` auth-scopés via `_get_current_user` (cookie JWT).
+**Origine de ce sprint** — La revue expert FinTech du 2026-05-29 (`docs/revue-expert-fintech.md`) a relevé des correctifs P0 de sécurité auth. Ils passent **devant** le Sprint Annotations (reporté → voir sprints suggérés). Toutes les références ci-dessous ont été vérifiées par `grep` cette session.
 
-> **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests vérifiés) : **`ROADMAP.md`** — source unique. Cette carte ne duplique pas l'état, elle y renvoie (cf. `.claude/rules/workflow-sprint.md`).
+> **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas (cf. `.claude/rules/workflow-sprint.md`).
 
 ---
 
@@ -16,74 +16,95 @@
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
 2. `ROADMAP.md` — état courant v10.11.0, Sprint 124 ✅
-3. `.claude/rules/conventions-python.md` — pattern endpoint/service async, docstrings FR (cœur du sprint : migration colonne + filtre service + endpoint)
-4. `.claude/rules/tests-pyramide.md` — niveau intégration obligatoire pour le filtre `/history` ; fixture `client`
-5. `.claude/rules/conventions-frontend.md` — chips de tags (TypeScript strict, `data-testid`, test composant happy + erreur)
-6. Point de départ exact (vérifié cette session — `fichier:ligne`) :
-   - Table `annotations` (bootstrap lifespan) : `app/api/main.py:193` ; modèle `app/models/annotation.py` (`Annotation`, `AnnotationCreate`)
-   - Service : `app/services/annotation_service.py:12` (`AnnotationService`), `upsert` `:18`
-   - Endpoint : `app/api/endpoints/annotations.py:23` (`POST` upsert), `:107` (`GET /{analysis_id}`)
-   - Route historique : `app/api/main.py:667-668` (`@app.get("/history")`)
-   - Frontend : `frontend/src/components/AnnotationSection.tsx`, `frontend/src/components/HistoryTable.tsx`
+3. `docs/revue-expert-fintech.md` — §5 (architecture/sécurité) : contexte et justification des 4 correctifs
+4. `.claude/rules/securite.md` — secrets via `.env`, jamais de fuite dans les logs/erreurs (cœur du sprint)
+5. `.claude/rules/tests-pyramide.md` — niveau unitaire (service auth) + intégration (réponse 500) obligatoires ; fixture `client`, patch des dépendances
 
 ---
 
-## TÂCHE — Sprint 125 : Annotations enrichies — tags + filtres
+## TÂCHE — Sprint 125 : Durcissement sécurité auth & fail-safe (P0)
 
-**Objectif** : ajouter un champ `tags` (liste de mots-clés libres) aux annotations, filtrable via `GET /history?tags=value,growth`, avec chips affichées et éditables dans `AnnotationSection` et visibles dans `HistoryTable`. Les annotations (Sprint 78) sont aujourd'hui du texte libre sans structure ; les tags permettent un filtrage sémantique léger du portefeuille sans RAG.
+**Objectif** : éliminer quatre faiblesses de sécurité identifiées par la revue, toutes localisées dans la couche auth/middleware, sans changer le comportement fonctionnel pour un déploiement correctement configuré. Aucune migration DB, aucun changement de prompt de skill (evals non concernées).
 
-### Réconciliation préalable (vérifié cette session — `fichier:ligne`)
-- La table `annotations` est créée dans le bootstrap du lifespan (`app/api/main.py:193`), **pas** dans `infra/postgres/init.sql` → la colonne `tags` + l'index GIN doivent être ajoutés (a) dans le bootstrap lifespan via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` et (b) dans `infra/postgres/migration_sprint125.sql` pour les DB existantes.
-- `AnnotationCreate` (`app/models/annotation.py:16`) n'a que `analysis_id` + `note` → étendre avec `tags: list[str]`.
-- `AnnotationService.upsert` (`app/services/annotation_service.py:18`) écrit uniquement `note` → étendre la requête `INSERT ... ON CONFLICT` pour persister `tags` (JSONB ou `TEXT[]`).
-- `/history` (`app/api/main.py:667`) délègue à `orchestrator.get_history` → le filtre `?tags=` se branche là (jointure/filtre sur `annotations.tags`). Vérifier la signature réelle de `get_history` avant de figer l'implémentation.
+### Point de départ exact (vérifié cette session — `fichier:ligne`)
+
+1. **Repli sur secret JWT codé en dur** — `app/services/auth_token_service.py:32-35`
+   ```python
+   self._secret = os.environ.get("JWT_SECRET_KEY", "")
+   if not self._secret:
+       logger.warning("JWT_SECRET_KEY absent — utilisation d'un secret temporaire (dev uniquement)")
+       self._secret = "dev-secret-change-in-production"
+   ```
+   En production sans `JWT_SECRET_KEY`, tous les tokens HS256 sont signés avec un secret public → **bypass d'authentification complet**.
+
+2. **Blacklist JTI non protégée** — `app/services/auth_token_service.py:59-62`
+   ```python
+   async def is_jti_blacklisted(self, jti: str) -> bool:
+       result = await self._redis.get(f"blacklist:jti:{jti}")
+   ```
+   Si Redis est indisponible, le `.get()` lève une exception → soit 500 bloquant les logins, soit (selon l'appelant) un token révoqué accepté. Doit être **fail-closed** (refuser en cas de doute), contrairement au rate-limiting qui est fail-open par tolérance.
+
+3. **Fuite de détails d'exception** — `app/api/main.py:592-596`
+   ```python
+   async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+       ...
+       content={"error": type(exc).__name__, "detail": str(exc)},
+   ```
+   `str(exc)` peut exposer des contraintes DB (ex. unicité email → énumération d'utilisateurs). Voir aussi `app/api/main.py:664` (`HTTPException(500, detail=str(exc))`).
+
+4. **CORS sur-permissif** — `app/api/main.py:578-586` : `allow_methods=["*"]` + origines `localhost` codées en dur.
 
 ### Spécification
-1. **Migration** — `infra/postgres/migration_sprint125.sql` : `ALTER TABLE annotations ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'` (ou `TEXT[]` — choisir selon le pattern de filtrage retenu) + index GIN sur `tags`. Reporter le `ALTER` + l'index dans le bootstrap lifespan (`app/api/main.py`). Choisir le type (JSONB vs TEXT[]) en fonction de l'opérateur de filtre (`@>` JSONB ou `&&` TEXT[]) — documenter le choix.
-2. **Modèle + service** — `tags: list[str] = []` dans `Annotation` et `AnnotationCreate` ; `upsert` persiste les tags ; `get`/`get_all_with_ticker` les renvoient.
-3. **Filtre `/history`** — `?tags=value,growth` (CSV → liste) : ne renvoyer que les analyses dont l'annotation porte **tous** (ou **au moins un** — choisir et documenter) les tags demandés. Index GIN obligatoire. 422 si paramètre malformé.
-4. **Frontend** — chips de tags éditables dans `AnnotationSection.tsx` (ajout/suppression, persistées via le client annotations) ; chips en lecture seule dans `HistoryTable.tsx` ; filtre `?tags=` câblé depuis l'UI Historique. Types dans `frontend/src/types/index.ts` (`Annotation.tags: string[]`).
+
+1. **Secret JWT fail-fast** (`auth_token_service.py:32-35`) : si `JWT_SECRET_KEY` est absent, **lever `RuntimeError`** à l'initialisation plutôt que retomber sur le secret de dev. Tolérer un repli **uniquement** derrière un flag explicite (ex. `APP_ENV in {"dev","test"}`) pour ne pas casser le confort local et les tests — décider et documenter le mécanisme retenu. Ajouter `JWT_SECRET_KEY` à `.env.example` s'il n'y figure pas.
+2. **JTI blacklist fail-closed** (`auth_token_service.py:59-62`) : envelopper l'appel Redis dans `try/except` ; sur erreur Redis, **considérer le token comme non fiable** (retourner `True` = blacklisté, ou propager une 503 contrôlée) — choix de sécurité à documenter en commentaire WHY. Ne jamais laisser une panne Redis ouvrir l'accès.
+3. **Assainir les réponses 500** (`main.py:592-596` et `:664`) : renvoyer un message générique (`"Erreur interne"`) + un identifiant de corrélation ; **logger** le détail complet côté serveur uniquement (jamais dans le body HTTP).
+4. **Durcir CORS** (`main.py:578-586`) : `allow_methods` explicite (`["GET","POST","PUT","DELETE","OPTIONS"]`) ; lire les origines depuis une variable d'env `CORS_ORIGINS` (CSV), avec repli localhost en dev. Ajouter `CORS_ORIGINS` à `.env.example`.
 
 ### Tests obligatoires (pyramide)
-- **Intégration** : `GET /history?tags=` filtre correctement (match / non-match / multi-tags) ; `POST` annotation avec tags round-trip. Fixture `client`.
-- **Unitaire** : `AnnotationService.upsert`/`get` avec tags (mock pool).
-- **Composant** : `AnnotationSection` ajoute/retire un tag (happy + cas d'erreur) ; `HistoryTable` rend les chips.
-- Aucune régression des tests annotations/historique existants.
+- **Unitaire** (`tests/services/`) : init `AuthTokenService` sans `JWT_SECRET_KEY` (hors dev) → `RuntimeError` ; `is_jti_blacklisted` quand le mock Redis lève → fail-closed (pas d'exception qui fuit, accès refusé).
+- **Intégration** (`tests/api/`, fixture `client`) : une route qui lève une exception non gérée → la réponse 500 **ne contient pas** `str(exc)` (assert que le détail brut est absent du body).
+- Aucune régression des tests auth existants (login/refresh/logout, blacklist nominale Redis up).
 
 ### Note d'environnement (session web)
-Conteneur cloné à neuf ; dépendances préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). ⚠️ **Si `frontend/node_modules` est absent, lancer `npm install` depuis `frontend/`** (le hook n'installe pas les deps npm — constaté Sprints 123-124). Commandes :
+Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). ⚠️ Si `frontend/node_modules` est absent, lancer `npm install` depuis `frontend/`. Commandes :
 - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `.venv/bin/ruff check app/ tests/`
-- Frontend (depuis `frontend/`) : `node node_modules/vitest/vitest.mjs run` ; `node node_modules/typescript/bin/tsc --noEmit` ; `node node_modules/eslint/bin/eslint.js src`
 - ⚠️ le cwd persiste entre commandes Bash — revenir à la racine avant les commandes backend
-- Stack Docker (Postgres/Redis/Qdrant) non démarrée → migration non exécutée live (valider la syntaxe + les tests d'intégration sur DB/pool mocké). Pas de test navigateur live.
+- Stack Docker non démarrée → tests sur pool/Redis mockés. Sprint backend pur (pas de test navigateur). Pas de changement de prompt → evals non concernées.
 
 ---
 
-## SPRINTS SUGGÉRÉS (non planifiés)
+## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 126 — Vue « Portefeuille » agrégée
-**Objectif** : page `/portefeuille` synthétisant la watchlist par pilier (ETF/thématique/valeur/algo) avec allocation cible vs réelle et score composite moyen par pilier.
+### Sprint 126 — Déterminisme LLM + validation numérique des bornes
+**Objectif** : rendre les analyses reproductibles (`temperature=0`) et ajouter des validateurs Pydantic de plausibilité post-LLM sur les scores clés (Z-score, M-score, WACC, fourchettes).
+**Complexité** : Faible
+**Justification** : un outil financier doit être reproductible et garde-fou contre les chiffres LLM aberrants ; correctif à haute valeur / faible coût. (Revue §3, §1.)
+**Référence** : EXISTANT (vérifié) — **aucune** occurrence de `temperature` dans `app/` (`grep` vide) → défaut 1.0 ; point d'insertion unique `app/utils/retry.py:34` (`messages.create(timeout=..., **kwargs)`) ; validateur de bornes déjà en place comme modèle à généraliser `app/skills/tier2/stock_valuation/schemas.py:98-116`. À CRÉER — `temperature=0` (central ou par skill) + validateurs `@model_validator` de plausibilité sur `earnings_quality`/`graham`/`stock_valuation`.
+
+### Sprint 127 — Calculs financiers déterministes en Python (le pivot)
+**Objectif** : calculer en Python les scores aujourd'hui délégués au LLM (Altman Z, Beneish M, Piotroski F, Montier C, accruals Sloan, Graham Number, ossature DCF) ; le LLM **commente** des chiffres calculés au lieu de les produire.
 **Complexité** : Élevée
-**Justification** : matérialise le cadre four-pillar du projet, aujourd'hui conceptuel ; relie watchlist, composite_score et fiscalité par compte.
-**Référence** : EXISTANT (vérifié) — `compute_composite_score` `app/services/composite_score.py:86`, `class CompositeScore` `:19` ; page `frontend/src/pages/WatchlistPage.tsx`. À CRÉER — page `/portefeuille`, agrégation par pilier, allocation cible vs réelle.
+**Justification** : c'est le défaut existentiel relevé par la revue (§1) — sans cela, les scores phares n'ont pas de fiabilité numérique ni d'auditabilité.
+**Référence** : EXISTANT (vérifié) — formules aujourd'hui décrites dans les prompts et remplies par le LLM : `app/skills/tier2/earnings_quality/schemas.py:72-117` (Z/M/F/C/Sloan), `app/skills/tier2/graham_analysis/schemas.py:104-109` (Graham Number), `app/skills/tier2/stock_valuation/schemas.py:78-81` (matrice DCF). Inputs bruts extraits par `app/skills/tier1/yahoo_finance.py:234-358`. À CRÉER — module de calcul déterministe + recâblage des skills pour passer les valeurs calculées en contexte.
 
-### Sprint 127 — Cohérence inter-skills affichée dans l'UI
-**Objectif** : exposer `inter_skill_conflicts` (déjà calculé côté backend) dans `AnalysisResult` — bannière listant les contradictions détectées entre skills.
+### Sprint 128 — Conformité : disclaimers & avertissement de risque
+**Objectif** : afficher « recherche éducative — pas un conseil financier » + avertissement de risque dans l'UI (résultats, pied de page) et dans les rapports PDF.
 **Complexité** : Faible
-**Justification** : la donnée existe mais n'est pas rendue ; valeur immédiate pour repérer les thèses contradictoires.
-**Référence** : EXISTANT (vérifié) — calcul `app/orchestrator/core.py:140` (`_detect_inter_skill_conflicts`), champ réponse `:245` (peuplé `:1031`), type frontend `frontend/src/types/index.ts:459`. NON rendu dans `frontend/src/components/AnalysisResult.tsx` (0 occurrence `inter_skill` — confirmé cette session). À CRÉER — bannière de contradictions.
+**Justification** : le système émet des verdicts d'achat/vente explicites sans aucun disclaimer (revue §6) — exposition réglementaire (AMF/SEC/MiFID) si diffusé.
+**Référence** : EXISTANT (vérifié) — **aucun** disclaimer dans le code (`grep` "conseil financier"/"disclaimer" vide) ; verdicts émis dans les schemas (`ACHAT_FORT`, `VENDRE`, etc., ex. `app/skills/tier2/fisher_scuttlebutt/schemas.py`) ; génération PDF `app/services/pdf_report_service.py`. À CRÉER — composant disclaimer (`frontend/src/components/`) + bloc dans le PDF.
 
-### Sprint 128 — Comparaison de deux analyses d'un même ticker (diff temporel)
-**Objectif** : `GET /ticker-report/{ticker}/diff?from_id=&to_id=` produisant un PDF (ou JSON) comparant deux analyses persistées du même ticker — évolution des verdicts skill par skill, du composite_score et des ratios clés.
+### Sprint 129 — Données : honnêteté du label + repli multi-sources
+**Objectif** : corriger l'étiquette `eps_growth_10y` (en réalité ~4 ans) et ajouter un repli/seconde source quand `yfinance` échoue.
 **Complexité** : Moyenne
-**Justification** : capitalise sur la reconstruction multi-skills du Sprint 122 ; lecture « avant/après » d'une thèse dans le temps.
-**Référence** : EXISTANT (vérifié) — endpoint `app/api/endpoints/ticker_report.py:25` + param `analysis_id` `:34`. À CRÉER — route `/ticker-report/{ticker}/diff`, logique de comparaison.
+**Justification** : source unique gratuite et retardée = SPOF + biais silencieux dans les seuils Graham (revue §2, §5).
+**Référence** : EXISTANT (vérifié) — calcul ~4 ans `app/skills/tier1/yahoo_finance.py:18`, label trompeur `app/skills/tier2/graham_analysis/schemas.py:19` ; SEDAR+ non fonctionnel `app/skills/tier1/sedar_plus.py:54-55`. À CRÉER — renommage cohérent du champ + couche de repli données.
 
-### Sprint 129 — Préférences utilisateur généralisées (Dashboard / Comparer)
-**Objectif** : réutiliser la table `user_preferences` (Sprint 124) pour persister d'autres préférences UI côté serveur (ex. disposition Dashboard, derniers tickers Comparer), via un client générique.
-**Complexité** : Faible
-**Justification** : capitalise sur l'infrastructure du Sprint 124 (table + service + endpoint pattern) pour étendre la continuité multi-appareils sans nouveau schéma.
-**Référence** : EXISTANT (vérifié) — table `user_preferences` bootstrappée `app/api/main.py` (Sprint 124), service `app/services/user_preferences_service.py` (`get_preference`/`upsert_preference`), endpoints `app/api/endpoints/preferences.py`. À CRÉER — clés `dashboard`/`compare`, endpoints/clients génériques.
+### Sprint 130 — Annotations enrichies : tags + filtres (reporté)
+**Objectif** : champ `tags` sur les annotations, filtrable via `GET /history?tags=value,growth`, chips éditables (`AnnotationSection`) et lecture seule (`HistoryTable`).
+**Complexité** : Moyenne
+**Justification** : sprint initialement planifié (125), reporté derrière les P0 sécurité ; filtrage sémantique léger du portefeuille sans RAG.
+**Référence** : EXISTANT (vérifié antérieurement) — table `annotations` bootstrap `app/api/main.py:193`, modèle `app/models/annotation.py:16`, service `app/services/annotation_service.py:18`, route `/history` `app/api/main.py:667`. À CRÉER — colonne `tags` + index GIN + filtre + UI chips.
 
 ---
 
@@ -91,9 +112,11 @@ Conteneur cloné à neuf ; dépendances préparées par `SessionStart` → `scri
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.11.0), et les règles .claude/rules/ avant de commencer.
-Sprint actif : 125 — Annotations enrichies : tags + filtres (colonne tags sur la table
-annotations + index GIN, filtre GET /history?tags=, chips éditables dans AnnotationSection
-et lecture seule dans HistoryTable). Migration + bootstrap lifespan ; tests intégration
-filtre /history + composant obligatoires.
+Lis CLAUDE.md, ROADMAP.md (v10.11.0), docs/revue-expert-fintech.md (§5) et
+.claude/rules/securite.md + tests-pyramide.md avant de commencer.
+Sprint actif : 125 — Durcissement sécurité auth & fail-safe (P0) : (1) secret JWT
+fail-fast au lieu du repli dev codé en dur, (2) blacklist JTI fail-closed si Redis tombe,
+(3) réponses 500 assainies (pas de str(exc) dans le body), (4) CORS durci (méthodes
+explicites + origines via env CORS_ORIGINS). Tests unitaires service auth + intégration
+500 sanitisé obligatoires. Sprint backend pur, sans migration ni changement de prompt.
 ```
