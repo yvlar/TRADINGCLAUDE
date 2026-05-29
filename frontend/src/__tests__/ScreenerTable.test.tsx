@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ScreenerTable } from '../components/ScreenerTable'
 import type { ScreenEntry } from '../types'
+
+// Préférences serveur neutralisées (null) : ces tests ciblent le comportement localStorage
+vi.mock('../api/preferences', () => ({
+  getScreenerPreferences: vi.fn().mockResolvedValue(null),
+  putScreenerPreferences: vi.fn().mockResolvedValue(null),
+}))
 
 const ENTRIES: ScreenEntry[] = [
   { ticker: 'BNS', defensive_score: 6, verdict: 'CANDIDAT_SOLIDE', composite_score: 72.5, composite_label: 'FORT', workflow_utilise: 'value_graham', cost_usd: 0.002, depuis_cache: false, analyzed_at: '2026-05-26T10:00:00+00:00', erreur: null },

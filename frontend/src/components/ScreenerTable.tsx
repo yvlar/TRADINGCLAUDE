@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import type { ScreenEntry } from '../types'
+import { getScreenerPreferences, putScreenerPreferences } from '../api/preferences'
 import {
   availableLabels,
   buildScreenerCsv,
@@ -13,6 +14,7 @@ import {
   saveLabelFilter,
   saveSortState,
   type SortKey,
+  type SortState,
 } from '../lib/screenerView'
 
 function compositeColor(label: string | null): string {
@@ -57,14 +59,41 @@ interface ScreenerTableProps {
 }
 
 export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTableProps) {
-  const [sort, setSort] = useState(() => loadSortState())
+  // localStorage en état initial (anti-flash) ; le serveur prend le relais au montage
+  const [sort, setSort] = useState<SortState>(() => loadSortState())
   const [activeLabels, setActiveLabels] = useState<string[]>(() => loadLabelFilter())
   const { key: sortKey, asc } = sort
+
+  // Au montage : hydrater depuis le serveur ; si 401 / réseau KO / champ null, garder le localStorage
+  useEffect(() => {
+    let cancelled = false
+    void getScreenerPreferences().then((prefs) => {
+      if (cancelled || !prefs) return
+      if (prefs.sort) {
+        setSort(prefs.sort)
+        saveSortState(prefs.sort)
+      }
+      if (prefs.filter) {
+        setActiveLabels(prefs.filter)
+        saveLabelFilter(prefs.filter)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Miroir localStorage (anti-flash) + persistance serveur best-effort de l'état complet
+  function persist(nextSort: SortState, nextLabels: string[]) {
+    saveSortState(nextSort)
+    saveLabelFilter(nextLabels)
+    void putScreenerPreferences({ sort: nextSort, filter: nextLabels })
+  }
 
   function toggleSort(key: SortKey) {
     const next = sortKey === key ? { key, asc: !asc } : { key, asc: defaultAsc(key) }
     setSort(next)
-    saveSortState(next)
+    persist(next, activeLabels)
   }
 
   function toggleLabel(label: string) {
@@ -72,12 +101,12 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
       ? activeLabels.filter((l) => l !== label)
       : [...activeLabels, label]
     setActiveLabels(next)
-    saveLabelFilter(next)
+    persist(sort, next)
   }
 
   function clearLabels() {
     setActiveLabels([])
-    saveLabelFilter([])
+    persist(sort, [])
   }
 
   const labels = useMemo(() => availableLabels(entries), [entries])

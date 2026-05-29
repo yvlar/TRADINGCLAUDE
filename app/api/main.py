@@ -30,6 +30,7 @@ from app.api.endpoints.extract import router as extract_router
 from app.api.endpoints.jobs import router as jobs_router
 from app.api.endpoints.monthly_report import router as monthly_report_router
 from app.api.endpoints.performance import router as performance_router
+from app.api.endpoints.preferences import router as preferences_router
 from app.api.endpoints.report import router as report_router
 from app.api.endpoints.screen import router as screen_router
 from app.api.endpoints.screener_report import router as screener_report_router
@@ -282,6 +283,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     await db_pool.execute(
         "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens (family)"
+    )
+
+    # Sprint 124 — préférences utilisateur côté serveur (continuité multi-appareils)
+    await db_pool.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key        TEXT        NOT NULL,
+            value      JSONB       NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, key)
+        )
+        """
     )
 
     anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
@@ -547,6 +561,7 @@ app.include_router(evals_router)
 app.include_router(export_router)
 app.include_router(extract_router)
 app.include_router(performance_router)
+app.include_router(preferences_router)
 app.include_router(jobs_router)
 app.include_router(report_router)
 app.include_router(screen_router)
