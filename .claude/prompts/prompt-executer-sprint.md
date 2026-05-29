@@ -58,12 +58,21 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
    - Backend : `pytest` (hors e2e/evals) + `ruff check`
    - Frontend : Vitest + `tsc --noEmit` + ESLint (0 erreur / 0 warning)
 5. Revue indépendante (contexte frais) : déléguer la revue du diff du sprint à un
-   sous-agent dédié (`Agent` lançant `/code-review` sur le diff), JAMAIS à la
-   session auteur — un relecteur qui partage le contexte d'écriture partage ses
-   angles morts. Traiter les findings de correctness AVANT de committer, puis
-   relancer une 2ᵉ passe de revue sur le diff corrigé. Tenir un court journal
-   `finding → résolution` (corrigé / écarté + raison), à reporter dans le corps
-   de la PR. Des tests verts (écrits par le même agent) ne valent pas une revue.
+   sous-agent dédié, JAMAIS à la session auteur — un relecteur qui partage le
+   contexte d'écriture partage ses angles morts. Procédure :
+   a. **Correctness** : lancer `/code-review` à effort **high** (couverture large,
+      findings incertains acceptés). Fournir au sous-agent les **critères
+      d'acceptation du sprint** (la « Spécification » + « Tests obligatoires » de
+      `prompt-mise-a-jour-roadmap.md`) en plus du diff — sans l'intention, le
+      relecteur juge la forme du diff, pas s'il fait ce que le sprint exige.
+   b. Traiter les findings de correctness AVANT de committer, puis relancer une
+      2ᵉ passe `/code-review` sur le diff corrigé.
+   c. **Qualité** (après correctness) : lancer une passe `/simplify` (réutilisation,
+      simplification, efficacité, altitude) sur le diff. Appliquer ou écarter
+      chaque suggestion avec justification.
+   Tenir un court journal `finding → résolution` (corrigé / écarté + raison)
+   couvrant les deux passes, à reporter dans le corps de la PR. Des tests verts
+   (écrits par le même agent) ne valent pas une revue.
 6. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
    mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` dès qu'un
    5ᵉ bloc de sprint détaillé apparaît — n'en garder que ~4, cible < 200 lignes),
@@ -111,7 +120,7 @@ et état CI initial rapporté.
 - **Réconciliation carte ↔ code (anti-hallucination)** — la carte du sprint est générée par la session précédente ; avant d'implémenter, on vérifie par `grep`/`fichier:ligne` que les symboles/capacités qu'elle dit « déjà existants » le sont vraiment. STOP si une prémisse est fausse, plutôt que de bâtir dessus.
 - **Décomposition séquencée** — actions floues transformées en étapes ordonnées avec dépendances.
 - **Critères de succès + vérification** — « definition of done » et gate tests/lint/typecheck.
-- **Revue indépendante à contexte frais** — `/code-review` délégué à un sous-agent (pas la session auteur, qui partage ses angles morts), 2ᵉ passe après corrections, journal `finding → résolution` dans la PR : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
+- **Revue indépendante à contexte frais** — `/code-review` à effort **high** délégué à un sous-agent (pas la session auteur, qui partage ses angles morts), nourri des **critères d'acceptation du sprint** (pas seulement le diff), 2ᵉ passe après corrections, puis passe qualité `/simplify` ; journal `finding → résolution` des deux passes dans la PR : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
 - **Phases découplées** — implémentation (A) puis PR + surveillance (B) ; la Phase B peut tourner dans une session fraîche pour éviter la pollution de contexte.
 - **Chiffres vérifiables** — compteurs de tests issus d'une vraie commande, pas d'une estimation (anti-hallucination).
 - **Environnement externalisé** — setup web dans un hook `SessionStart` idempotent plutôt que recopié à chaque sprint.
