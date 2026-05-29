@@ -62,26 +62,31 @@ des dépendances (venv backend `--system-site-packages` + binaire natif rollup) 
 **Objectif** : Migrer tri + filtres Screener du localStorage (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié. Endpoints `GET/PUT /preferences/screener`.
 **Complexité** : Moyenne
 **Justification** : Lier les préférences au compte (Sprint Login) offre une continuité multi-appareils.
+**Référence** : EXISTANT — persistance localStorage tri/filtres : `frontend/src/lib/screenerView.ts:18` (tri) et `:40` (filtres). À CRÉER — table `user_preferences`, endpoints `/preferences/screener`.
 
 ### Sprint 125 — Annotations enrichies : tags + filtres
 **Objectif** : Ajouter un champ `tags` (liste de mots-clés libres) aux annotations, indexé GIN, filtrable via `GET /history?tags=value,growth`. Affichage chips dans `HistoryTable` et `AnnotationSection`.
 **Complexité** : Moyenne
 **Justification** : Les annotations (Sprint 78) sont du texte libre sans structure ; les tags permettent un filtrage sémantique du portefeuille sans RAG.
+**Référence** : EXISTANT — service/endpoint annotations : `app/services/annotation_service.py`, `app/api/endpoints/annotations.py:23` ; composants `frontend/src/components/AnnotationSection.tsx`, `frontend/src/components/HistoryTable.tsx`. À CRÉER — champ `tags`, index GIN, filtre `/history?tags=`.
 
 ### Sprint 126 — Vue « Portefeuille » agrégée
 **Objectif** : Page `/portefeuille` synthétisant la watchlist par pilier (ETF/thématique/valeur/algo) avec allocation cible vs réelle et score composite moyen par pilier.
 **Complexité** : Élevée
 **Justification** : Matérialise le cadre four-pillar du projet, aujourd'hui conceptuel ; relie watchlist, composite_score et fiscalité par compte.
+**Référence** : EXISTANT — `composite_score` : `app/services/composite_score.py:86` (calcul), `:19` (modèle) ; page watchlist `frontend/src/pages/WatchlistPage.tsx`. À CRÉER — page `/portefeuille`, agrégation par pilier, allocation cible vs réelle.
 
 ### Sprint 127 — Cohérence inter-skills affichée dans l'UI
 **Objectif** : Exposer `inter_skill_conflicts` (déjà calculé côté backend, présent dans `AnalyzeResponse`) dans `AnalysisResult` — bannière listant les contradictions détectées entre skills.
 **Complexité** : Faible
 **Justification** : La donnée existe mais n'est pas rendue ; valeur immédiate pour repérer les thèses contradictoires.
+**Référence** : EXISTANT — calcul `app/orchestrator/core.py:140` (`_detect_inter_skill_conflicts`), champ réponse `:245`, type frontend `frontend/src/types/index.ts:459`. NON rendu dans `frontend/src/components/AnalysisResult.tsx` (aucune référence — confirmé). À CRÉER — bannière de contradictions.
 
 ### Sprint 128 — Comparaison de deux analyses d'un même ticker (diff temporel)
 **Objectif** : `GET /ticker-report/{ticker}/diff?from_id=&to_id=` produisant un PDF (ou JSON) qui compare deux analyses persistées du même ticker — évolution des verdicts skill par skill, du composite_score et des ratios clés.
 **Complexité** : Moyenne
 **Justification** : Capitalise sur la reconstruction multi-skills du Sprint 122 ; donne une lecture « avant/après » d'une thèse dans le temps.
+**Référence** : EXISTANT — endpoint `app/api/endpoints/ticker_report.py:26` + param `analysis_id` `:34` (reconstruction multi-skills Sprint 122). À CRÉER — route `/ticker-report/{ticker}/diff`, logique de comparaison.
 
 ---
 
