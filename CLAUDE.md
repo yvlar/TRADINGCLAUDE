@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — Sprint 123 (Code-splitting des routes + lazy-load recharts) · dernier complété : Sprint 122 ✅ · v10.9.0 — Dernière mise à jour : 2026-05-28*
+*Phase 3 active — sprint courant, version et dernier sprint complété : voir [`ROADMAP.md`](ROADMAP.md) (source unique, table « État courant »). Ne pas figer de numéro de sprint ici — éviter la dérive entre fichiers.*
 
 ---
 

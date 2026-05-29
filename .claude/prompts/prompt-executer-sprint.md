@@ -19,14 +19,15 @@ tous les contrôles, la doc de fin de sprint est à jour, le commit est poussé,
 PR est créée et la session abonnée aux événements.
 
 # Lecture obligatoire (avant d'écrire du code)
+> `CLAUDE.md` est DÉJÀ dans ton contexte (injecté comme *project instructions*) —
+> le consulter là, ne PAS le relire avec un outil (double chargement = tokens gaspillés).
 1. `prompt-mise-a-jour-roadmap.md` — la tâche du sprint courant
-2. `CLAUDE.md` — index du projet et pointeurs vers `.claude/rules/`
-3. `ROADMAP.md` — état courant et version (court : ~état + 4 derniers sprints).
+2. `ROADMAP.md` — état courant et version (court : ~état + 4 derniers sprints).
    NE PAS lire `docs/roadmap-archive.md` à l'amorçage — c'est l'historique mort.
-4. UNIQUEMENT les règles `.claude/rules/` nommées par la section « LECTURE
+3. UNIQUEMENT les règles `.claude/rules/` nommées par la section « LECTURE
    OBLIGATOIRE » de la carte (déjà cadrées au périmètre du sprint). La table de
-   pointeurs de `CLAUDE.md` résume le reste — ne PAS pré-charger les 16 règles
-   « au cas où » ; n'ouvrir une règle non listée que si le périmètre l'impose.
+   pointeurs de `CLAUDE.md` (déjà en contexte) résume le reste — ne PAS pré-charger
+   les 16 règles « au cas où » ; n'ouvrir une règle non listée que si le périmètre l'impose.
 
 # Clarification préalable
 `prompt-mise-a-jour-roadmap.md` laisse souvent le sprint « à définir » avec une
@@ -44,14 +45,18 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 # Phase A — Implémentation (une session)
 1. Confirmer le sprint à exécuter (voir « Clarification préalable »).
 2. Réconcilier la carte avec le code réel (anti-hallucination) — AVANT d'écrire du
-   code, vérifier que chaque symbole, endpoint, table ou capacité que la carte
-   (`prompt-mise-a-jour-roadmap.md`) cite comme EXISTANT (« X déjà calculé côté
-   backend », « présent dans `AnalyzeResponse` », « table Y », « champ Z ») existe
-   réellement dans le dépôt : le confirmer par `grep`/lecture et noter le
-   `fichier:ligne`. La carte du sprint a été générée par la session précédente —
-   c'est une prémisse à vérifier, pas une vérité terrain. Si une prémisse est
-   fausse ou périmée (symbole introuvable, capacité « déjà là » inexistante), STOP :
-   me le signaler avant d'implémenter — ne jamais construire sur une prémisse non vérifiée.
+   code, vérifier les symboles, endpoints, tables ou capacités que la carte
+   (`prompt-mise-a-jour-roadmap.md`) cite comme EXISTANTS (« X déjà calculé côté
+   backend », « présent dans `AnalyzeResponse` », « table Y », « champ Z »). Borner
+   la vérification à ce dont **l'implémentation du sprint DÉPEND** — ce que le code
+   va lire, étendre ou appeler. Une mention purement contextuelle/décorative, hors
+   du chemin critique du sprint, ne justifie pas un `grep` (économie de tokens).
+   Pour chaque prémisse sur le chemin critique : confirmer par `grep`/lecture et
+   noter le `fichier:ligne`. La carte du sprint a été générée par la session
+   précédente — c'est une prémisse à vérifier, pas une vérité terrain. Si une
+   prémisse dont le sprint dépend est fausse ou périmée (symbole introuvable,
+   capacité « déjà là » inexistante), STOP : me le signaler avant d'implémenter —
+   ne jamais construire sur une prémisse non vérifiée.
 3. Implémenter le sprint en respectant les conventions (`.claude/rules/`) :
    bilingue FR/EN, typage strict, async/await, tests obligatoires par livrable.
 4. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :

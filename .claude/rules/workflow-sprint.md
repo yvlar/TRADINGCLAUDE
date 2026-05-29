@@ -13,6 +13,11 @@ Un sprint n'est **pas terminé** tant que ces trois étapes n'ont pas été comp
 
 ### 1. Mettre à jour `ROADMAP.md`
 
+> `ROADMAP.md` (table « État courant ») est la **source unique** du Sprint actif,
+> de la version et du dernier sprint complété. NE PAS re-figer ces valeurs dans
+> l'en-tête de `CLAUDE.md` (qui pointe vers `ROADMAP.md`) — toute duplication
+> recrée la dérive entre fichiers qu'on cherche à éviter.
+
 - Passer le sprint complété de 🔜 → ✅
 - Mettre à jour le champ **Sprint actif** (numéro du sprint suivant)
 - Mettre à jour **Dernier sprint complété** (numéro + nom + ✅)
