@@ -51,11 +51,21 @@ Réécrire intégralement pour le sprint suivant — ce fichier est la carte d'e
 **Objectif** : description en une phrase de ce que ce sprint livre.
 **Complexité** : Faible / Moyenne / Élevée
 **Justification** : pourquoi maintenant, quelle valeur apporte ce sprint au projet.
+**Référence** : pour tout symbole/endpoint/table/capacité présenté comme EXISTANT
+(« X déjà calculé », « champ présent dans `AnalyzeResponse` », « table Y »), donner
+le `fichier:ligne` qui le prouve — vérifié par `grep`, jamais de mémoire. Si ce n'est
+pas vérifiable dans le dépôt, ne pas l'affirmer (le reformuler en « à créer »).
 
 ### Sprint N+2 — ...
 ```
 
 Proposer 3-5 sprints distincts, non redondants, qui font avancer le projet vers Phase 3 complète.
+
+**Anti-hallucination** : un sprint suggéré qui s'appuie sur une capacité « déjà là »
+non vérifiée fait construire la session suivante sur une prémisse fausse. Le champ
+**Référence** (`fichier:ligne`) empêche cette erreur de se composer d'un sprint à
+l'autre — la session exécutante réconcilie la carte avec le code avant d'implémenter
+(cf. Phase A, `.claude/prompts/prompt-executer-sprint.md`).
 
 ### 3. Créer un commit git
 

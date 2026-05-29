@@ -43,25 +43,36 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 
 # Phase A — Implémentation (une session)
 1. Confirmer le sprint à exécuter (voir « Clarification préalable »).
-2. Implémenter le sprint en respectant les conventions (`.claude/rules/`) :
+2. Réconcilier la carte avec le code réel (anti-hallucination) — AVANT d'écrire du
+   code, vérifier que chaque symbole, endpoint, table ou capacité que la carte
+   (`prompt-mise-a-jour-roadmap.md`) cite comme EXISTANT (« X déjà calculé côté
+   backend », « présent dans `AnalyzeResponse` », « table Y », « champ Z ») existe
+   réellement dans le dépôt : le confirmer par `grep`/lecture et noter le
+   `fichier:ligne`. La carte du sprint a été générée par la session précédente —
+   c'est une prémisse à vérifier, pas une vérité terrain. Si une prémisse est
+   fausse ou périmée (symbole introuvable, capacité « déjà là » inexistante), STOP :
+   me le signaler avant d'implémenter — ne jamais construire sur une prémisse non vérifiée.
+3. Implémenter le sprint en respectant les conventions (`.claude/rules/`) :
    bilingue FR/EN, typage strict, async/await, tests obligatoires par livrable.
-3. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
+4. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
    - Backend : `pytest` (hors e2e/evals) + `ruff check`
    - Frontend : Vitest + `tsc --noEmit` + ESLint (0 erreur / 0 warning)
-4. Revue indépendante (contexte frais) : déléguer la revue du diff du sprint à un
+5. Revue indépendante (contexte frais) : déléguer la revue du diff du sprint à un
    sous-agent dédié (`Agent` lançant `/code-review` sur le diff), JAMAIS à la
    session auteur — un relecteur qui partage le contexte d'écriture partage ses
    angles morts. Traiter les findings de correctness AVANT de committer, puis
    relancer une 2ᵉ passe de revue sur le diff corrigé. Tenir un court journal
    `finding → résolution` (corrigé / écarté + raison), à reporter dans le corps
    de la PR. Des tests verts (écrits par le même agent) ne valent pas une revue.
-5. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
+6. Exécuter le workflow de fin de sprint (`.claude/rules/workflow-sprint.md`) :
    mettre à jour `ROADMAP.md` (rotation vers `docs/roadmap-archive.md` dès qu'un
    5ᵉ bloc de sprint détaillé apparaît — n'en garder que ~4, cible < 200 lignes),
    réécrire `prompt-mise-a-jour-roadmap.md` pour le sprint
    suivant, et créer le commit. Les compteurs de tests doivent provenir d'une
    commande réelle (`pytest --co -q | wc -l`, liste Vitest), jamais d'une estimation.
-6. Pousser sur la branche de développement désignée (`git push -u origin <branche>`,
+   Tout symbole existant cité dans « SPRINTS SUGGÉRÉS » doit être backé par un
+   `fichier:ligne` vérifié (cf. `.claude/rules/workflow-sprint.md`).
+7. Pousser sur la branche de développement désignée (`git push -u origin <branche>`,
    retry backoff sur erreur réseau).
 
 # Phase B — Pull request et surveillance (après le push)
@@ -69,9 +80,9 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 > seuls la branche poussée et le numéro de PR sont nécessaires. Recommandé après
 > un gros sprint, quand le contexte de la Phase A est saturé.
 
-7. Ouvrir une PR vers `master` : titre court (< 70 car.), corps avec Résumé +
+8. Ouvrir une PR vers `master` : titre court (< 70 car.), corps avec Résumé +
    Test plan ; via les outils GitHub MCP (jamais `gh`).
-8. S'abonner à l'activité de la PR (`subscribe_pr_activity`), puis vérifier l'état
+9. S'abonner à l'activité de la PR (`subscribe_pr_activity`), puis vérifier l'état
    CI initial et les commentaires de revue. Corriger les échecs CI tractables et
    petits ; me consulter si c'est ambigu ou structurant.
 
@@ -97,6 +108,7 @@ et état CI initial rapporté.
 - **Rôle + objectif explicites** — ancre le contexte et donne un but mesurable plutôt qu'une suite d'ordres.
 - **Grounding ciblé** — prise de contexte forcée avant d'agir, mais limitée aux règles cadrées au périmètre (nommées par la carte) plutôt qu'au chargement des 16 règles à chaque session — économie de tokens sans perte de contexte utile.
 - **Gestion de l'ambiguïté** — point d'arrêt pour clarification quand le sprint est « à définir ».
+- **Réconciliation carte ↔ code (anti-hallucination)** — la carte du sprint est générée par la session précédente ; avant d'implémenter, on vérifie par `grep`/`fichier:ligne` que les symboles/capacités qu'elle dit « déjà existants » le sont vraiment. STOP si une prémisse est fausse, plutôt que de bâtir dessus.
 - **Décomposition séquencée** — actions floues transformées en étapes ordonnées avec dépendances.
 - **Critères de succès + vérification** — « definition of done » et gate tests/lint/typecheck.
 - **Revue indépendante à contexte frais** — `/code-review` délégué à un sous-agent (pas la session auteur, qui partage ses angles morts), 2ᵉ passe après corrections, journal `finding → résolution` dans la PR : les tests verts (écrits par le même agent) ne suffisent pas à valider la correctness.
