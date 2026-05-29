@@ -15,24 +15,27 @@ class AnnotationService:
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         self._db = db_pool
 
-    async def upsert(self, analysis_id: str, note: str) -> Annotation:
-        """Crée ou remplace l'annotation pour un analysis_id donné."""
+    async def upsert(self, analysis_id: str, note: str, tags: list[str] | None = None) -> Annotation:
+        """Crée ou remplace l'annotation (note + tags) pour un analysis_id donné."""
         row = await self._db.fetchrow(
             """
-            INSERT INTO annotations (analysis_id, note)
-            VALUES ($1::uuid, $2)
+            INSERT INTO annotations (analysis_id, note, tags)
+            VALUES ($1::uuid, $2, $3::text[])
             ON CONFLICT (analysis_id) DO UPDATE
                 SET note = EXCLUDED.note,
+                    tags = EXCLUDED.tags,
                     updated_at = NOW()
             RETURNING
                 annotation_id::text,
                 analysis_id::text,
                 note,
+                tags,
                 created_at,
                 updated_at
             """,
             analysis_id,
             note,
+            tags or [],
         )
         return _row_to_annotation(row)
 
@@ -45,6 +48,7 @@ class AnnotationService:
                     annotation_id::text,
                     analysis_id::text,
                     note,
+                    tags,
                     created_at,
                     updated_at
                 FROM annotations
@@ -62,7 +66,7 @@ class AnnotationService:
         rows = await self._db.fetch("""
             SELECT a.annotation_id::text, a.analysis_id::text,
                    h.ticker,
-                   a.note, a.created_at, a.updated_at
+                   a.note, a.tags, a.created_at, a.updated_at
             FROM annotations a
             LEFT JOIN analysis_history h USING (analysis_id)
             ORDER BY a.updated_at DESC
@@ -75,6 +79,7 @@ def _row_to_annotation(row) -> Annotation:
         annotation_id=str(row["annotation_id"]),
         analysis_id=str(row["analysis_id"]),
         note=row["note"],
+        tags=list(row["tags"]) if row["tags"] is not None else [],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

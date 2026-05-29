@@ -45,6 +45,7 @@ const pagedWithEntry = {
       graham_verdict: 'CONSERVER',
       earnings_verdict: null,
       created_at: '2026-05-20T12:00:00+00:00',
+      tags: [],
     },
   ],
   page: 1,

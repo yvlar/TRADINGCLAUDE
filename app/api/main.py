@@ -199,6 +199,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         """
     )
+    # Sprint 126 — tags filtrables sur les annotations (TEXT[] + index GIN, opérateur @>)
+    await db_pool.execute(
+        "ALTER TABLE annotations ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'"
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_annotations_tags ON annotations USING GIN (tags)"
+    )
     # Sprint 89 — historique des scores ESG (pattern Sprint 57 composite_score_history)
     await db_pool.execute(
         """
@@ -664,6 +671,20 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+def _parse_tags_param(tags: str | None) -> list[str] | None:
+    """CSV `value,growth` → liste nettoyée ; None si absent, 422 si présent mais vide.
+
+    Met en minuscules pour s'aligner sur la normalisation à la création (sinon le
+    filtre `@>` sensible à la casse ne matcherait jamais un tag saisi en majuscules).
+    """
+    if tags is None:
+        return None
+    cleaned = [t.strip().lower() for t in tags.split(",") if t.strip()]
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="tags : au moins un tag non vide requis")
+    return cleaned
+
+
 @app.get(
     "/history",
     response_model=HistoryResponse,
@@ -677,6 +698,7 @@ async def history(
     before: str | None = None,
     from_dt: str | None = None,
     to_dt: str | None = None,
+    tags: str | None = None,
 ) -> HistoryResponse:
     """
     Retourne les analyses passées (max 50 par page).
@@ -686,11 +708,13 @@ async def history(
     - `to_dt`   : borne supérieure ISO 8601 sur created_at (ex. 2026-05-18).
     Au moins un des deux paramètres ticker ou q est obligatoire.
     `before` : cursor ISO 8601 pour la pagination (valeur de `next_before`).
+    - `tags`  : filtre CSV (ex. `value,growth`) — analyses dont l'annotation porte TOUS ces tags.
     """
     if not ticker and not q:
         raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
     if limit < 1 or limit > 50:
         raise HTTPException(status_code=422, detail="limit doit être entre 1 et 50")
+    tags_parsed = _parse_tags_param(tags)
 
     before_dt: datetime | None = None
     if before:
@@ -721,6 +745,7 @@ async def history(
         before=before_dt,
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
+        tags=tags_parsed,
     )
 
 
@@ -778,6 +803,7 @@ async def history_paged(
     from_dt: str | None = None,
     to_dt: str | None = None,
     fast_count: bool = False,
+    tags: str | None = None,
 ) -> PagedHistoryResponse:
     """
     Retourne les analyses passees avec pagination par numero de page.
@@ -786,6 +812,7 @@ async def history_paged(
     - `ticker`    : filtre exact sur le ticker
     - `q`         : recherche ILIKE full-text
     - `from_dt`, `to_dt` : plage ISO 8601 sur created_at
+    - `tags`      : filtre CSV (ex. `value,growth`) — analyses dont l'annotation porte TOUS ces tags
     """
     if not ticker and not q:
         raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
@@ -793,6 +820,7 @@ async def history_paged(
         raise HTTPException(status_code=422, detail="page doit etre >= 1")
     if page_size < 1 or page_size > 50:
         raise HTTPException(status_code=422, detail="page_size doit etre entre 1 et 50")
+    tags_parsed = _parse_tags_param(tags)
 
     from_dt_parsed: datetime | None = None
     if from_dt:
@@ -817,6 +845,7 @@ async def history_paged(
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
         fast_count=fast_count,
+        tags=tags_parsed,
     )
 
 

@@ -29,6 +29,7 @@ def _row(idx: int) -> dict:
         "cost_usd": 0.004,
         "result": '{"graham": {"defensive_score": 7, "verdict": "CANDIDAT_SOLIDE"}}',
         "created_at": datetime(2026, 5, 10 + idx % 10, 12, 0, tzinfo=timezone.utc),
+        "tags": [],
     }
 
 

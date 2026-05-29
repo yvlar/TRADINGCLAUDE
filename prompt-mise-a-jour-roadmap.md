@@ -4,9 +4,9 @@
 
 ---
 
-## État du projet (v10.11.0 — Sprint 124 complété)
+## État du projet (v10.12.0 — Sprint 126 complété)
 
-**Origine de ce sprint** — La revue expert FinTech du 2026-05-29 (`docs/revue-expert-fintech.md`) a relevé des correctifs P0 de sécurité auth. Ils passent **devant** le Sprint Annotations (reporté → voir sprints suggérés). Toutes les références ci-dessous ont été vérifiées par `grep` cette session.
+**Origine de ce sprint** — La revue expert FinTech du 2026-05-29 (`docs/revue-expert-fintech.md`) a relevé des correctifs P0 de sécurité auth. Ils passent **devant** les autres travaux et restent le Sprint actif. Le sprint Annotations, déjà réalisé, a été **livré comme Sprint 126** (renuméroté pour ne pas revendiquer le slot 125 sécurité). Toutes les références ci-dessous ont été vérifiées par `grep`.
 
 > **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas (cf. `.claude/rules/workflow-sprint.md`).
 
@@ -15,7 +15,7 @@
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v10.11.0, Sprint 124 ✅
+2. `ROADMAP.md` — état courant v10.12.0, Sprint 126 ✅
 3. `docs/revue-expert-fintech.md` — §5 (architecture/sécurité) : contexte et justification des 4 correctifs
 4. `.claude/rules/securite.md` — secrets via `.env`, jamais de fuite dans les logs/erreurs (cœur du sprint)
 5. `.claude/rules/tests-pyramide.md` — niveau unitaire (service auth) + intégration (réponse 500) obligatoires ; fixture `client`, patch des dépendances
@@ -76,35 +76,31 @@ Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setu
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 126 — Déterminisme LLM + validation numérique des bornes
+### Sprint 127 — Déterminisme LLM + validation numérique des bornes
 **Objectif** : rendre les analyses reproductibles (`temperature=0`) et ajouter des validateurs Pydantic de plausibilité post-LLM sur les scores clés (Z-score, M-score, WACC, fourchettes).
 **Complexité** : Faible
 **Justification** : un outil financier doit être reproductible et garde-fou contre les chiffres LLM aberrants ; correctif à haute valeur / faible coût. (Revue §3, §1.)
 **Référence** : EXISTANT (vérifié) — **aucune** occurrence de `temperature` dans `app/` (`grep` vide) → défaut 1.0 ; point d'insertion unique `app/utils/retry.py:34` (`messages.create(timeout=..., **kwargs)`) ; validateur de bornes déjà en place comme modèle à généraliser `app/skills/tier2/stock_valuation/schemas.py:98-116`. À CRÉER — `temperature=0` (central ou par skill) + validateurs `@model_validator` de plausibilité sur `earnings_quality`/`graham`/`stock_valuation`.
 
-### Sprint 127 — Calculs financiers déterministes en Python (le pivot)
+### Sprint 128 — Calculs financiers déterministes en Python (le pivot)
 **Objectif** : calculer en Python les scores aujourd'hui délégués au LLM (Altman Z, Beneish M, Piotroski F, Montier C, accruals Sloan, Graham Number, ossature DCF) ; le LLM **commente** des chiffres calculés au lieu de les produire.
 **Complexité** : Élevée
 **Justification** : c'est le défaut existentiel relevé par la revue (§1) — sans cela, les scores phares n'ont pas de fiabilité numérique ni d'auditabilité.
 **Référence** : EXISTANT (vérifié) — formules aujourd'hui décrites dans les prompts et remplies par le LLM : `app/skills/tier2/earnings_quality/schemas.py:72-117` (Z/M/F/C/Sloan), `app/skills/tier2/graham_analysis/schemas.py:104-109` (Graham Number), `app/skills/tier2/stock_valuation/schemas.py:78-81` (matrice DCF). Inputs bruts extraits par `app/skills/tier1/yahoo_finance.py:234-358`. À CRÉER — module de calcul déterministe + recâblage des skills pour passer les valeurs calculées en contexte.
 
-### Sprint 128 — Conformité : disclaimers & avertissement de risque
+### Sprint 129 — Conformité : disclaimers & avertissement de risque
 **Objectif** : afficher « recherche éducative — pas un conseil financier » + avertissement de risque dans l'UI (résultats, pied de page) et dans les rapports PDF.
 **Complexité** : Faible
 **Justification** : le système émet des verdicts d'achat/vente explicites sans aucun disclaimer (revue §6) — exposition réglementaire (AMF/SEC/MiFID) si diffusé.
 **Référence** : EXISTANT (vérifié) — **aucun** disclaimer dans le code (`grep` "conseil financier"/"disclaimer" vide) ; verdicts émis dans les schemas (`ACHAT_FORT`, `VENDRE`, etc., ex. `app/skills/tier2/fisher_scuttlebutt/schemas.py`) ; génération PDF `app/services/pdf_report_service.py`. À CRÉER — composant disclaimer (`frontend/src/components/`) + bloc dans le PDF.
 
-### Sprint 129 — Données : honnêteté du label + repli multi-sources
+### Sprint 130 — Données : honnêteté du label + repli multi-sources
 **Objectif** : corriger l'étiquette `eps_growth_10y` (en réalité ~4 ans) et ajouter un repli/seconde source quand `yfinance` échoue.
 **Complexité** : Moyenne
 **Justification** : source unique gratuite et retardée = SPOF + biais silencieux dans les seuils Graham (revue §2, §5).
 **Référence** : EXISTANT (vérifié) — calcul ~4 ans `app/skills/tier1/yahoo_finance.py:18`, label trompeur `app/skills/tier2/graham_analysis/schemas.py:19` ; SEDAR+ non fonctionnel `app/skills/tier1/sedar_plus.py:54-55`. À CRÉER — renommage cohérent du champ + couche de repli données.
 
-### Sprint 130 — Annotations enrichies : tags + filtres (reporté)
-**Objectif** : champ `tags` sur les annotations, filtrable via `GET /history?tags=value,growth`, chips éditables (`AnnotationSection`) et lecture seule (`HistoryTable`).
-**Complexité** : Moyenne
-**Justification** : sprint initialement planifié (125), reporté derrière les P0 sécurité ; filtrage sémantique léger du portefeuille sans RAG.
-**Référence** : EXISTANT (vérifié antérieurement) — table `annotations` bootstrap `app/api/main.py:193`, modèle `app/models/annotation.py:16`, service `app/services/annotation_service.py:18`, route `/history` `app/api/main.py:667`. À CRÉER — colonne `tags` + index GIN + filtre + UI chips.
+> _Le sprint « Annotations enrichies : tags + filtres » (initialement 125, un temps suggéré en 130) a été **livré comme Sprint 126** — retiré de cette file._
 
 ---
 
@@ -112,7 +108,7 @@ Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setu
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.11.0), docs/revue-expert-fintech.md (§5) et
+Lis CLAUDE.md, ROADMAP.md (v10.12.0), docs/revue-expert-fintech.md (§5) et
 .claude/rules/securite.md + tests-pyramide.md avant de commencer.
 Sprint actif : 125 — Durcissement sécurité auth & fail-safe (P0) : (1) secret JWT
 fail-fast au lieu du repli dev codé en dur, (2) blacklist JTI fail-closed si Redis tombe,

@@ -25,6 +25,7 @@ const _entry = (id: string) => ({
   graham_verdict: 'CANDIDAT_SOLIDE',
   earnings_verdict: null,
   created_at: '2026-05-10T12:00:00+00:00',
+  tags: [],
 })
 
 const pagedResp = (page: number, totalPages = 3, totalCount = 25) => ({

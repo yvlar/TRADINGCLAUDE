@@ -9,11 +9,12 @@ vi.mock('../api/annotations')
 
 const ANALYSIS_ID = '550e8400-e29b-41d4-a716-446655440000'
 
-function makeAnnotation(note: string): Annotation {
+function makeAnnotation(note: string, tags: string[] = []): Annotation {
   return {
     annotation_id: '11111111-1111-1111-1111-111111111111',
     analysis_id: ANALYSIS_ID,
     note,
+    tags,
     created_at: '2026-05-18T12:00:00Z',
     updated_at: '2026-05-18T12:00:00Z',
   }
@@ -71,7 +72,71 @@ describe('AnnotationSection', () => {
       expect(annotationsApi.upsertAnnotation).toHaveBeenCalledWith({
         analysis_id: ANALYSIS_ID,
         note: 'Ma note',
+        tags: [],
       })
+    })
+  })
+
+  it('ajoute un tag et l\'inclut dans l\'upsert', async () => {
+    vi.mocked(annotationsApi.getAnnotation).mockResolvedValue(null)
+    vi.mocked(annotationsApi.upsertAnnotation).mockResolvedValue(makeAnnotation('Note', ['value']))
+
+    render(<AnnotationSection analysisId={ANALYSIS_ID} />)
+    await userEvent.click(screen.getByTestId(`annotation-toggle-${ANALYSIS_ID}`))
+    await waitFor(() =>
+      expect(screen.getByTestId(`annotation-textarea-${ANALYSIS_ID}`)).toBeInTheDocument(),
+    )
+
+    await userEvent.type(screen.getByTestId(`annotation-textarea-${ANALYSIS_ID}`), 'Note')
+    await userEvent.type(screen.getByTestId(`annotation-tag-input-${ANALYSIS_ID}`), 'value')
+    await userEvent.click(screen.getByTestId(`annotation-tag-add-${ANALYSIS_ID}`))
+    await userEvent.click(screen.getByTestId(`annotation-save-${ANALYSIS_ID}`))
+
+    await waitFor(() => {
+      expect(annotationsApi.upsertAnnotation).toHaveBeenCalledWith({
+        analysis_id: ANALYSIS_ID,
+        note: 'Note',
+        tags: ['value'],
+      })
+    })
+  })
+
+  it('retire un tag avant la sauvegarde', async () => {
+    vi.mocked(annotationsApi.getAnnotation).mockResolvedValue(makeAnnotation('Note', ['value', 'growth']))
+    vi.mocked(annotationsApi.upsertAnnotation).mockResolvedValue(makeAnnotation('Note', ['growth']))
+
+    render(<AnnotationSection analysisId={ANALYSIS_ID} />)
+    await userEvent.click(screen.getByTestId(`annotation-toggle-${ANALYSIS_ID}`))
+    await waitFor(() => expect(screen.getByText('Note')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByText('Modifier'))
+    await userEvent.click(screen.getByTestId(`annotation-tag-remove-${ANALYSIS_ID}-value`))
+    await userEvent.click(screen.getByTestId(`annotation-save-${ANALYSIS_ID}`))
+
+    await waitFor(() => {
+      expect(annotationsApi.upsertAnnotation).toHaveBeenCalledWith({
+        analysis_id: ANALYSIS_ID,
+        note: 'Note',
+        tags: ['growth'],
+      })
+    })
+  })
+
+  it('affiche un message d\'erreur si la sauvegarde échoue', async () => {
+    vi.mocked(annotationsApi.getAnnotation).mockResolvedValue(null)
+    vi.mocked(annotationsApi.upsertAnnotation).mockRejectedValue(new Error('boom'))
+
+    render(<AnnotationSection analysisId={ANALYSIS_ID} />)
+    await userEvent.click(screen.getByTestId(`annotation-toggle-${ANALYSIS_ID}`))
+    await waitFor(() =>
+      expect(screen.getByTestId(`annotation-textarea-${ANALYSIS_ID}`)).toBeInTheDocument(),
+    )
+
+    await userEvent.type(screen.getByTestId(`annotation-textarea-${ANALYSIS_ID}`), 'Note')
+    await userEvent.click(screen.getByTestId(`annotation-save-${ANALYSIS_ID}`))
+
+    await waitFor(() => {
+      expect(screen.getByText('Erreur lors de la sauvegarde.')).toBeInTheDocument()
     })
   })
 
@@ -93,6 +158,7 @@ describe('AnnotationSection', () => {
       expect(annotationsApi.upsertAnnotation).toHaveBeenCalledWith({
         analysis_id: ANALYSIS_ID,
         note: 'Nouvelle note',
+        tags: [],
       })
     })
   })

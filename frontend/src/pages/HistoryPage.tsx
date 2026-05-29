@@ -14,6 +14,7 @@ interface SearchState {
   q: string
   fromDt: string
   toDt: string
+  tags: string
 }
 
 export default function HistoryPage() {
@@ -21,6 +22,7 @@ export default function HistoryPage() {
   const [searchQ, setSearchQ] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const [tagsFilter, setTagsFilter] = useState('')
   const [dateError, setDateError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState<SearchState | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -34,7 +36,7 @@ export default function HistoryPage() {
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
 
   const historyQuery = useQuery({
-    queryKey: ['history-paged', submitted?.ticker, submitted?.q, submitted?.fromDt, submitted?.toDt, currentPage, pageSize],
+    queryKey: ['history-paged', submitted?.ticker, submitted?.q, submitted?.fromDt, submitted?.toDt, submitted?.tags, currentPage, pageSize],
     queryFn: async () => {
       if (!submitted) return null
       return await getHistoryPaged(
@@ -43,6 +45,7 @@ export default function HistoryPage() {
           q: submitted.q || undefined,
           fromDt: submitted.fromDt || undefined,
           toDt: submitted.toDt || undefined,
+          tags: submitted.tags || undefined,
         },
         currentPage,
         pageSize,
@@ -73,7 +76,12 @@ export default function HistoryPage() {
       return
     }
     setDateError(null)
-    setSubmitted({ ticker: t, q, fromDt: fromDate, toDt: toDate })
+    const tags = tagsFilter
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .join(',')
+    setSubmitted({ ticker: t, q, fromDt: fromDate, toDt: toDate, tags })
   }
 
   const handleDownloadTickerPdf = async () => {
@@ -196,6 +204,17 @@ export default function HistoryPage() {
             className="w-52"
             aria-label="Recherche"
             data-testid="history-search-input"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground uppercase tracking-wide">Tags</label>
+          <Input
+            value={tagsFilter}
+            onChange={(e) => setTagsFilter(e.target.value)}
+            placeholder="value, growth"
+            className="w-44"
+            aria-label="Tags"
+            data-testid="history-tags-input"
           />
         </div>
         <div className="flex flex-col gap-1">

@@ -562,6 +562,7 @@ export interface HistoryEntry {
   earnings_verdict: string | null
   graham_verdict: string | null
   created_at: string
+  tags: string[]
 }
 
 export interface HistoryResponse {
@@ -703,6 +704,7 @@ export interface Annotation {
   annotation_id: string
   analysis_id: string
   note: string
+  tags: string[]
   created_at: string
   updated_at: string
 }
@@ -710,6 +712,7 @@ export interface Annotation {
 export interface AnnotationCreate {
   analysis_id: string
   note: string
+  tags: string[]
 }
 
 // ---- ESG Watchlist scores (Sprint 82) ----
