@@ -40,6 +40,6 @@ async def upsert_preference(
     return _decode_jsonb(row["value"])
 
 
-def _decode_jsonb(value: object) -> dict:
+def _decode_jsonb(value: str | dict) -> dict:
     # asyncpg renvoie un JSONB comme str tant qu'aucun codec JSON n'est enregistré
     return json.loads(value) if isinstance(value, str) else value
