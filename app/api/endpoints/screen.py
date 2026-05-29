@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, model_validator
 
 from app.services.screener import ScreenerService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -82,8 +83,7 @@ async def screen(request: Request, body: ScreenRequest) -> ScreenResult:
     try:
         return await screener.screen(body)
     except Exception as exc:
-        logger.exception("Erreur screener sur %s", body.tickers)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(exc, logger, f"Erreur screener sur {body.tickers}") from exc
 
 
 @router.delete(

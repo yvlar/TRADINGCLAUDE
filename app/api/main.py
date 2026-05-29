@@ -96,6 +96,7 @@ from app.skills.tier2.munger_mental.skill import MungerMentalSkill
 from app.skills.tier2.pabrai_dhandho.skill import PabraiDhandhoSkill
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
+from app.utils.error_sanitization import log_internal_error, sanitized_http_500
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
 
 configure_logging()
@@ -581,26 +582,34 @@ app.include_router(ws_metrics_router)
 app.add_middleware(RateLimitMiddleware, redis_url=_redis_url_env)
 app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env)
 app.add_middleware(CSRFMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+_cors_origins = (
+    [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+    if _cors_origins_env
+    else [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-    ],
+    ]
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "Accept"],
 )
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Erreur non gérée sur %s %s", request.method, request.url.path)
+    correlation_id = log_internal_error(
+        exc, logger, f"Erreur non gérée sur {request.method} {request.url.path}"
+    )
     return JSONResponse(
         status_code=500,
-        content={"error": type(exc).__name__, "detail": str(exc)},
+        content={"error": "Erreur interne", "correlation_id": correlation_id},
     )
 
 
@@ -667,8 +676,9 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
             esg_history_service=esg_history_service,
         )
     except Exception as exc:
-        logger.exception("Erreur lors de l'analyse de %s", body.ticker)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de l'analyse de {body.ticker}"
+        ) from exc
 
 
 def _parse_tags_param(tags: str | None) -> list[str] | None:

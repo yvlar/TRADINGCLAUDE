@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, model_validator
 
 from app.services.compare_service import CompareResponse, CompareService
+from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -44,5 +45,6 @@ async def compare(request: Request, body: CompareRequest) -> CompareResponse:
     try:
         return await service.compare(body.tickers)
     except Exception as exc:
-        logger.exception("Erreur lors de la comparaison %s", body.tickers)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de la comparaison {body.tickers}"
+        ) from exc

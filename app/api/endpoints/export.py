@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from app.api.endpoints.screen import ScreenRequest
 from app.services.export import export_to_csv, export_to_excel
 from app.services.screener import ScreenerService
+from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,7 @@ async def export_screen(
     try:
         result = await screener.screen(body)
     except Exception as exc:
-        logger.exception("Erreur screener export sur %s", body.tickers)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(exc, logger, f"Erreur screener export sur {body.tickers}") from exc
 
     tickers_str = "_".join(body.tickers[:3])
     if len(body.tickers) > 3:

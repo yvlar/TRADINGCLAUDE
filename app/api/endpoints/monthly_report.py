@@ -10,6 +10,7 @@ from app.services.monthly_report_service import MonthlyReportService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
+from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,7 @@ async def get_monthly_report(request: Request) -> Response:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Erreur lors de la generation du rapport mensuel")
-        raise HTTPException(status_code=500, detail=f"Erreur generation PDF : {exc}") from exc
+        raise sanitized_http_500(exc, logger, "Erreur lors de la generation du rapport mensuel") from exc
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m")
     filename = f"rapport-mensuel-{date_str}.pdf"
