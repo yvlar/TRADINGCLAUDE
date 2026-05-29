@@ -62,6 +62,24 @@ describe('HistoryPage', () => {
     })
   })
 
+  it('transmet le filtre tags (CSV nettoyé) à getHistoryPaged', async () => {
+    const user = userEvent.setup()
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue({ ...emptyPaged, ticker: 'BNS' })
+    render(<HistoryPage />, { wrapper })
+
+    await user.type(screen.getByLabelText('Ticker'), 'BNS')
+    await user.type(screen.getByTestId('history-tags-input'), ' value , growth ')
+    await user.click(screen.getByTestId('history-search-btn'))
+
+    await waitFor(() => {
+      expect(analyzeApi.getHistoryPaged).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: 'value,growth' }),
+        1,
+        10,
+      )
+    })
+  })
+
   it("n'envoie jamais 'ALL' au backend", async () => {
     const user = userEvent.setup()
     vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)

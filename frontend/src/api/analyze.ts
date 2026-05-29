@@ -57,6 +57,7 @@ export interface HistoryPagedFilters {
   q?: string
   fromDt?: string
   toDt?: string
+  tags?: string
 }
 
 export async function getHistoryPaged(
@@ -72,6 +73,7 @@ export async function getHistoryPaged(
   if (filters.q) params.set('q', filters.q)
   if (filters.fromDt) params.set('from_dt', filters.fromDt)
   if (filters.toDt) params.set('to_dt', filters.toDt)
+  if (filters.tags) params.set('tags', filters.tags)
   return apiClient.request<PagedHistoryResponse>(`/history-paged?${params.toString()}`)
 }
 

@@ -13,11 +13,14 @@ from app.models.annotation import Annotation
 from app.services.annotation_service import AnnotationService
 
 
-def _make_annotation(analysis_id: str, note: str = "Note de test") -> Annotation:
+def _make_annotation(
+    analysis_id: str, note: str = "Note de test", tags: list[str] | None = None
+) -> Annotation:
     return Annotation(
         annotation_id=str(uuid.uuid4()),
         analysis_id=analysis_id,
         note=note,
+        tags=tags if tags is not None else [],
         created_at=datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
         updated_at=datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
     )
@@ -48,7 +51,46 @@ async def test_post_annotations_crée_201(annotation_client) -> None:
     data = resp.json()
     assert data["analysis_id"] == analysis_id
     assert data["note"] == "Note ACHAT BNS"
-    mock_service.upsert.assert_called_once_with(analysis_id, "Note ACHAT BNS")
+    mock_service.upsert.assert_called_once_with(analysis_id, "Note ACHAT BNS", [])
+
+
+@pytest.mark.asyncio
+async def test_post_annotations_avec_tags_round_trip(annotation_client) -> None:
+    """POST /annotations avec tags → 201 et tags persistés/renvoyés."""
+    client, mock_service = annotation_client
+    analysis_id = str(uuid.uuid4())
+    mock_service.upsert.return_value = _make_annotation(
+        analysis_id, "Note taggée", ["value", "growth"]
+    )
+
+    resp = await client.post(
+        "/annotations",
+        json={"analysis_id": analysis_id, "note": "Note taggée", "tags": ["value", "growth"]},
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["tags"] == ["value", "growth"]
+    mock_service.upsert.assert_called_once_with(analysis_id, "Note taggée", ["value", "growth"])
+
+
+@pytest.mark.asyncio
+async def test_post_annotations_normalise_les_tags(annotation_client) -> None:
+    """Les tags sont normalisés (minuscules, sans doublons ni vides) avant l'upsert."""
+    client, mock_service = annotation_client
+    analysis_id = str(uuid.uuid4())
+    mock_service.upsert.return_value = _make_annotation(analysis_id, "Note", ["value", "growth"])
+
+    resp = await client.post(
+        "/annotations",
+        json={
+            "analysis_id": analysis_id,
+            "note": "Note",
+            "tags": [" Value ", "VALUE", "growth", "  "],
+        },
+    )
+
+    assert resp.status_code == 201
+    mock_service.upsert.assert_called_once_with(analysis_id, "Note", ["value", "growth"])
 
 
 @pytest.mark.asyncio

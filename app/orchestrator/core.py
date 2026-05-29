@@ -189,6 +189,23 @@ def _extract_str(result_json: str, *keys: str) -> str | None:
         return None
 
 
+def _row_to_history_entry(row) -> "HistoryEntry":
+    """Construit un HistoryEntry depuis une row jointe analysis_history + annotations."""
+    tags = row["tags"]
+    return HistoryEntry(
+        analysis_id=str(row["id"]),
+        ticker=row["ticker"],
+        workflow=row["workflow_name"],
+        skills_applied=_json.loads(row["skills_used"]),
+        cost_usd=float(row["cost_usd"]),
+        defensive_score=_extract_int(row["result"], "graham", "defensive_score"),
+        graham_verdict=_extract_str(row["result"], "graham", "verdict"),
+        earnings_verdict=_extract_str(row["result"], "earnings_quality", "verdict"),
+        created_at=row["created_at"].isoformat(),
+        tags=list(tags) if tags is not None else [],
+    )
+
+
 class AnalyzeRequest(BaseModel):
     """Corps de la requête POST /analyze — section 5.2 de l'architecture."""
 
@@ -266,6 +283,7 @@ class HistoryEntry(BaseModel):
     earnings_verdict: str | None
     graham_verdict: str | None
     created_at: str
+    tags: list[str] = Field(default_factory=list)
 
 
 class HistoryResponse(BaseModel):
@@ -1890,6 +1908,7 @@ class Orchestrator:
         before: datetime | None = None,
         from_dt: datetime | None = None,
         to_dt: datetime | None = None,
+        tags: list[str] | None = None,
     ) -> HistoryResponse:
         """
         Retourne les analyses passées, triées par date décroissante.
@@ -1897,23 +1916,27 @@ class Orchestrator:
         q       : filtre full-text ILIKE sur ticker, workflow et verdicts JSONB.
         from_dt : borne inférieure incluse sur created_at (ISO 8601).
         to_dt   : borne supérieure incluse sur created_at (ISO 8601).
+        tags    : ne garde que les analyses dont l'annotation porte TOUS ces tags (`@>`).
         Utilise un cursor sur created_at pour la pagination stable.
         """
         rows = await self._db.fetch(
             """
-            SELECT id, ticker, workflow_name, skills_used, cost_usd, result, created_at
-            FROM analysis_history
-            WHERE ($1::text IS NULL OR ticker = $1)
+            SELECT h.id, h.ticker, h.workflow_name, h.skills_used, h.cost_usd,
+                   h.result, h.created_at, a.tags
+            FROM analysis_history h
+            LEFT JOIN annotations a ON a.analysis_id = h.id
+            WHERE ($1::text IS NULL OR h.ticker = $1)
               AND ($2::text IS NULL OR (
-                    ticker        ILIKE '%' || $2 || '%'
-                 OR workflow_name ILIKE '%' || $2 || '%'
-                 OR (result->>'graham')          ILIKE '%' || $2 || '%'
-                 OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+                    h.ticker        ILIKE '%' || $2 || '%'
+                 OR h.workflow_name ILIKE '%' || $2 || '%'
+                 OR (h.result->>'graham')          ILIKE '%' || $2 || '%'
+                 OR (h.result->>'earnings_quality') ILIKE '%' || $2 || '%'
               ))
-              AND ($3::timestamptz IS NULL OR created_at < $3)
-              AND ($5::timestamptz IS NULL OR created_at >= $5)
-              AND ($6::timestamptz IS NULL OR created_at <= $6)
-            ORDER BY created_at DESC
+              AND ($3::timestamptz IS NULL OR h.created_at < $3)
+              AND ($5::timestamptz IS NULL OR h.created_at >= $5)
+              AND ($6::timestamptz IS NULL OR h.created_at <= $6)
+              AND ($7::text[] IS NULL OR a.tags @> $7::text[])
+            ORDER BY h.created_at DESC
             LIMIT $4
             """,
             ticker,
@@ -1922,25 +1945,13 @@ class Orchestrator:
             limit + 1,
             from_dt,
             to_dt,
+            tags,
         )
 
         has_more = len(rows) > limit
         rows = rows[:limit]
 
-        entries = [
-            HistoryEntry(
-                analysis_id=str(row["id"]),
-                ticker=row["ticker"],
-                workflow=row["workflow_name"],
-                skills_applied=_json.loads(row["skills_used"]),
-                cost_usd=float(row["cost_usd"]),
-                defensive_score=_extract_int(row["result"], "graham", "defensive_score"),
-                graham_verdict=_extract_str(row["result"], "graham", "verdict"),
-                earnings_verdict=_extract_str(row["result"], "earnings_quality", "verdict"),
-                created_at=row["created_at"].isoformat(),
-            )
-            for row in rows
-        ]
+        entries = [_row_to_history_entry(row) for row in rows]
 
         next_before = entries[-1].created_at if has_more and entries else None
 
@@ -1956,74 +1967,68 @@ class Orchestrator:
         from_dt: "datetime | None" = None,
         to_dt: "datetime | None" = None,
         fast_count: bool = False,
+        tags: list[str] | None = None,
     ) -> "PagedHistoryResponse":
         """
         Pagination offset/limit avec total_count (Sprint 90).
         Execute deux requetes en parallele : SELECT LIMIT/OFFSET et SELECT COUNT(*).
         fast_count=True : estimation rapide via pg_class.reltuples (sans filtre uniquement).
+        tags : ne garde que les analyses dont l'annotation porte TOUS ces tags (`@>`).
         """
         offset = (page - 1) * page_size
 
         async def _fetch_rows():
             return await self._db.fetch(
                 """
-                SELECT id, ticker, workflow_name, skills_used, cost_usd, result, created_at
-                FROM analysis_history
-                WHERE ($1::text IS NULL OR ticker = $1)
+                SELECT h.id, h.ticker, h.workflow_name, h.skills_used, h.cost_usd,
+                       h.result, h.created_at, a.tags
+                FROM analysis_history h
+                LEFT JOIN annotations a ON a.analysis_id = h.id
+                WHERE ($1::text IS NULL OR h.ticker = $1)
                   AND ($2::text IS NULL OR (
-                        ticker        ILIKE '%' || $2 || '%'
-                     OR workflow_name ILIKE '%' || $2 || '%'
-                     OR (result->>'graham')          ILIKE '%' || $2 || '%'
-                     OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+                        h.ticker        ILIKE '%' || $2 || '%'
+                     OR h.workflow_name ILIKE '%' || $2 || '%'
+                     OR (h.result->>'graham')          ILIKE '%' || $2 || '%'
+                     OR (h.result->>'earnings_quality') ILIKE '%' || $2 || '%'
                   ))
-                  AND ($3::timestamptz IS NULL OR created_at >= $3)
-                  AND ($4::timestamptz IS NULL OR created_at <= $4)
-                ORDER BY created_at DESC
+                  AND ($3::timestamptz IS NULL OR h.created_at >= $3)
+                  AND ($4::timestamptz IS NULL OR h.created_at <= $4)
+                  AND ($7::text[] IS NULL OR a.tags @> $7::text[])
+                ORDER BY h.created_at DESC
                 LIMIT $5 OFFSET $6
                 """,
-                ticker, q, from_dt, to_dt, page_size, offset,
+                ticker, q, from_dt, to_dt, page_size, offset, tags,
             )
 
         async def _fetch_count():
             # fast_count uniquement sans filtre : pg_class donne un total global, pas filtré
-            if fast_count and not any([ticker, q, from_dt, to_dt]):
+            if fast_count and not any([ticker, q, from_dt, to_dt, tags]):
                 return await self._db.fetchval(
                     "SELECT reltuples::bigint FROM pg_class WHERE relname = 'analysis_history'"
                 )
             return await self._db.fetchval(
                 """
                 SELECT COUNT(*)
-                FROM analysis_history
-                WHERE ($1::text IS NULL OR ticker = $1)
+                FROM analysis_history h
+                LEFT JOIN annotations a ON a.analysis_id = h.id
+                WHERE ($1::text IS NULL OR h.ticker = $1)
                   AND ($2::text IS NULL OR (
-                        ticker        ILIKE '%' || $2 || '%'
-                     OR workflow_name ILIKE '%' || $2 || '%'
-                     OR (result->>'graham')          ILIKE '%' || $2 || '%'
-                     OR (result->>'earnings_quality') ILIKE '%' || $2 || '%'
+                        h.ticker        ILIKE '%' || $2 || '%'
+                     OR h.workflow_name ILIKE '%' || $2 || '%'
+                     OR (h.result->>'graham')          ILIKE '%' || $2 || '%'
+                     OR (h.result->>'earnings_quality') ILIKE '%' || $2 || '%'
                   ))
-                  AND ($3::timestamptz IS NULL OR created_at >= $3)
-                  AND ($4::timestamptz IS NULL OR created_at <= $4)
+                  AND ($3::timestamptz IS NULL OR h.created_at >= $3)
+                  AND ($4::timestamptz IS NULL OR h.created_at <= $4)
+                  AND ($5::text[] IS NULL OR a.tags @> $5::text[])
                 """,
-                ticker, q, from_dt, to_dt,
+                ticker, q, from_dt, to_dt, tags,
             )
 
         rows, total_count = await asyncio.gather(_fetch_rows(), _fetch_count())
         total_count = int(total_count or 0)
 
-        entries = [
-            HistoryEntry(
-                analysis_id=str(row["id"]),
-                ticker=row["ticker"],
-                workflow=row["workflow_name"],
-                skills_applied=_json.loads(row["skills_used"]),
-                cost_usd=float(row["cost_usd"]),
-                defensive_score=_extract_int(row["result"], "graham", "defensive_score"),
-                graham_verdict=_extract_str(row["result"], "graham", "verdict"),
-                earnings_verdict=_extract_str(row["result"], "earnings_quality", "verdict"),
-                created_at=row["created_at"].isoformat(),
-            )
-            for row in rows
-        ]
+        entries = [_row_to_history_entry(row) for row in rows]
 
         total_pages = max(1, (total_count + page_size - 1) // page_size) if total_count > 0 else 1
 

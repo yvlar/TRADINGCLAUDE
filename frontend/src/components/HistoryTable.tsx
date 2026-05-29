@@ -3,6 +3,7 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { AnnotationSection } from './AnnotationSection'
+import { TagChip } from './TagChip'
 import type { HistoryEntry } from '../types'
 
 function verdictVariant(verdict: string | null): 'success' | 'warning' | 'danger' | 'outline' {
@@ -111,6 +112,16 @@ export function HistoryTable({
                     )}
                   </TableCell>
                   <TableCell className="min-w-[140px]">
+                    {entry.tags.length > 0 && (
+                      <div
+                        className="mb-1 flex flex-wrap gap-1"
+                        data-testid={`history-tags-${entry.analysis_id}`}
+                      >
+                        {entry.tags.map((tag) => (
+                          <TagChip key={tag} tag={tag} />
+                        ))}
+                      </div>
+                    )}
                     <AnnotationSection analysisId={entry.analysis_id} />
                   </TableCell>
                   <TableCell>

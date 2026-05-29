@@ -14,13 +14,14 @@ def _make_analysis_id() -> str:
     return str(uuid.uuid4())
 
 
-def _make_row(analysis_id: str, note: str) -> MagicMock:
+def _make_row(analysis_id: str, note: str, tags: list[str] | None = None) -> MagicMock:
     """Simule une Row asyncpg pour une annotation."""
     row = MagicMock()
     row.__getitem__ = lambda self, key: {
         "annotation_id": str(uuid.uuid4()),
         "analysis_id": analysis_id,
         "note": note,
+        "tags": tags if tags is not None else [],
         "created_at": datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
         "updated_at": datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
     }[key]
@@ -88,3 +89,26 @@ async def test_get_retourne_none_si_exception(service: AnnotationService, mock_p
     annotation = await service.get(_make_analysis_id())
 
     assert annotation is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_persiste_les_tags(service: AnnotationService, mock_pool: AsyncMock) -> None:
+    analysis_id = _make_analysis_id()
+    mock_pool.fetchrow.return_value = _make_row(analysis_id, "Note", ["value", "growth"])
+
+    annotation = await service.upsert(analysis_id, "Note", ["value", "growth"])
+
+    assert annotation.tags == ["value", "growth"]
+    # fetchrow(query, analysis_id, note, tags) → les tags sont le 3e paramètre lié
+    assert mock_pool.fetchrow.call_args.args[3] == ["value", "growth"]
+
+
+@pytest.mark.asyncio
+async def test_get_retourne_les_tags(service: AnnotationService, mock_pool: AsyncMock) -> None:
+    analysis_id = _make_analysis_id()
+    mock_pool.fetchrow.return_value = _make_row(analysis_id, "Note", ["dividende"])
+
+    annotation = await service.get(analysis_id)
+
+    assert annotation is not None
+    assert annotation.tags == ["dividende"]
