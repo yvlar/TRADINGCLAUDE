@@ -62,6 +62,18 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 4. Vérifier — la tâche échoue si l'un de ces contrôles est rouge :
    - Backend : `pytest` (hors e2e/evals) + `ruff check`
    - Frontend : Vitest + `tsc --noEmit` + ESLint (0 erreur / 0 warning)
+   - **Livrable propre du sprint** (la suite générique ne le couvre pas) : exécuter
+     la preuve d'acceptation propre à la « Spécification » de la carte et CONSTATER
+     le résultat attendu, pas seulement « vert ». Ex. : sprint de bundling →
+     `vite build` + inspecter la sortie pour confirmer les chunks séparés attendus ;
+     sprint d'endpoint → appeler l'endpoint et vérifier la forme de la réponse ;
+     sprint de migration → vérifier le schéma résultant. Si la carte décrit un
+     livrable observable, le gate inclut son observation.
+   - **Skills (evals)** : si le sprint touche un prompt de skill tier2
+     (`app/skills/tier2/**`) ou l'orchestrateur, lancer les `evals` ciblées
+     (Claude réel) — un prompt de skill peut se dégrader silencieusement avec
+     `pytest` tout vert. Si les evals ne peuvent tourner (pas de clé / hors
+     périmètre), le DIRE explicitement plutôt que de prétendre les avoir passées.
 5. Revue indépendante (contexte frais) : déléguer la revue du diff du sprint à un
    sous-agent dédié, JAMAIS à la session auteur — un relecteur qui partage le
    contexte d'écriture partage ses angles morts. Procédure :
@@ -85,7 +97,13 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
    suivant, et créer le commit. Les compteurs de tests doivent provenir d'une
    commande réelle (`pytest --co -q | wc -l`, liste Vitest), jamais d'une estimation.
    Tout symbole existant cité dans « SPRINTS SUGGÉRÉS » doit être backé par un
-   `fichier:ligne` vérifié (cf. `.claude/rules/workflow-sprint.md`).
+   `fichier:ligne` vérifié (cf. `.claude/rules/workflow-sprint.md`). **Verrou avant
+   de committer la carte** : pour CHAQUE sprint suggéré, toute capacité présentée
+   comme EXISTANTE (« déjà calculé », « champ présent dans X », « table Y ») doit
+   porter un `fichier:ligne` obtenu par `grep` DANS CETTE session. Une capacité non
+   localisable est reformulée en « à créer / à vérifier » — jamais affirmée
+   existante. Sans ce verrou, l'hallucination se propage : la session N+k bâtit le
+   sprint sur une prémisse fausse héritée de la carte.
 7. Pousser sur la branche de développement désignée (`git push -u origin <branche>`,
    retry backoff sur erreur réseau).
 
