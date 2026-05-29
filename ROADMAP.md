@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-28 — Sprint 122 complété**
+**Dernière mise à jour : 2026-05-29 — Sprint 123 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.9.0 |
+| **Version** | 10.10.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 123 — Code-splitting des routes + lazy-load recharts |
-| **Dernier sprint complété** | Sprint 122 — Export analyse individuelle en PDF enrichi ✅ |
+| **Sprint actif** | Sprint 124 — Persistance des préférences Screener côté serveur |
+| **Dernier sprint complété** | Sprint 123 — Code-splitting des routes + lazy-load recharts ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -75,6 +75,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 123 — Code-splitting des routes + lazy-load recharts ✅
+
+**Objectif :** Accélérer le Time-To-Interactive de la première vue en isolant chaque page et la librairie recharts (lourde) du bundle d'entrée. Avant ce sprint, toutes les pages étaient importées statiquement dans le routeur — le navigateur téléchargeait tout le code (recharts compris) avant le premier rendu.
+
+**Livrables :**
+- `frontend/src/App.tsx` — conversion des 14 imports de pages statiques en `React.lazy(() => import('./pages/...'))` (Analyse, Screener, Historique, Dashboard, Watchlist, Comparer, ESG, Recherche, Alertes, Admin + 4 pages auth) ; `<Routes>` enveloppé dans un unique `<Suspense fallback={<RouteFallback />}>` placé sous le shell (header, palette, nav restent eager)
+- `frontend/src/components/RouteFallback.tsx` — squelette de chargement de chunk réutilisant la primitive `ui/skeleton` ; respecte `max-w-shell` + tokens de design ; `role="status"` / `aria-busy` / texte `sr-only` pour l'accessibilité
+- `frontend/src/__tests__/RouteFallback.test.tsx` — 2 tests Vitest (rend sans erreur + conteneur status `aria-busy` ; respect de `max-w-shell`)
+- `frontend/src/__tests__/LazyRouting.test.tsx` — 1 test Vitest déterministe (promesse de chunk contrôlée) : le fallback skeleton apparaît, puis la page lazy le remplace après résolution
+- **Découpage vérifié via `vite build`** : un chunk séparé par page (`AnalyzePage`, `DashboardPage`, `ScreenerPage`, … les 14) ; recharts isolé dans des chunks dédiés (`colors`, `YAxis`) chargés uniquement par les pages graphiques (Dashboard/ESG/Watchlist/Comparer) — le bundle d'entrée ne référence que le nom de fichier du chunk, aucun code recharts (0 marqueur interne)
+
+**Version** : 10.10.0
+**Tests** : 1 432 backend verts (3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 396 Vitest verts (+3 Sprint 123) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0), Vitest composant (+3), la vérification du `vite build` (chunks séparés + recharts hors entrée), et la suite backend complète (1 432 verts, ruff clean).
+
 ### Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅
 
 **Objectif :** Clôturer la refonte UI démarrée aux Sprints 118-120 sur les cinq derniers skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend, puis retirer le composant générique devenu inutile.
@@ -135,23 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.6.0
 **Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 337 Vitest verts (+18 Sprint 119) ; tsc 0 erreur ; ESLint 0 ; ruff 0
-
----
-
-### Sprint 118 — Refonte UI Earnings Quality + Thèse d'investissement ✅
-
-**Objectif :** Remplacer l'affichage JSON brut des deux skills les plus riches (Earnings Quality et Investment Thesis Builder) par des composants React structurés et visuellement exploitables.
-
-**Livrables :**
-- `frontend/src/types/index.ts` — ajout des types structurés `MScoreDetail`, `ZScoreDetail`, `FScoreCriterion`, `FScoreDetail`, `CScoreSignal`, `CScoreDetail`, `SloanDetail`, `EarningsQualityOutput`, `ThesisScenario`, `ThesisBuilderOutput` ; `AnalyzeResponse.earnings_quality` et `.thesis` typés précisément (plus `SkillOutput` générique)
-- `frontend/src/components/EarningsQualitySection.tsx` — composant dédié : en-tête avec verdict badge + barre de confiance (% des 5 cadres calculables) ; grille 2 colonnes des 5 frameworks : F-Score Piotroski (9 critères ✓/✗ avec détail), C-Score Montier (6 signaux ⚠/✓ avec détail), M-Score Beneish (8 ratios + seuil -1.78), Z-Score Altman (variante + seuil 2.99/1.81), Sloan accruals (ratio % + seuil ±5%) ; red flags en badges danger ; recommandations prochaine étape ; note contextuelle institutions financières
-- `frontend/src/components/ThesisSection.tsx` — composant dédié : en-tête avec verdict_final badge + position size % ; 3 cartes scénarios côte à côte (bull/base/bear) avec barres de probabilité colorées, rendement cible ±%, hypothèses clés ; kill criteria en liste ✗ ; devil's advocate en box mise en évidence ; synthèse narrative découpée en paragraphes
-- `frontend/src/components/AnalysisResult.tsx` — branchement sur `EarningsQualitySection` et `ThesisSection` (plus `SkillSection` générique pour ces deux skills)
-- `frontend/src/__tests__/EarningsQualitySection.test.tsx` — 6 tests Vitest (toggle fermé/ouvert, F-Score, C-Score, M-Score, Z-Score, drapeaux rouges, recommandations, M-Score null → N/A)
-- `frontend/src/__tests__/ThesisSection.test.tsx` — 6 tests Vitest (toggle fermé/ouvert, 3 scénarios, rendements formatés, kill criteria, devil's advocate ciblé avec `within`, narrative paragraphes)
-
-**Version** : 10.5.0
-**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 319 Vitest verts (+12 Sprint 118) ; tsc 0 erreur ; ESLint 0 ; ruff non modifié
 
 ---
 
