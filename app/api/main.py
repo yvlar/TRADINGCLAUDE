@@ -43,6 +43,7 @@ from app.logging_config import configure_logging
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.models.annotation import normalize_tags
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import (
     AnalyzeRequest,
@@ -198,6 +199,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """
+    )
+    # Sprint 125 — tags filtrables sur les annotations (JSONB + index GIN @>)
+    await db_pool.execute(
+        "ALTER TABLE annotations ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb"
+    )
+    await db_pool.execute(
+        "CREATE INDEX IF NOT EXISTS idx_annotations_tags ON annotations USING GIN (tags jsonb_path_ops)"
     )
     # Sprint 89 — historique des scores ESG (pattern Sprint 57 composite_score_history)
     await db_pool.execute(
@@ -664,6 +672,19 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+def _parse_tags_param(raw: str | None) -> list[str]:
+    """Parse le paramètre CSV `tags` (ex. `value,growth`) en liste normalisée.
+
+    422 si le paramètre est présent mais ne contient aucun tag non vide.
+    """
+    if raw is None:
+        return []
+    parsed = normalize_tags(raw.split(","))
+    if not parsed:
+        raise HTTPException(status_code=422, detail="tags : au moins un tag non vide requis")
+    return parsed
+
+
 @app.get(
     "/history",
     response_model=HistoryResponse,
@@ -677,6 +698,7 @@ async def history(
     before: str | None = None,
     from_dt: str | None = None,
     to_dt: str | None = None,
+    tags: str | None = None,
 ) -> HistoryResponse:
     """
     Retourne les analyses passées (max 50 par page).
@@ -684,11 +706,14 @@ async def history(
     - `q`       : recherche ILIKE sur ticker partiel, workflow et verdicts.
     - `from_dt` : borne inférieure ISO 8601 sur created_at (ex. 2026-01-01).
     - `to_dt`   : borne supérieure ISO 8601 sur created_at (ex. 2026-05-18).
-    Au moins un des deux paramètres ticker ou q est obligatoire.
+    - `tags`    : liste CSV (ex. `value,growth`) — ne renvoie que les analyses dont
+                  l'annotation contient TOUS les tags demandés.
+    Au moins un des paramètres ticker, q ou tags est obligatoire.
     `before` : cursor ISO 8601 pour la pagination (valeur de `next_before`).
     """
-    if not ticker and not q:
-        raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
+    tags_list = _parse_tags_param(tags)
+    if not ticker and not q and not tags_list:
+        raise HTTPException(status_code=422, detail="ticker, q ou tags est obligatoire")
     if limit < 1 or limit > 50:
         raise HTTPException(status_code=422, detail="limit doit être entre 1 et 50")
 
@@ -721,6 +746,7 @@ async def history(
         before=before_dt,
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
+        tags=tags_list or None,
     )
 
 
@@ -778,6 +804,7 @@ async def history_paged(
     from_dt: str | None = None,
     to_dt: str | None = None,
     fast_count: bool = False,
+    tags: str | None = None,
 ) -> PagedHistoryResponse:
     """
     Retourne les analyses passees avec pagination par numero de page.
@@ -786,9 +813,11 @@ async def history_paged(
     - `ticker`    : filtre exact sur le ticker
     - `q`         : recherche ILIKE full-text
     - `from_dt`, `to_dt` : plage ISO 8601 sur created_at
+    - `tags`      : liste CSV — annotation contenant TOUS les tags demandés
     """
-    if not ticker and not q:
-        raise HTTPException(status_code=422, detail="ticker ou q est obligatoire")
+    tags_list = _parse_tags_param(tags)
+    if not ticker and not q and not tags_list:
+        raise HTTPException(status_code=422, detail="ticker, q ou tags est obligatoire")
     if page < 1:
         raise HTTPException(status_code=422, detail="page doit etre >= 1")
     if page_size < 1 or page_size > 50:
@@ -817,6 +846,7 @@ async def history_paged(
         from_dt=from_dt_parsed,
         to_dt=to_dt_parsed,
         fast_count=fast_count,
+        tags=tags_list or None,
     )
 
 

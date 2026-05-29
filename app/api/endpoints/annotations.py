@@ -24,7 +24,7 @@ async def upsert_annotation(body: AnnotationCreate, request: Request) -> Annotat
     """Crée ou remplace l'annotation pour un analysis_id (idempotent)."""
     service: AnnotationService = request.app.state.annotation_service
     try:
-        return await service.upsert(body.analysis_id, body.note)
+        return await service.upsert(body.analysis_id, body.note, body.tags)
     except Exception as exc:
         logger.exception("Erreur lors de l'upsert annotation %s", body.analysis_id)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -111,6 +111,18 @@ export function HistoryTable({
                     )}
                   </TableCell>
                   <TableCell className="min-w-[140px]">
+                    {entry.tags.length > 0 && (
+                      <div
+                        className="flex flex-wrap gap-1 mb-1"
+                        data-testid={`history-tags-${entry.analysis_id}`}
+                      >
+                        {entry.tags.map((tag) => (
+                          <Badge key={tag} variant="outline" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     <AnnotationSection analysisId={entry.analysis_id} />
                   </TableCell>
                   <TableCell>

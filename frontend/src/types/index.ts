@@ -561,6 +561,7 @@ export interface HistoryEntry {
   defensive_score: number | null
   earnings_verdict: string | null
   graham_verdict: string | null
+  tags: string[]
   created_at: string
 }
 
@@ -698,11 +699,12 @@ export interface ApiKeyCreate {
   role?: string  // défaut "user"
 }
 
-// ---- Annotations (Sprint 78) ----
+// ---- Annotations (Sprint 78, tags Sprint 125) ----
 export interface Annotation {
   annotation_id: string
   analysis_id: string
   note: string
+  tags: string[]
   created_at: string
   updated_at: string
 }
@@ -710,6 +712,7 @@ export interface Annotation {
 export interface AnnotationCreate {
   analysis_id: string
   note: string
+  tags?: string[]
 }
 
 // ---- ESG Watchlist scores (Sprint 82) ----

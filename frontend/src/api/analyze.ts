@@ -51,12 +51,13 @@ export async function getHistory(
   return apiClient.request<HistoryResponse>(`/history?${params.toString()}`)
 }
 
-// Sprint 90 — pagination offset/limit
+// Sprint 90 — pagination offset/limit ; Sprint 125 — filtre tags
 export interface HistoryPagedFilters {
   ticker?: string
   q?: string
   fromDt?: string
   toDt?: string
+  tags?: string[]
 }
 
 export async function getHistoryPaged(
@@ -72,6 +73,7 @@ export async function getHistoryPaged(
   if (filters.q) params.set('q', filters.q)
   if (filters.fromDt) params.set('from_dt', filters.fromDt)
   if (filters.toDt) params.set('to_dt', filters.toDt)
+  if (filters.tags && filters.tags.length > 0) params.set('tags', filters.tags.join(','))
   return apiClient.request<PagedHistoryResponse>(`/history-paged?${params.toString()}`)
 }
 

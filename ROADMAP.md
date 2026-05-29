@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-29 — Sprint 124 complété**
+**Dernière mise à jour : 2026-05-29 — Sprint 125 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.11.0 |
+| **Version** | 10.12.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 125 — Annotations enrichies : tags + filtres |
-| **Dernier sprint complété** | Sprint 124 — Persistance des préférences Screener côté serveur ✅ |
+| **Sprint actif** | Sprint 126 — Vue « Portefeuille » agrégée par pilier |
+| **Dernier sprint complété** | Sprint 125 — Annotations enrichies : tags + filtres ✅ |
 
 ### Ce qui fonctionne aujourd'hui
 
@@ -20,7 +20,7 @@
 - `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
-- `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73)
+- `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre par tags d'annotation (containment JSONB `@>`, sémantique ET ; aussi sur `/history-paged`) — tags seuls autorisés, 422 si malformé (Sprint 125)
 - `GET /metrics?days=30` — coûts cumulés, taux de cache, top tickers, `skills_cost` (coût USD réparti par skill) + `cache_by_workflow` (taux de cache par workflow) (Sprint 107) + `daily_cost` (coût USD total par jour, clé YYYY-MM-DD) (Sprint 112)
 - `GET /metrics/skill-analyses?skill=&days=30` — drill-down : analyses ayant utilisé un skill donné sur la période (ticker / workflow / coût / date), filtre jsonb `skills_used @> [skill]`, 422 si `skill` absent (Sprint 112)
 - `GET /telemetry/summary|costs|cache|latency` — métriques observabilité (Sprint 18)
@@ -76,6 +76,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 125 — Annotations enrichies : tags + filtres ✅
+
+**Objectif :** Ajouter un champ `tags` (mots-clés libres) aux annotations (Sprint 78, jusqu'ici texte libre), filtrable via `GET /history?tags=value,growth`, avec chips affichées et éditables dans l'UI — pour un filtrage sémantique léger du portefeuille sans RAG.
+
+**Livrables :**
+- `infra/postgres/migration_sprint125.sql` + bootstrap lifespan (`app/api/main.py`) — colonne `tags JSONB NOT NULL DEFAULT '[]'::jsonb` + index GIN `jsonb_path_ops` sur `annotations.tags`. Choix JSONB (vs `TEXT[]`) pour cohérence avec le schéma existant (`user_preferences`, `analysis_history.result`) et réutilisation du décodage str→list ; opérateur `@>` (containment, sémantique **ET** : une annotation matche si elle contient **tous** les tags demandés)
+- `app/models/annotation.py` — `normalize_tags()` (trim/minuscule/dédoublonnage, max 20 tags × 40 car.) ; `tags: list[str]` sur `Annotation` et `AnnotationCreate` (validator de normalisation)
+- `app/services/annotation_service.py` — `upsert(analysis_id, note, tags)` persiste les tags (`json.dumps` → `::jsonb`) ; `get`/`get_all_with_ticker` les décodent (`_decode_tags` gère JSONB renvoyé en str par asyncpg)
+- `app/orchestrator/core.py` — `HistoryEntry.tags` ; filtre `tags` dans `get_history` ET `get_history_paged` (LEFT JOIN `annotations` aliasé pour lever l'ambiguïté `created_at`, `a.tags @> $N::jsonb` sur requêtes rows + count) ; helper `_row_to_history_entry` partagé
+- `app/api/main.py` — `?tags=` (CSV → liste normalisée) sur `/history` et `/history-paged` ; `_parse_tags_param` (422 si présent mais sans tag non vide) ; garde assouplie `ticker | q | tags` (tags seuls autorisés)
+- Frontend — `AnnotationSection.tsx` : chips éditables (ajout normalisé via input/Entrée + bouton, suppression, persistance) ; `HistoryTable.tsx` : chips en lecture seule par entrée ; `HistoryPage.tsx` : champ filtre tags câblé vers `getHistoryPaged` ; types `Annotation.tags`/`HistoryEntry.tags` (`frontend/src/types/index.ts`)
+- Tests : intégration `tests/api/test_history_filter_tags.py` (forward CSV/multi-tags, tags seuls 200, 422 malformé, `/history-paged`, sérialisation jsonb + décodage au niveau `get_history`, non-match → vide) ; unitaire `tests/services/test_annotation_service.py` (upsert/get tags) ; endpoint `tests/api/test_annotations_endpoint.py` (round-trip tags normalisés) ; composant `AnnotationSection.test.tsx` (ajout/retrait/erreur/lecture seule), `HistoryTableTags.test.tsx` (chips), `HistoryPage.test.tsx` (câblage filtre)
+
+**Version** : 10.12.0
+**Tests** : 1 460 backend collectés (1 456 passés, 3 skipped, 1 xfailed — +12 Sprint 125) ; 407 Vitest verts (+7 Sprint 125) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : migration SQL non exécutée live (syntaxe validée ; le filtrage `@>` lui-même s'exécute en SQL, vérifié au niveau construction de requête + décodage sur pool mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
+
 ### Sprint 124 — Persistance des préférences Screener côté serveur ✅
 
 **Objectif :** Migrer le tri + les filtres du Screener du `localStorage` (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié, pour offrir une continuité multi-appareils. Le `localStorage` reste un fallback hors-ligne / anti-flash.
@@ -109,48 +127,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 432 backend verts (3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 396 Vitest verts (+3 Sprint 123) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0), Vitest composant (+3), la vérification du `vite build` (chunks séparés + recharts hors entrée), et la suite backend complète (1 432 verts, ruff clean).
-
-### Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅
-
-**Objectif :** Clôturer la refonte UI démarrée aux Sprints 118-120 sur les cinq derniers skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend, puis retirer le composant générique devenu inutile.
-
-**Livrables :**
-- `frontend/src/types/index.ts` — ajout des types structurés `FisherPoint`, `FisherOutput`, `DamodaranOutput`, `MarksOutput`, `DhandhoPrincipe`, `PabraiOutput`, `CanadianTaxOutput` ; `AnalyzeResponse.fisher`, `.damodaran`, `.marks`, `.pabrai` et `.canadian_tax` typés précisément (plus `SkillOutput` générique)
-- `frontend/src/components/FisherSection.tsx` — en-tête avec badge qualité de direction (libellé FR : exceptionnelle/bonne/adéquate/médiocre) + verdict badge (ACHAT_FORT/ACHAT/CONSERVER/EVITER) ; score Fisher /30 ; liste des 15 points (titre + commentaire + score /2 coloré) ; recommandations
-- `frontend/src/components/DamodaranSection.tsx` — en-tête avec badge cohérence + verdict badge (NARRATIVE_FORTE/ACCEPTABLE/FAIBLE/INCOHERENTE) ; échelle possible→plausible→probable (niveau atteint mis en évidence, état incohérent en rouge) ; solidité de la narrative /10 ; ERP implicite en % (masqué si null) ; divergences en badges ; recommandations
-- `frontend/src/components/MarksSection.tsx` — en-tête avec badge position de cycle (libellé FR : pessimisme excessif/pessimisme/neutre/optimisme/euphorie) + badge timing (ACHETER_AGRESSIF/ACHETER_PRUDEMMENT/ATTENDRE/REDUIRE/VENDRE) ; jauge du pendule −5→+5 avec marqueur et score coloré selon la logique contrariante ; second-level thinking ; recommandations
-- `frontend/src/components/PabraiSection.tsx` — en-tête avec verdict badge (DHANDHO_FORT/DHANDHO_MOYEN/PAS_DHANDHO) ; asymétrie upside/downside (×, colorée) ; Kelly fractionnel en % (N/A si null) ; score heads-I-win /9 ; grille des 9 principes Dhandho (✓/✗ + commentaire) ; recommandations
-- `frontend/src/components/CanadianTaxSection.tsx` — en-tête avec badge compte recommandé (libellé FR + sigle EN : CELI (TFSA)/REER (RRSP)/CELIAPP (FHSA)/non-enregistré) ; justification fiscale ; taux d'inclusion du gain en capital en % ; badge Smith Manœuvre si applicable ; retenue à la source US (masquée si null) ; recommandations
-- `frontend/src/components/AnalysisResult.tsx` — branchement sur les cinq nouveaux composants ; **retrait du composant `SkillSection` générique et de l'import `SkillOutput`** (plus aucun skill en JSON brut)
-- `frontend/src/__tests__/FisherSection.test.tsx`, `DamodaranSection.test.tsx`, `MarksSection.test.tsx`, `PabraiSection.test.tsx`, `CanadianTaxSection.test.tsx` — 6 tests Vitest chacun (30 au total)
-
-**Version** : 10.8.0
-**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 391 Vitest verts (+30 Sprint 121) ; tsc 0 erreur ; ESLint 0 ; ruff clean
-
-**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (+30), et la suite backend complète (1 423 verts, ruff `All checks passed`).
-
----
-
-### Sprint 120 — Refonte UI Lynch + Greenblatt + Munger + Klarman ✅
-
-**Objectif :** Poursuivre le pattern des Sprints 118/119 sur le dernier lot de skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend pour les quatre frameworks identifiés comme prioritaires : Lynch (catégorie + PEG), Greenblatt (rang ROC + earnings yield), Munger (biais cognitifs détectés), Klarman (marge de sécurité + downside).
-
-**Livrables :**
-- `frontend/src/types/index.ts` — ajout des types structurés `LynchCategoriesOutput`, `GreenblattOutput`, `BiaisCognitif`, `MungerOutput`, `KlarmanOutput` ; `AnalyzeResponse.lynch`, `.greenblatt`, `.munger` et `.klarman` typés précisément (plus `SkillOutput` générique)
-- `frontend/src/components/LynchCategoriesSection.tsx` — en-tête avec badge catégorie (libellé FR des 6 archétypes : croissance lente/pilier/croissance rapide/cyclique/redressement/jeu d'actifs) + verdict badge (EXCELLENT/BON/MOYEN/EVITER) ; ratio PEG mis en évidence et coloré (< 1 bull, 1-2 neutral, > 2 bear, N/A si null) ; badge tenbagger potentiel ; score de qualité de croissance /5 ; recommandations
-- `frontend/src/components/GreenblattSection.tsx` — en-tête avec verdict badge (TOP_DECILE/BON/MOYEN/EVITER) ; ROC et rendement des bénéfices affichés en % avec couleur seuillée ; situations spéciales en badges ; recommandations
-- `frontend/src/components/MungerSection.tsx` — en-tête avec verdict comportemental badge (CONFIANCE_JUSTIFIEE/BIAIS_DETECTE/ALERTE_ROUGE) + badge lollapalooza si risque ; grille des biais cognitifs détectés (nom + badge d'impact MINEUR/MODERE/MAJEUR + description) ou message si aucun ; analyse par inversion ; recommandations
-- `frontend/src/components/KlarmanSection.tsx` — en-tête avec badge type de situation qualifié (libellé FR : net-net/actifs cachés/en détresse/situation spéciale/valeur classique) + verdict badge (OPPORTUNITE_FORTE/OPPORTUNITE_MODEREE/ATTENDRE/PASSER) ; décote vs valeur intrinsèque en % (colorée selon le signe) ; barres scores marge de sécurité + préservation du capital /10 ; recommandations
-- `frontend/src/components/AnalysisResult.tsx` — branchement sur `LynchCategoriesSection`, `GreenblattSection`, `MungerSection` et `KlarmanSection` (plus `SkillSection` générique pour ces quatre skills)
-- `frontend/src/__tests__/LynchCategoriesSection.test.tsx` — 6 tests Vitest (catégorie + verdict + toggle fermé, PEG ouvert, PEG null → N/A, badge tenbagger présent, badge tenbagger masqué, score + recommandations)
-- `frontend/src/__tests__/GreenblattSection.test.tsx` — 6 tests Vitest (verdict + toggle, ROC %, earnings yield %, situations spéciales, situations vides masquées, recommandations)
-- `frontend/src/__tests__/MungerSection.test.tsx` — 6 tests Vitest (verdict + toggle, badge lollapalooza présent, badge lollapalooza masqué, biais détectés, message si aucun biais, inversion + recommandations)
-- `frontend/src/__tests__/KlarmanSection.test.tsx` — 6 tests Vitest (situation + verdict + toggle, décote %, décote null masquée, deux scores /10, recommandations, libellé situation NET_NET)
-
-**Version** : 10.7.0
-**Tests** : 1 423 CI verts (inchangé — sprint frontend pur) ; 361 Vitest verts (+24 Sprint 120) ; tsc 0 erreur ; ESLint 0 ; ruff clean
-
-**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0 erreur/0 warning), Vitest composant (+24), et la suite backend complète (1 423 verts, ruff `All checks passed`).
 
 ---
 

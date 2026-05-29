@@ -14,13 +14,14 @@ def _make_analysis_id() -> str:
     return str(uuid.uuid4())
 
 
-def _make_row(analysis_id: str, note: str) -> MagicMock:
-    """Simule une Row asyncpg pour une annotation."""
+def _make_row(analysis_id: str, note: str, tags: str = "[]") -> MagicMock:
+    """Simule une Row asyncpg pour une annotation (tags = JSONB renvoyé en str)."""
     row = MagicMock()
     row.__getitem__ = lambda self, key: {
         "annotation_id": str(uuid.uuid4()),
         "analysis_id": analysis_id,
         "note": note,
+        "tags": tags,
         "created_at": datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
         "updated_at": datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc),
     }[key]
@@ -88,3 +89,33 @@ async def test_get_retourne_none_si_exception(service: AnnotationService, mock_p
     annotation = await service.get(_make_analysis_id())
 
     assert annotation is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_persiste_et_normalise_les_tags(
+    service: AnnotationService, mock_pool: AsyncMock
+) -> None:
+    """upsert normalise les tags (trim/minuscule/dédoublonnage) et les passe en JSONB."""
+    analysis_id = _make_analysis_id()
+    mock_pool.fetchrow.return_value = _make_row(
+        analysis_id, "Note", tags='["value", "growth"]'
+    )
+
+    annotation = await service.upsert(analysis_id, "Note", ["  Value ", "GROWTH", "value"])
+
+    assert annotation.tags == ["value", "growth"]
+    # 3e paramètre positionnel = JSONB normalisé (dédoublonné, minuscule)
+    tags_param = mock_pool.fetchrow.call_args.args[3]
+    assert tags_param == '["value", "growth"]'
+
+
+@pytest.mark.asyncio
+async def test_get_decode_tags_jsonb(service: AnnotationService, mock_pool: AsyncMock) -> None:
+    """get décode le champ tags JSONB renvoyé en str par asyncpg."""
+    analysis_id = _make_analysis_id()
+    mock_pool.fetchrow.return_value = _make_row(analysis_id, "Note", tags='["dividende"]')
+
+    annotation = await service.get(analysis_id)
+
+    assert annotation is not None
+    assert annotation.tags == ["dividende"]

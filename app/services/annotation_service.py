@@ -1,38 +1,43 @@
 from __future__ import annotations
 
+import json
 import logging
 
 import asyncpg
 
-from app.models.annotation import Annotation
+from app.models.annotation import Annotation, normalize_tags
 
 logger = logging.getLogger(__name__)
 
 
 class AnnotationService:
-    """CRUD sur la table annotations PostgreSQL — une note par analysis_id."""
+    """CRUD sur la table annotations PostgreSQL — une note (+ tags) par analysis_id."""
 
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         self._db = db_pool
 
-    async def upsert(self, analysis_id: str, note: str) -> Annotation:
-        """Crée ou remplace l'annotation pour un analysis_id donné."""
+    async def upsert(self, analysis_id: str, note: str, tags: list[str] | None = None) -> Annotation:
+        """Crée ou remplace l'annotation (note + tags) pour un analysis_id donné."""
+        normalized = normalize_tags(tags or [])
         row = await self._db.fetchrow(
             """
-            INSERT INTO annotations (analysis_id, note)
-            VALUES ($1::uuid, $2)
+            INSERT INTO annotations (analysis_id, note, tags)
+            VALUES ($1::uuid, $2, $3::jsonb)
             ON CONFLICT (analysis_id) DO UPDATE
                 SET note = EXCLUDED.note,
+                    tags = EXCLUDED.tags,
                     updated_at = NOW()
             RETURNING
                 annotation_id::text,
                 analysis_id::text,
                 note,
+                tags,
                 created_at,
                 updated_at
             """,
             analysis_id,
             note,
+            json.dumps(normalized),
         )
         return _row_to_annotation(row)
 
@@ -45,6 +50,7 @@ class AnnotationService:
                     annotation_id::text,
                     analysis_id::text,
                     note,
+                    tags,
                     created_at,
                     updated_at
                 FROM annotations
@@ -62,12 +68,26 @@ class AnnotationService:
         rows = await self._db.fetch("""
             SELECT a.annotation_id::text, a.analysis_id::text,
                    h.ticker,
-                   a.note, a.created_at, a.updated_at
+                   a.note, a.tags, a.created_at, a.updated_at
             FROM annotations a
             LEFT JOIN analysis_history h USING (analysis_id)
             ORDER BY a.updated_at DESC
         """)
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            entry = dict(row)
+            entry["tags"] = _decode_tags(entry.get("tags"))
+            result.append(entry)
+        return result
+
+
+def _decode_tags(value) -> list[str]:
+    """Décode un champ tags JSONB — asyncpg le renvoie en str sans codec."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return json.loads(value)
+    return list(value)
 
 
 def _row_to_annotation(row) -> Annotation:
@@ -75,6 +95,7 @@ def _row_to_annotation(row) -> Annotation:
         annotation_id=str(row["annotation_id"]),
         analysis_id=str(row["analysis_id"]),
         note=row["note"],
+        tags=_decode_tags(row["tags"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

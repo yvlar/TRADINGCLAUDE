@@ -79,6 +79,7 @@ describe('HistorySearch (Sprint 73 + Sprint 90)', () => {
           defensive_score: 7,
           graham_verdict: 'CANDIDAT_SOLIDE',
           earnings_verdict: null,
+          tags: [],
           created_at: '2026-05-10T12:00:00+00:00',
         },
       ],

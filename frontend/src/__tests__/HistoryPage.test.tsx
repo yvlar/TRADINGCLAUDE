@@ -62,6 +62,24 @@ describe('HistoryPage', () => {
     })
   })
 
+  it('câble le filtre tags (CSV normalisé) vers getHistoryPaged', async () => {
+    const user = userEvent.setup()
+    vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)
+    render(<HistoryPage />, { wrapper })
+
+    // tags seuls (sans ticker ni q) doivent suffire à activer la recherche
+    await user.type(screen.getByLabelText('Tags'), 'Value, GROWTH , value')
+    await user.click(screen.getByTestId('history-search-btn'))
+
+    await waitFor(() => {
+      expect(analyzeApi.getHistoryPaged).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ['value', 'growth'] }),
+        1,
+        10,
+      )
+    })
+  })
+
   it("n'envoie jamais 'ALL' au backend", async () => {
     const user = userEvent.setup()
     vi.mocked(analyzeApi.getHistoryPaged).mockResolvedValue(emptyPaged)

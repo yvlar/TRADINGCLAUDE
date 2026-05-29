@@ -14,6 +14,20 @@ interface SearchState {
   q: string
   fromDt: string
   toDt: string
+  tags: string[]
+}
+
+function parseTags(raw: string): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const part of raw.split(',')) {
+    const cleaned = part.trim().toLowerCase().slice(0, 40)
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned)
+      result.push(cleaned)
+    }
+  }
+  return result
 }
 
 export default function HistoryPage() {
@@ -21,6 +35,7 @@ export default function HistoryPage() {
   const [searchQ, setSearchQ] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const [tagsInput, setTagsInput] = useState('')
   const [dateError, setDateError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState<SearchState | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -34,7 +49,7 @@ export default function HistoryPage() {
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null)
 
   const historyQuery = useQuery({
-    queryKey: ['history-paged', submitted?.ticker, submitted?.q, submitted?.fromDt, submitted?.toDt, currentPage, pageSize],
+    queryKey: ['history-paged', submitted?.ticker, submitted?.q, submitted?.fromDt, submitted?.toDt, submitted?.tags, currentPage, pageSize],
     queryFn: async () => {
       if (!submitted) return null
       return await getHistoryPaged(
@@ -43,6 +58,7 @@ export default function HistoryPage() {
           q: submitted.q || undefined,
           fromDt: submitted.fromDt || undefined,
           toDt: submitted.toDt || undefined,
+          tags: submitted.tags.length > 0 ? submitted.tags : undefined,
         },
         currentPage,
         pageSize,
@@ -66,14 +82,15 @@ export default function HistoryPage() {
     e.preventDefault()
     const t = ticker.trim().toUpperCase()
     const q = searchQ.trim()
-    if (!t && !q) return
+    const parsedTags = parseTags(tagsInput)
+    if (!t && !q && parsedTags.length === 0) return
 
     if (fromDate && toDate && fromDate > toDate) {
       setDateError('La date "Du" doit etre anterieure ou egale a la date "Au".')
       return
     }
     setDateError(null)
-    setSubmitted({ ticker: t, q, fromDt: fromDate, toDt: toDate })
+    setSubmitted({ ticker: t, q, fromDt: fromDate, toDt: toDate, tags: parsedTags })
   }
 
   const handleDownloadTickerPdf = async () => {
@@ -199,6 +216,17 @@ export default function HistoryPage() {
           />
         </div>
         <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground uppercase tracking-wide">Tags</label>
+          <Input
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            placeholder="value, growth"
+            className="w-44"
+            aria-label="Tags"
+            data-testid="history-tags-input"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground uppercase tracking-wide">Du</label>
           <Input
             type="date"
@@ -236,7 +264,7 @@ export default function HistoryPage() {
         </div>
         <Button
           type="submit"
-          disabled={historyQuery.isFetching || (!ticker.trim() && !searchQ.trim())}
+          disabled={historyQuery.isFetching || (!ticker.trim() && !searchQ.trim() && parseTags(tagsInput).length === 0)}
           data-testid="history-search-btn"
         >
           {historyQuery.isFetching ? 'Chargement...' : 'Chercher'}
