@@ -73,6 +73,40 @@ def _resolve_eps_growth(
     return 0.0, None
 
 
+def _finite_float(value: Any) -> float | None:
+    """Convertit en float fini ; None si absent, NaN, infini ou non numérique."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _resolve_ratio(
+    info: dict[str, Any], ticker: str, primary_key: str, *fallback_keys: str
+) -> tuple[float | None, str | None]:
+    """
+    Résout un ratio numérique depuis `info` avec repli de source ordonné (cf. donnees-financieres.md).
+    Essaie la clé primaire, puis chaque clé de repli (tracée par logger.info) ; retourne
+    (valeur, clé_retenue) ou (None, None) si aucune source — jamais un 0.0 trompeur masquant
+    une donnée absente (un 0.0 réel de la source est conservé tel quel).
+    """
+    primary = _finite_float(info.get(primary_key))
+    if primary is not None:
+        return primary, primary_key
+    for key in fallback_keys:
+        fallback = _finite_float(info.get(key))
+        if fallback is not None:
+            logger.info(
+                "%s %s : repli sur info.%s faute de info.%s",
+                primary_key, ticker, key, primary_key,
+            )
+            return fallback, key
+    return None, None
+
+
 def _compute_dividend_years(dividends: Any) -> int | None:
     """
     Compte les années consécutives avec au moins un dividende depuis l'année courante.
@@ -220,9 +254,12 @@ class YahooFinanceExtractor:
         if pe is None and eps_ttm is not None and eps_ttm != 0:
             pe = float(price) / eps_ttm
 
-        raw_de = info.get("debtToEquity")
-        # yfinance retourne debtToEquity en % (ex: 45.0 = 45%) → diviser par 100
-        debt_equity: float = raw_de / 100.0 if raw_de is not None else 0.0
+        raw_de, _ = _resolve_ratio(info, ticker, "debtToEquity")
+        # yfinance retourne debtToEquity en % (ex: 45.0 = 45%) → diviser par 100 ; None si absent
+        debt_equity: float | None = raw_de / 100.0 if raw_de is not None else None
+
+        pb, _ = _resolve_ratio(info, ticker, "priceToBook")
+        book_value, _ = _resolve_ratio(info, ticker, "bookValue")
 
         revenue = info.get("totalRevenue")
         revenue_bn: float | None = revenue / 1e9 if revenue is not None else None
@@ -233,14 +270,14 @@ class YahooFinanceExtractor:
         no_deficit_years = _compute_no_deficit_years(income, shares) if income is not None and shares else None
 
         return GrahamRatios(
-            pe=pe if pe is not None else 0.0,
-            pb=info.get("priceToBook") or 0.0,
+            pe=pe,
+            pb=pb,
             current_ratio=None if is_financial else info.get("currentRatio"),
             debt_equity=debt_equity,
             eps_growth_total=eps_growth_total,
             eps_growth_years=eps_growth_years,
             price=float(price),
-            book_value=info.get("bookValue") or 0.0,
+            book_value=book_value,
             eps_ttm=eps_ttm,
             revenue_bn=revenue_bn,
             dividend_years=dividend_years,

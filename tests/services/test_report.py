@@ -158,16 +158,16 @@ async def test_post_report_content_disposition(client) -> None:
 
 
 async def test_post_report_ratios_invalides_422(client) -> None:
-    """POST /report sans le champ pb obligatoire → 422 Unprocessable Entity."""
+    """POST /report sans le champ price obligatoire → 422 Unprocessable Entity."""
     payload = {
         "ticker": "BNS",
         "ratios": {
-            # pb manquant — doit déclencher une erreur de validation Pydantic
-            # Note : pe est maintenant optionnel (Sprint 36 — pe: float | None)
+            # price manquant — doit déclencher une erreur de validation Pydantic
+            # Note : pe/pb optionnels (Sprint 36 / Sprint 135 — float | None) ; price reste requis
             "pe": 11.0,
+            "pb": 1.3,
             "debt_equity": 0.45,
             "eps_growth_total": 0.27,
-            "price": 80.0,
             "book_value": 61.5,
         },
     }

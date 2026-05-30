@@ -18,6 +18,8 @@ from app.skills.tier1.yahoo_finance import (
     _compute_dividend_years,
     _compute_eps_growth,
     _compute_no_deficit_years,
+    _finite_float,
+    _resolve_ratio,
 )
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
@@ -179,6 +181,37 @@ class TestYahooFinanceExtract:
         with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_BNS_FINANCIER)):
             result = await extractor.extract("BNS")
         assert result.debt_equity == pytest.approx(0.45)
+
+    @pytest.mark.asyncio
+    async def test_ratios_absents_donnent_none_pas_zero(self):
+        """priceToBook / bookValue / debtToEquity absents → None (pas 0.0 trompeur)."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items()
+                if k not in ("priceToBook", "bookValue", "debtToEquity")}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.pb is None
+        assert result.book_value is None
+        assert result.debt_equity is None
+
+    @pytest.mark.asyncio
+    async def test_pe_none_si_pe_et_eps_absents(self):
+        """trailingPE et trailingEps absents → pe = None (pas 0.0)."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items()
+                if k not in ("trailingPE", "trailingEps")}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.pe is None
+
+    @pytest.mark.asyncio
+    async def test_pb_zero_reel_conserve(self):
+        """Un 0.0 réel de la source est conservé — seul l'absent devient None."""
+        extractor = YahooFinanceExtractor()
+        info = {**_INFO_BNS_FINANCIER, "priceToBook": 0.0}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.pb == 0.0
 
     @pytest.mark.asyncio
     async def test_pe_calcule_si_absent(self):
@@ -603,3 +636,45 @@ class TestComputeNoDeficitYears:
     def test_income_none_retourne_none(self):
         """income = None → retourne None."""
         assert _compute_no_deficit_years(None, 1_000_000_000) is None
+
+
+class TestResolveRatio:
+    def test_cle_primaire_presente(self):
+        """Clé primaire présente → (valeur, clé_primaire), aucun repli."""
+        info = {"priceToBook": 1.3}
+        assert _resolve_ratio(info, "BNS", "priceToBook") == (1.3, "priceToBook")
+
+    def test_repli_sur_cle_secondaire(self):
+        """Primaire absente + clé de repli présente → (valeur_repli, clé_repli)."""
+        info = {"bookValuePerShare": 42.0}
+        assert _resolve_ratio(info, "BNS", "bookValue", "bookValuePerShare") == (
+            42.0, "bookValuePerShare",
+        )
+
+    def test_aucune_source_retourne_none(self):
+        """Primaire et replis absents → (None, None), jamais 0.0."""
+        assert _resolve_ratio({}, "BNS", "priceToBook", "bookValuePerShare") == (None, None)
+
+    def test_zero_reel_conserve(self):
+        """Un 0.0 réel (présent dans la source) est retourné tel quel, pas traité comme absent."""
+        assert _resolve_ratio({"priceToBook": 0.0}, "BNS", "priceToBook") == (0.0, "priceToBook")
+
+    def test_valeur_non_finie_ignoree(self):
+        """NaN/inf/non numérique sur la primaire → repli puis None — jamais propagé."""
+        assert _resolve_ratio({"priceToBook": float("nan")}, "BNS", "priceToBook") == (None, None)
+        assert _resolve_ratio({"priceToBook": "n/a"}, "BNS", "priceToBook") == (None, None)
+
+
+class TestFiniteFloat:
+    def test_nombre_fini(self):
+        assert _finite_float(1.5) == 1.5
+
+    def test_none_nan_inf_chaine(self):
+        assert _finite_float(None) is None
+        assert _finite_float(float("nan")) is None
+        assert _finite_float(float("inf")) is None
+        assert _finite_float("abc") is None
+
+    def test_zero_conserve(self):
+        """0.0 est un nombre fini valide — conservé, jamais converti en None."""
+        assert _finite_float(0.0) == 0.0

@@ -239,13 +239,13 @@ class TestAnalyze:
         assert len(r.json()["graham"]["criteria_entreprenant"]) == 5
 
     @pytest.mark.asyncio
-    async def test_body_sans_pb_retourne_422(self, async_client):
-        # pe est optionnel depuis Sprint 36 ; pb reste requis
+    async def test_body_sans_price_retourne_422(self, async_client):
+        # pe/pb/debt_equity/book_value optionnels (pb depuis Sprint 135) ; price reste requis
         body_invalide = {
             "ticker": "MSFT",
             "ratios": {
-                "pe": 34.2, "current_ratio": 1.34, "debt_equity": 0.28,
-                "eps_growth_total": 0.85, "price": 420.0, "book_value": 35.0,
+                "pe": 34.2, "pb": 12.1, "current_ratio": 1.34, "debt_equity": 0.28,
+                "eps_growth_total": 0.85, "book_value": 35.0,
             },
         }
         r = await async_client.post("/analyze", json=body_invalide)

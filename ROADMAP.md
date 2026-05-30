@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 134 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 135 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.21.0 |
+| **Version** | 10.22.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) |
-| **Dernier sprint complété** | Sprint 134 — Traçabilité source+date des ratios ✅ |
+| **Sprint actif** | Sprint 136 — UI : affichage des sous-composantes auditables (X1-X5 Z-Score) |
+| **Dernier sprint complété** | Sprint 135 — Repli multi-sources généralisé ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -51,7 +51,7 @@
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
-- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134), streaming SSE skill par skill, badge « score depuis cache <24h »
+- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134 ; ratio absent de la source = `None` honnête, jamais `0.0` trompeur — Sprint 135), streaming SSE skill par skill, badge « score depuis cache <24h »
 - **Screener** — batch 2-20 tickers, tri + filtres composite **persistés côté serveur** (continuité multi-appareils, fallback localStorage hors-ligne — Sprint 124) + colonne fraîcheur (badge frais/périmé >24h) + export CSV filtré
 - **History** — historique par ticker, recherche full-text `q` cross-ticker (index GIN pg_trgm), filtre par plage de dates, suppression par analyse
 - **Watchlist** — positions surveillées, analyses manuelles, seuils ESG + prix éditables inline, score composite historique, export Excel
@@ -79,6 +79,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) ✅
+
+**Objectif :** Le Sprint 130 n'avait introduit un repli de source que pour `eps_growth`. Les autres ratios Graham extraits de yfinance retombaient **silencieusement à `0.0`** quand le champ primaire était absent (`info.get("priceToBook") or 0.0`, `bookValue or 0.0`, `debt_equity = 0.0` si `debtToEquity` absent) — un `0.0` faux est indiscernable d'un vrai `0.0` et fausse le scoring Graham en aval (`donnees-financieres.md` : « un `0.0` silencieux pour une donnée absente est le piège à éliminer »). Généraliser le pattern : une donnée primaire absente produit `None` (donnée manquante honnête) et est traçable, jamais un `0.0` trompeur. Suite de la revue expert FinTech. Sprint backend pur (le type TS `GrahamRatios` était déjà nullable côté frontend).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — deux helpers purs : `_finite_float(value)` (float fini ou `None` ; rejette `None`/NaN/inf/non numérique, **conserve un `0.0` réel**) et `_resolve_ratio(info, ticker, primary_key, *fallback_keys)` (abstraction de repli réutilisable style `_resolve_eps_growth` : essaie la clé primaire, puis chaque clé de repli tracée par `logger.info`, retourne `(valeur | None, clé_retenue)` — jamais de `0.0` masquant une absence). `extract()` route `pb`/`book_value`/`debt_equity` via `_resolve_ratio` ; le `or 0.0` muet est supprimé. `pe` conserve son repli calculé (`price/eps_ttm`) puis `None` (au lieu de `0.0`). `current_ratio=None` pour les banques (`is_financial`) inchangé (None légitime documenté)
+- `app/skills/tier2/graham_analysis/schemas.py` — `pb`, `debt_equity`, `book_value` passent de `float` (obligatoire) à `float | None` (défaut `None`). **Rétrocompatible** : élargir un type accepte les flottants déjà persistés ; le frontend TS déclarait déjà `number | null`. Validateur `valider_coherence_ratios` gardé sur `None` (`self.pb is not None and self.pb < 0`)
+- **Décision type-vs-rétrocompat** : la carte signalait l'arbitrage comme potentiellement ambigu ; la réconciliation l'a tranché sans ambiguïté — la spec impose `None`, l'élargissement `float | None` ne casse ni les analyses persistées (vieux flottants valides) ni le type TS (déjà `number | null`) → aucune migration. Seuls les consommateurs `None`-safe (`graham_number`, `_fmt_num` PDF, `poids_capital`, clé de cache JSON) touchent ces champs
+- **Traçabilité par ratio** (spec point 3, optionnel) : non implémentée ce sprint — `_resolve_ratio` retourne déjà la `clé_retenue` (tracée par `logger.info`), l'exposition par champ est reportée (Sprint 138 généralise source+date aux autres extracteurs)
+- Tests : unitaires `_resolve_ratio` (primaire présent → primaire ; repli sur clé secondaire tracé ; tout absent → `None` ; `0.0` réel conservé ; NaN/inf/chaîne ignorés) + `_finite_float` ; intégration `extract()` (`priceToBook`/`bookValue`/`debtToEquity` absents → `None` pas `0.0` ; `pe` absent → `None` ; `0.0` réel conservé ; banque `current_ratio=None` inchangé) ; non-régression scoring (`GrahamRatios` tout `None` → `execute()` OK, `graham_number` `None`) ; tests 422 repivotés sur `price` (toujours obligatoire)
+
+**Version** : 10.22.0
+**Tests** : 1 614 backend collectés (1 610 passés, 3 skipped, 1 xfailed — +20) ; Vitest inchangé (sprint backend pur, type TS déjà nullable) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : les 7 prémisses du chemin critique (`fichier:ligne` du pattern `_resolve_eps_growth`, des `or 0.0`, du schema non-optionnel, du type TS déjà nullable, des consommateurs `None`-safe) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité 4 angles) : **aucun bug de correctness** ; le seul point qualité (varargs `*fallback_keys` sans appelant à repli aujourd'hui) **écarté** — la spec impose explicitement le paramètre « clés de repli » et le test `test_repli_sur_cle_secondaire` l'exerce. Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
 
 ### Sprint 134 — Traçabilité source+date des ratios ✅
 
@@ -130,25 +146,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 595 backend collectés (1 591 passés, 3 skipped, 1 xfailed — +51) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
 
 **Note d'environnement :** session web — le prompt `stock_valuation` est modifié (note « calculées en amont ») → **evals `stock_valuation` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte une valeur DCF + matrice aberrantes, les valeurs Python les écrasent). Revue indépendante à contexte frais (2 passes correctness + 1 qualité) : bug HIGH du gate sectoriel franco-centré détecté et corrigé avant commit. Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
-
-### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅
-
-**Objectif :** Le Sprint 128 a rendu déterministes les *scores agrégés* d'`earnings_quality` (Altman Z, Beneish M, Piotroski F, Montier C, Sloan), mais leurs *sous-composantes* restaient produites par le LLM — auditabilité incomplète (cf. « Limites connues » du Sprint 128). Calculer EN PYTHON les 8 indices du M-Score (DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI) et les termes X1-X5 du Z-Score, puis les substituer post-parse (comme les scores agrégés) pour qu'une analyse soit entièrement rejouable et explicable. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
-
-**Livrables :**
-- `app/services/financial_calculations.py` — deux dataclasses `BeneishComponents` (8 indices + `m_score`) et `AltmanComponents` (X1-X5 + `variante` + `z_score`) ; nouvelles fonctions pures `beneish_m_score_detail()` et `altman_z_score_detail()` exposant chaque intermédiaire (un indice/terme calculable est exposé **même si le score agrégé est `None`** — auditabilité partielle). `beneish_m_score()`/`altman_z_score()` deviennent de minces délégateurs (`.m_score`/`.z_score`) — comportement agrégé strictement préservé. `is_financial=True` → tous les intermédiaires `None`. Variante service exclut X5 ; X4 = market value (original) ou book equity (private/service)
-- `app/skills/tier2/earnings_quality/schemas.py` — `ZScoreDetail` gagne `x1`-`x5` (`FiniteFloatOrNone`, **défaut `None`** : rétrocompatible avec les analyses persistées avant ce sprint, rechargées via `report.py`). `MScoreDetail` portait déjà les 8 indices (peuplés par le LLM jusqu'ici)
-- `app/skills/tier2/earnings_quality/skill.py` — `_ScoresDeterministes` porte désormais les dataclasses `m`/`z` ; `_injecter_scores` substitue les 8 indices + X1-X5 via `asdict().update()` (les noms de champs des dataclasses miroitent le schéma → substitution en bloc, `interpretation` LLM préservé). Gate sectoriel `is_financial` post-parse conservé
-- `app/skills/tier2/earnings_quality/prompts/system.md` — note « scores calculés en amont » étendue aux sous-composantes ; X1-X5 ajoutés à l'exemple JSON
-- Persistance : aucune migration — l'output JSON (`earnings_output.model_dump()` → `analysis_history.result`, `core.py:1696`) porte déjà les `*Detail` enrichis (confirmé par `grep`)
-- Tests : unitaires `test_financial_calculations.py` (indices Beneish stable = 1.0/TATA=0 ; termes Altman X1-X5 connus ; cohérence agrégé↔détail ; indice/terme partiel exposé alors que le score est `None` ; banque → tout `None`) ; intégration `test_earnings_quality.py` (indices/termes Python priment sur un bloc LLM aberrant + persistés ; financière → indices/termes annulés)
-
-**Limites connues :** les signaux détaillés du F-Score (`criteria[].passe`) et du C-Score (`signaux[].present`) restent interprétés par le LLM (seuls leurs scores agrégés sont déterministes depuis Sprint 128) — hors périmètre nommé du sprint (indices Beneish + termes Altman). L'UI (`EarningsQualitySection.tsx`) n'affiche pas encore X1-X5 (déjà rendus pour le M-Score) — affichage = sprint futur ; les valeurs sont néanmoins persistées et auditables dans le JSON.
-
-**Version** : 10.18.0
-**Tests** : 1 544 backend collectés (1 540 passés, 3 skipped, 1 xfailed — +11) ; 414 Vitest verts (inchangé, sprint backend pur) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — le prompt `earnings_quality` est modifié (note + exemple JSON) → **evals `earnings_quality` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (vérifié : la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe des intermédiaires est validée sur payloads construits (le bloc LLM injecte un indice/terme aberrant, la valeur Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
 
 ---
 

@@ -153,12 +153,13 @@ class TestGrahamRatios:
         )
         assert ratios.pe == -5.0
 
-    def test_pb_manquant_leve_erreur(self):
-        with pytest.raises(ValidationError):
-            GrahamRatios(
-                pe=10.0, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_total=0.3, price=50.0, book_value=50.0,
-            )
+    def test_pb_manquant_donne_none(self):
+        """pb absent → None (Sprint 135) : donnée manquante honnête, jamais 0.0 trompeur."""
+        ratios = GrahamRatios(
+            pe=10.0, current_ratio=2.0, debt_equity=0.2,
+            eps_growth_total=0.3, price=50.0, book_value=50.0,
+        )
+        assert ratios.pb is None
 
     def test_eps_growth_negatif_accepte(self):
         ratios = GrahamRatios(
