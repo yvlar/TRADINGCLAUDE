@@ -103,6 +103,26 @@ describe('ComparePage (Sprint 80)', () => {
     expect(screen.getByTestId('compare-error')).toBeInTheDocument()
     expect(compareApi.postCompare).not.toHaveBeenCalled()
   })
+
+  it('affiche le disclaimer de conformité sous la comparaison', async () => {
+    const user = userEvent.setup()
+    vi.mocked(compareApi.postCompare).mockResolvedValue(
+      makeResponse(['BNS.TO', 'TD.TO'], [72.5, 65.0]),
+    )
+
+    render(<ComparePage />)
+    await user.type(screen.getByTestId('compare-ticker-input'), 'BNS.TO, TD.TO')
+    await user.click(screen.getByTestId('compare-submit-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('disclaimer')).toBeInTheDocument()
+    })
+  })
+
+  it("n'affiche pas le disclaimer avant toute comparaison", () => {
+    render(<ComparePage />)
+    expect(screen.queryByTestId('disclaimer')).not.toBeInTheDocument()
+  })
 })
 
 describe('ComparePage — bouton Analyser (Sprint 87)', () => {

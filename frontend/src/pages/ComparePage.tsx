@@ -5,6 +5,7 @@ import { postCompare } from '../api/compare'
 import { postAnalyze, streamAnalyze } from '../api/analyze'
 import { ApiError } from '../api/client'
 import { SkeletonTable } from '../components/ui/skeleton'
+import { Disclaimer } from '../components/Disclaimer'
 import { PageTransition } from '../components/PageTransition'
 import type { CompareResponse, TickerComparison } from '../types'
 
@@ -275,6 +276,8 @@ export default function ComparePage() {
           </table>
         </div>
       )}
+
+      {result && <Disclaimer variant="inline" />}
     </div>
     </PageTransition>
   )

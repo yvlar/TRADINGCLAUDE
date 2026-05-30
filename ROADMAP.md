@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 132 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 133 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.19.0 |
+| **Version** | 10.20.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 133 — Disclaimer : couverture des surfaces restantes (Screener, Comparer) |
-| **Dernier sprint complété** | Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅ |
+| **Sprint actif** | Sprint 134 — Traçabilité source+date des ratios dans l'UI/PDF |
+| **Dernier sprint complété** | Sprint 133 — Disclaimer : Screener + Comparer ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -63,7 +63,7 @@
 - **Admin** — gestion des clés API (créer/lister/révoquer)
 - **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe)
 - **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG) ; **bloc d'avertissement réglementaire** (« recherche éducative — pas un conseil financier ») inséré dans chaque rapport (Sprint 129)
-- **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
+- **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse, sous le tableau du Screener et sous la comparaison de tickers (Sprint 133), et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
 - **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121
 
 #### Outillage & corpus
@@ -79,6 +79,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 133 — Disclaimer : Screener + Comparer ✅
+
+**Objectif :** Le Sprint 129 a introduit le composant `Disclaimer` mais ne l'a câblé que sous `AnalysisResult` et au pied de page global. Deux surfaces présentant des verdicts actionnables hors `AnalysisResult` restaient sans avertissement réglementaire : les résultats du Screener et la vue Comparer. Étendre le `Disclaimer variant="inline"` à ces deux surfaces, conditionné à la présence de résultats. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill, aucun backend, aucune migration.
+
+**Livrables :**
+- `frontend/src/pages/ScreenerPage.tsx` — `<Disclaimer variant="inline" />` rendu sous `ScreenerTable`, dans le bloc `{result && (...)}` (jamais visible sur la page vide). Texte réutilisé depuis la constante centralisée, aucun littéral
+- `frontend/src/pages/ComparePage.tsx` — `<Disclaimer variant="inline" />` rendu en conditionnel séparé `{result && <Disclaimer />}` sous le tableau de comparaison (présent dès qu'une comparaison ≥ 2 tickers existe, absent à vide)
+- Zéro régression : le pied de page global (`App.tsx`, `variant="footer"`) et `AnalysisResult.tsx` (déjà couverts au Sprint 129) ne sont pas touchés ; texte centralisé inchangé (`frontend/src/constants/disclaimer.ts`)
+- Tests : composant `ScreenerPage.test.tsx` (disclaimer présent après résultat, absent sur page vide) et `ComparePage.test.tsx` (présent sous comparaison ≥ 2 tickers, absent avant toute comparaison)
+
+**Version** : 10.20.0
+**Tests** : 418 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; suite `pytest` inchangée (sprint frontend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install` exécuté. Revue indépendante à contexte frais (correctness high + qualité) : 2 notes LOW (fragilité latente de testid dupliqué hors périmètre des tests → écartée ; indentation du fragment → corrigée en remplaçant le fragment par un conditionnel séparé). Stack Docker non démarrée. Pas de test navigateur live.
 
 ### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅
 
@@ -136,22 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 533 backend collectés (1 529 passés, 3 skipped, 1 xfailed — +7) ; 414 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — le prompt `graham_analysis` est modifié (renommage + correction d'annualisation) → **evals `graham_analysis` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). Stack Docker non démarrée → extraction yfinance exercée sur mocks (pas d'appel réseau live). Pas de test navigateur live.
-
-### Sprint 129 — Conformité : disclaimers & avertissement de risque ✅
-
-**Objectif :** Le système émet des verdicts d'achat/vente explicites mais sans aucun disclaimer — exposition réglementaire (AMF/SEC/MiFID). Afficher un avertissement clair « recherche éducative — pas un conseil financier » à chaque endroit où un verdict actionnable est présenté : résultats d'analyse, pied de page global, et rapports PDF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill ni orchestrateur modifié.
-
-**Livrables :**
-- `app/services/disclaimer.py` (nouveau) — source de vérité unique du texte backend : `DISCLAIMER_TITLE`/`DISCLAIMER_TEXT` + helper `build_disclaimer_flowables()` (Spacer + HRFlowable + Paragraph discret) réutilisé tel quel par les 3 services PDF
-- `app/services/pdf_report_service.py` + `screener_pdf_service.py` + `watchlist_pdf_service.py` — `story.extend(build_disclaimer_flowables())` inséré avant le pied de page. `monthly_report_service.py` **non modifié** : il compose les PDF watchlist + screener qui portent désormais le disclaimer (pas de duplication)
-- `frontend/src/constants/disclaimer.ts` (nouveau) — source de vérité unique du texte frontend (`DISCLAIMER_HEADING`/`DISCLAIMER_TEXT`, aligné mot pour mot sur le backend)
-- `frontend/src/components/Disclaimer.tsx` (nouveau) — composant réutilisable, variantes `inline` (bandeau encadré) et `footer` (ligne discrète), `data-testid="disclaimer"`, `role="note"` ; affiché dans `AnalysisResult.tsx` (bas du bloc résultats) et dans le pied de page global de `App.tsx`
-- Tests : composant `frontend/src/__tests__/Disclaimer.test.tsx` (inline + footer + défaut + présence dans `AnalysisResult`) ; backend `tests/services/test_disclaimer.py` (helper ; story du rapport ticker / screener / watchlist contient le texte via capture de `SimpleDocTemplate.build`)
-
-**Version** : 10.16.0
-**Tests** : 1 526 backend collectés (1 522 passés, 3 skipped, 1 xfailed — +4) ; 412 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Stack Docker non démarrée → les rapports PDF sont exercés sur mocks (capture du `story` ReportLab, pas de rendu navigateur). Le `node_modules` frontend était partiel à l'amorçage → `npm install` exécuté. Pas de test navigateur live.
 
 ---
 
