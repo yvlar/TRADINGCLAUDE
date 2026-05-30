@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.orchestrator.core import AnalyzeRequest, Orchestrator
+from app.utils.error_sanitization import log_internal_error
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,11 @@ async def _sse_generator(
             data = json.dumps(event["data"], ensure_ascii=False, default=str)
             yield f"event: {event_type}\ndata: {data}\n\n"
     except Exception as exc:
-        logger.exception("Erreur SSE pour %s", body.ticker)
-        error_data = json.dumps({"message": str(exc)}, ensure_ascii=False)
+        # body générique : str(exc) ne sort jamais dans le flux SSE (fuite potentielle)
+        correlation_id = log_internal_error(exc, logger, f"Erreur SSE pour {body.ticker}")
+        error_data = json.dumps(
+            {"message": "Erreur interne", "correlation_id": correlation_id}, ensure_ascii=False
+        )
         yield f"event: error\ndata: {error_data}\n\n"
 
 

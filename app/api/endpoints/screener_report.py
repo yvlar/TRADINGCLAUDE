@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from app.api.endpoints.screen import ScreenRequest, ScreenResult
 from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
+from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -54,17 +55,15 @@ async def get_screener_report(
         screen_req = ScreenRequest(tickers=ticker_list, workflow=workflow, max_parallel=5)
         result: ScreenResult = await screener.screen(screen_req)
     except Exception as exc:
-        logger.exception("Erreur lors du screener pour le rapport PDF")
-        raise HTTPException(status_code=500, detail=f"Erreur screener : {exc}") from exc
+        raise sanitized_http_500(exc, logger, "Erreur lors du screener pour le rapport PDF") from exc
 
     try:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         title = f"Rapport Screener — {workflow} — {date_str}"
         pdf_bytes = pdf_service.generate(result, title=title)
     except Exception as exc:
-        logger.exception("Erreur lors de la génération du rapport PDF screener")
-        raise HTTPException(
-            status_code=500, detail=f"Erreur génération PDF : {exc}"
+        raise sanitized_http_500(
+            exc, logger, "Erreur lors de la génération du rapport PDF screener"
         ) from exc
 
     filename = f"screener-{workflow}-{date_str}.pdf"

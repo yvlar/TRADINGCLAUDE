@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -10,6 +9,8 @@ from uuid import UUID
 import asyncpg
 import redis.asyncio as aioredis
 from jose import JWTError, jwt
+
+from app.utils.jwt_secret import resolve_jwt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,7 @@ class AuthTokenService:
     def __init__(self, db_pool: asyncpg.Pool, redis_client: aioredis.Redis) -> None:
         self._pool = db_pool
         self._redis = redis_client
-        self._secret = os.environ.get("JWT_SECRET_KEY", "")
-        if not self._secret:
-            logger.warning("JWT_SECRET_KEY absent — utilisation d'un secret temporaire (dev uniquement)")
-            self._secret = "dev-secret-change-in-production"
+        self._secret = resolve_jwt_secret()
 
     def create_access_token(self, user_id: UUID, email: str, role: str) -> str:
         """Crée un JWT HS256 avec TTL de 15 minutes."""
@@ -57,8 +55,14 @@ class AuthTokenService:
             return None
 
     async def is_jti_blacklisted(self, jti: str) -> bool:
-        """Vérifie si un JTI est dans la blacklist Redis (token révoqué)."""
-        result = await self._redis.get(f"blacklist:jti:{jti}")
+        """Vérifie si un JTI est blacklisté ; fail-closed si Redis est indisponible."""
+        try:
+            result = await self._redis.get(f"blacklist:jti:{jti}")
+        except Exception:
+            # fail-closed : en cas de doute (panne Redis), on refuse le token plutôt
+            # que d'ouvrir l'accès — l'inverse du rate-limiting qui tolère fail-open
+            logger.warning("Vérification blacklist JTI impossible (Redis) — token refusé par défaut")
+            return True
         return result is not None
 
     async def blacklist_jti(self, jti: str, ttl_seconds: int) -> None:

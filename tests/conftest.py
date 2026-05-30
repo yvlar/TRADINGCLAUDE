@@ -10,6 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis
 import pytest
 import pytest_asyncio
+
+# Tolère le secret JWT de repli quand le lifespan réel est exercé sans JWT_SECRET_KEY
+# (resolve_jwt_secret est fail-fast hors dev/test — cf. app/utils/jwt_secret.py).
+os.environ.setdefault("APP_ENV", "test")
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 

@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from app.services.composite_history_service import CompositeHistoryService
 from app.services.pdf_report_service import PdfReportService
+from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -123,9 +124,8 @@ async def get_ticker_report(
             esg_score=esg_score,
         )
     except Exception as exc:
-        logger.exception("Erreur lors de la génération du rapport PDF pour %s", sanitized)
-        raise HTTPException(
-            status_code=500, detail=f"Erreur génération PDF : {exc}"
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de la génération du rapport PDF pour {sanitized}"
         ) from exc
 
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")

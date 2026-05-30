@@ -6,6 +6,8 @@ from uuid import UUID
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+from app.utils.jwt_secret import resolve_jwt_secret
+
 logger = logging.getLogger(__name__)
 
 _RESET_TOKEN_TTL_S = 3600  # 1 heure
@@ -24,8 +26,7 @@ class PasswordResetService:
     """
 
     def __init__(self) -> None:
-        secret = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-in-production")
-        self._serializer = URLSafeTimedSerializer(secret)
+        self._serializer = URLSafeTimedSerializer(resolve_jwt_secret())
 
     def create_reset_token(self, user_id: UUID) -> str:
         """Génère un token signé contenant l'user_id avec TTL de 1h."""

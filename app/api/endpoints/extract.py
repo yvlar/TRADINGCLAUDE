@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
 from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
 
@@ -67,5 +68,4 @@ async def analyze_auto(
     try:
         return await orchestrator.run_company_analysis(analyze_request)
     except Exception as exc:
-        logger.exception("Erreur lors de analyze-auto pour %s", ticker)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(exc, logger, f"Erreur lors de analyze-auto pour {ticker}") from exc

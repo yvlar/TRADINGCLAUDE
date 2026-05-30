@@ -11,6 +11,7 @@ from fastapi.responses import Response
 
 from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
 from app.services.report import ReportService
+from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +53,17 @@ async def post_report(request: Request, body: AnalyzeRequest) -> Response:
             body, cache=cache, observability=observability
         )
     except Exception as exc:
-        logger.exception("Erreur lors de l'analyse pour le rapport PDF — ticker %s", body.ticker)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de l'analyse pour le rapport PDF — ticker {body.ticker}"
+        ) from exc
 
     try:
         report_service = _get_report_service()
         pdf_bytes = report_service.generate_pdf(analysis)
     except Exception as exc:
-        logger.exception("Erreur lors de la génération du PDF pour %s", body.ticker)
-        raise HTTPException(status_code=500, detail=f"Erreur génération PDF : {exc}") from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de la génération du PDF pour {body.ticker}"
+        ) from exc
 
     return _pdf_response(pdf_bytes, body.ticker)
 
@@ -87,8 +90,9 @@ async def get_report(request: Request, analysis_id: str) -> Response:
             analysis_id,
         )
     except Exception as exc:
-        logger.exception("Erreur DB lors de la récupération de l'analyse %s", analysis_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur DB lors de la récupération de l'analyse {analysis_id}"
+        ) from exc
 
     if row is None:
         raise HTTPException(status_code=404, detail=f"Analyse introuvable : {analysis_id}")
@@ -96,15 +100,17 @@ async def get_report(request: Request, analysis_id: str) -> Response:
     try:
         analysis = _reconstruct_response(row)
     except Exception as exc:
-        logger.exception("Erreur lors de la reconstruction de l'analyse %s", analysis_id)
-        raise HTTPException(status_code=500, detail=f"Erreur reconstruction analyse : {exc}") from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de la reconstruction de l'analyse {analysis_id}"
+        ) from exc
 
     try:
         report_service = _get_report_service()
         pdf_bytes = report_service.generate_pdf(analysis)
     except Exception as exc:
-        logger.exception("Erreur lors de la génération du PDF pour %s", analysis_id)
-        raise HTTPException(status_code=500, detail=f"Erreur génération PDF : {exc}") from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de la génération du PDF pour {analysis_id}"
+        ) from exc
 
     return _pdf_response(pdf_bytes, row["ticker"])
 

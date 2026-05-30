@@ -9,6 +9,7 @@ from fastapi.responses import Response
 
 from app.models.annotation import Annotation, AnnotationCreate
 from app.services.annotation_service import AnnotationService
+from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +27,9 @@ async def upsert_annotation(body: AnnotationCreate, request: Request) -> Annotat
     try:
         return await service.upsert(body.analysis_id, body.note, body.tags)
     except Exception as exc:
-        logger.exception("Erreur lors de l'upsert annotation %s", body.analysis_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise sanitized_http_500(
+            exc, logger, f"Erreur lors de l'upsert annotation {body.analysis_id}"
+        ) from exc
 
 
 @router.get("/export.csv", summary="Export CSV des annotations", response_class=Response)
