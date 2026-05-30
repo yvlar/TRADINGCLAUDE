@@ -101,6 +101,13 @@ class MScoreDetail(BaseModel):
 
 class ZScoreDetail(BaseModel):
     variante: str
+    # Termes X1-X5 calculés en Python et substitués post-parse (Sprint 131). Default None :
+    # rétrocompatible avec les analyses persistées avant ce sprint (rechargées via report.py).
+    x1: FiniteFloatOrNone = None
+    x2: FiniteFloatOrNone = None
+    x3: FiniteFloatOrNone = None
+    x4: FiniteFloatOrNone = None
+    x5: FiniteFloatOrNone = None
     z_score: FiniteFloatOrNone
     interpretation: str
 

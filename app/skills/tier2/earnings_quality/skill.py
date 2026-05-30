@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -10,8 +10,10 @@ import anthropic
 
 from app.rag.service import RagService
 from app.services.financial_calculations import (
-    altman_z_score,
-    beneish_m_score,
+    AltmanComponents,
+    BeneishComponents,
+    altman_z_score_detail,
+    beneish_m_score_detail,
     montier_c_score,
     piotroski_f_score,
     sloan_accrual_ratio,
@@ -36,11 +38,14 @@ _EARNINGS_TOOL_SCHEMA = build_tool_schema(
 
 @dataclass(frozen=True)
 class _ScoresDeterministes:
-    """Scores calculés en Python — autorité sur les valeurs produites par le LLM."""
+    """Scores + sous-composantes calculés en Python — autorité sur les valeurs du LLM.
 
-    m_score: float | None
-    z_score: float | None
-    z_variante: str
+    `m` et `z` portent les intermédiaires (8 indices Beneish, termes X1-X5 Altman)
+    substitués post-parse au même titre que les scores agrégés (Sprint 131).
+    """
+
+    m: BeneishComponents
+    z: AltmanComponents
     f_score: int | None
     c_score: int | None
     accrual_ratio: float | None
@@ -51,7 +56,7 @@ def _scores_depuis_ratios(
 ) -> _ScoresDeterministes:
     """Mappe EarningsQualityRatios → les cinq scores déterministes (financial_calculations)."""
     return _ScoresDeterministes(
-        m_score=beneish_m_score(
+        m=beneish_m_score_detail(
             receivables_t=ratios.receivables_t,
             receivables_t1=ratios.receivables_t1,
             sales_t=ratios.sales_t,
@@ -76,7 +81,7 @@ def _scores_depuis_ratios(
             current_liabilities_t1=ratios.current_liabilities_t1,
             is_financial=is_financial,
         ),
-        z_score=altman_z_score(
+        z=altman_z_score_detail(
             current_assets=ratios.current_assets_t,
             current_liabilities=ratios.current_liabilities_t,
             retained_earnings=ratios.retained_earnings_t,
@@ -89,7 +94,6 @@ def _scores_depuis_ratios(
             variant="original",
             is_financial=is_financial,
         ),
-        z_variante="Z_original",
         f_score=piotroski_f_score(
             net_income_t=ratios.net_income_t,
             total_assets_t=ratios.total_assets_t,
@@ -147,14 +151,16 @@ def _fmt(valeur: float | int | None) -> str:
 
 def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None:
     """
-    Écrase les scores numériques du bloc LLM par les valeurs Python (Sprint 128).
+    Écrase les scores numériques ET leurs sous-composantes du bloc LLM par les valeurs
+    Python (Sprint 128 pour les scores agrégés, Sprint 131 pour les indices/termes).
     Les champs entiers (f/c_score) n'acceptent pas None — si le calcul Python échoue
     (donnée manquante / financière), la valeur LLM est conservée pour respecter le schéma.
     """
-    data.setdefault("m_score", {})["m_score"] = scores.m_score
-    z = data.setdefault("z_score", {})
-    z["z_score"] = scores.z_score
-    z["variante"] = scores.z_variante
+    # Les champs des dataclasses (8 indices + m_score ; x1-x5 + variante + z_score) sont
+    # nommés exactement comme ceux de MScoreDetail/ZScoreDetail → asdict() les substitue en
+    # bloc sans toucher à `interpretation` (texte du LLM, absent des dataclasses).
+    data.setdefault("m_score", {}).update(asdict(scores.m))
+    data.setdefault("z_score", {}).update(asdict(scores.z))
     data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio
     if scores.f_score is not None:
         data.setdefault("f_score", {})["f_score"] = scores.f_score
@@ -259,12 +265,13 @@ class EarningsQualitySkill(SkillBase):
         scores = _scores_depuis_ratios(input_data.ratios, is_financial=False)
         parts.append(
             "## Scores déterministes (calculés en Python — interprète-les, ne les recalcule pas)\n"
-            f"- M-Score (Beneish) : {_fmt(scores.m_score)}\n"
-            f"- Z-Score (Altman, {scores.z_variante}) : {_fmt(scores.z_score)}\n"
+            f"- M-Score (Beneish) : {_fmt(scores.m.m_score)}\n"
+            f"- Z-Score (Altman, {scores.z.variante}) : {_fmt(scores.z.z_score)}\n"
             f"- F-Score (Piotroski) : {_fmt(scores.f_score)}\n"
             f"- C-Score (Montier) : {_fmt(scores.c_score)}\n"
             f"- Accruals (Sloan) : {_fmt(scores.accrual_ratio)}\n"
-            "Ces valeurs font autorité et remplaceront les tiennes ; concentre-toi sur "
+            "Ces valeurs (et leurs sous-composantes : indices du M-Score, termes X1-X5 du "
+            "Z-Score) font autorité et remplaceront les tiennes ; concentre-toi sur "
             "l'interprétation, les drapeaux rouges et le verdict.\n\n"
         )
 

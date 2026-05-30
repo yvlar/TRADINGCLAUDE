@@ -320,6 +320,119 @@ class TestEarningsQualitySkill:
         assert output.sloan.accrual_ratio == pytest.approx(sloan_attendu)
 
     @pytest.mark.asyncio
+    async def test_indices_m_et_termes_z_python_priment_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 131 : les indices DSRI… du M et les termes X1-X5 du Z calculés en Python
+        écrasent les valeurs du bloc LLM et sont persistés dans l'output."""
+        from app.services.financial_calculations import (
+            altman_z_score_detail,
+            beneish_m_score_detail,
+        )
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        # Le LLM « hallucine » des sous-composantes aberrantes.
+        data["m_score"]["dsri"] = 99.0
+        data["z_score"]["x1"] = 99.0
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        m_attendu = beneish_m_score_detail(
+            receivables_t=ratios_earnings_msft.receivables_t,
+            receivables_t1=ratios_earnings_msft.receivables_t1,
+            sales_t=ratios_earnings_msft.sales_t,
+            sales_t1=ratios_earnings_msft.sales_t1,
+            cogs_t=ratios_earnings_msft.cogs_t,
+            cogs_t1=ratios_earnings_msft.cogs_t1,
+            current_assets_t=ratios_earnings_msft.current_assets_t,
+            current_assets_t1=ratios_earnings_msft.current_assets_t1,
+            ppe_net_t=ratios_earnings_msft.ppe_net_t,
+            ppe_net_t1=ratios_earnings_msft.ppe_net_t1,
+            total_assets_t=ratios_earnings_msft.total_assets_t,
+            total_assets_t1=ratios_earnings_msft.total_assets_t1,
+            depreciation_t=ratios_earnings_msft.depreciation_t,
+            depreciation_t1=ratios_earnings_msft.depreciation_t1,
+            sga_t=ratios_earnings_msft.sga_t,
+            sga_t1=ratios_earnings_msft.sga_t1,
+            net_income_t=ratios_earnings_msft.net_income_t,
+            cfo_t=ratios_earnings_msft.cfo_t,
+            ltd_t=ratios_earnings_msft.ltd_t,
+            ltd_t1=ratios_earnings_msft.ltd_t1,
+            current_liabilities_t=ratios_earnings_msft.current_liabilities_t,
+            current_liabilities_t1=ratios_earnings_msft.current_liabilities_t1,
+        )
+        z_attendu = altman_z_score_detail(
+            current_assets=ratios_earnings_msft.current_assets_t,
+            current_liabilities=ratios_earnings_msft.current_liabilities_t,
+            retained_earnings=ratios_earnings_msft.retained_earnings_t,
+            ebit=ratios_earnings_msft.ebit_t,
+            total_assets=ratios_earnings_msft.total_assets_t,
+            total_liabilities=ratios_earnings_msft.total_liabilities_t,
+            sales=ratios_earnings_msft.sales_t,
+            market_value_equity=ratios_earnings_msft.market_cap_t,
+            book_value_equity=ratios_earnings_msft.book_equity_t,
+        )
+        # DSRI calculable pour MSFT → écrase le 99.0 du LLM.
+        assert output.m_score.dsri == pytest.approx(m_attendu.dsri)
+        assert output.m_score.dsri != 99.0
+        # AQI incalculable (current_assets_t1 absent du fixture) → None déterministe.
+        assert output.m_score.aqi is None
+        assert output.z_score.x1 == pytest.approx(z_attendu.x1)
+        assert output.z_score.x1 != 99.0
+        assert output.z_score.x4 == pytest.approx(z_attendu.x4)
+
+    @pytest.mark.asyncio
+    async def test_financiere_annule_indices_et_termes(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """is_financial=True → indices du M et termes X1-X5 du Z annulés (modèle inapplicable)."""
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        data["m_score"]["dsri"] = 1.5
+        data["z_score"]["x1"] = 0.3
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        assert output.m_score.dsri is None
+        assert output.m_score.lvgi is None
+        assert output.z_score.x1 is None
+        assert output.z_score.x5 is None
+
+    @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
         self,
         ratios_earnings_msft: EarningsQualityRatios,

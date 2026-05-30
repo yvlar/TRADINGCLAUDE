@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 130 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 131 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.17.0 |
+| **Version** | 10.18.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 131 — Auditabilité : persistance des sous-composantes déterministes |
-| **Dernier sprint complété** | Sprint 130 — Données : honnêteté du label + repli multi-sources ✅ |
+| **Sprint actif** | Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) |
+| **Dernier sprint complété** | Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -19,7 +19,7 @@
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128)
+- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128) ; **sous-composantes auditables** (8 indices Beneish DSRI/GMI/… + termes X1-X5 Altman) également calculées en Python et persistées dans l'output — analyse entièrement rejouable (Sprint 131)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 126)
@@ -80,6 +80,25 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅
+
+**Objectif :** Le Sprint 128 a rendu déterministes les *scores agrégés* d'`earnings_quality` (Altman Z, Beneish M, Piotroski F, Montier C, Sloan), mais leurs *sous-composantes* restaient produites par le LLM — auditabilité incomplète (cf. « Limites connues » du Sprint 128). Calculer EN PYTHON les 8 indices du M-Score (DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI) et les termes X1-X5 du Z-Score, puis les substituer post-parse (comme les scores agrégés) pour qu'une analyse soit entièrement rejouable et explicable. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
+
+**Livrables :**
+- `app/services/financial_calculations.py` — deux dataclasses `BeneishComponents` (8 indices + `m_score`) et `AltmanComponents` (X1-X5 + `variante` + `z_score`) ; nouvelles fonctions pures `beneish_m_score_detail()` et `altman_z_score_detail()` exposant chaque intermédiaire (un indice/terme calculable est exposé **même si le score agrégé est `None`** — auditabilité partielle). `beneish_m_score()`/`altman_z_score()` deviennent de minces délégateurs (`.m_score`/`.z_score`) — comportement agrégé strictement préservé. `is_financial=True` → tous les intermédiaires `None`. Variante service exclut X5 ; X4 = market value (original) ou book equity (private/service)
+- `app/skills/tier2/earnings_quality/schemas.py` — `ZScoreDetail` gagne `x1`-`x5` (`FiniteFloatOrNone`, **défaut `None`** : rétrocompatible avec les analyses persistées avant ce sprint, rechargées via `report.py`). `MScoreDetail` portait déjà les 8 indices (peuplés par le LLM jusqu'ici)
+- `app/skills/tier2/earnings_quality/skill.py` — `_ScoresDeterministes` porte désormais les dataclasses `m`/`z` ; `_injecter_scores` substitue les 8 indices + X1-X5 via `asdict().update()` (les noms de champs des dataclasses miroitent le schéma → substitution en bloc, `interpretation` LLM préservé). Gate sectoriel `is_financial` post-parse conservé
+- `app/skills/tier2/earnings_quality/prompts/system.md` — note « scores calculés en amont » étendue aux sous-composantes ; X1-X5 ajoutés à l'exemple JSON
+- Persistance : aucune migration — l'output JSON (`earnings_output.model_dump()` → `analysis_history.result`, `core.py:1696`) porte déjà les `*Detail` enrichis (confirmé par `grep`)
+- Tests : unitaires `test_financial_calculations.py` (indices Beneish stable = 1.0/TATA=0 ; termes Altman X1-X5 connus ; cohérence agrégé↔détail ; indice/terme partiel exposé alors que le score est `None` ; banque → tout `None`) ; intégration `test_earnings_quality.py` (indices/termes Python priment sur un bloc LLM aberrant + persistés ; financière → indices/termes annulés)
+
+**Limites connues :** les signaux détaillés du F-Score (`criteria[].passe`) et du C-Score (`signaux[].present`) restent interprétés par le LLM (seuls leurs scores agrégés sont déterministes depuis Sprint 128) — hors périmètre nommé du sprint (indices Beneish + termes Altman). L'UI (`EarningsQualitySection.tsx`) n'affiche pas encore X1-X5 (déjà rendus pour le M-Score) — affichage = sprint futur ; les valeurs sont néanmoins persistées et auditables dans le JSON.
+
+**Version** : 10.18.0
+**Tests** : 1 544 backend collectés (1 540 passés, 3 skipped, 1 xfailed — +11) ; 414 Vitest verts (inchangé, sprint backend pur) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — le prompt `earnings_quality` est modifié (note + exemple JSON) → **evals `earnings_quality` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (vérifié : la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe des intermédiaires est validée sur payloads construits (le bloc LLM injecte un indice/terme aberrant, la valeur Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 130 — Données : honnêteté du label + repli multi-sources ✅
 
 **Objectif :** Le champ `eps_growth_10y` annonçait « 10 ans » mais `_compute_eps_growth` calcule en réalité la croissance sur l'horizon disponible (~4 ans) ; et `yfinance` est une source unique (SPOF). Corriger le label trompeur de bout en bout, exposer l'horizon réel, et ajouter un repli quand la source primaire ne renvoie rien. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §2, §5).
@@ -135,21 +154,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 522 backend collectés (1 518 passés, 3 skipped, 1 xfailed — +36) ; 408 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — **aucune clé Anthropic dans le conteneur → les `evals` ciblées (`earnings_quality` + `graham_analysis`, prompts modifiés) n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte un score aberrant, le score Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
-
-### Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅
-
-**Objectif :** (1) rendre les analyses reproductibles en fixant `temperature=0` sur tous les appels Claude ; (2) ajouter des garde-fous Pydantic de plausibilité post-LLM sur les scores clés d'`earnings_quality`, pour qu'un chiffre aberrant produit par le modèle soit rejeté avant persistance. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §3, §1). Sprint backend pur — aucune migration DB, aucun frontend.
-
-**Livrables :**
-- `app/utils/retry.py` — `kwargs.setdefault("temperature", 0)` ajouté dans `call_claude_with_retry` (point d'insertion central unique, couvre les 16 skills qui passent tous par ce helper — `grep` confirmant l'unique `messages.create` du backend). **Surchargeable** : un skill peut fournir explicitement `temperature` sans être écrasé
-- `app/utils/numeric_validation.py` (nouveau) — type réutilisable `FiniteFloatOrNone = Annotated[float | None, AfterValidator(...)]` qui rejette NaN/inf (Pydantic par défaut accepte les floats non finis). Réflexe généralisable à tout score/ratio LLM exposé
-- `app/skills/tier2/earnings_quality/schemas.py` — `FiniteFloatOrNone` appliqué aux 11 champs `float | None` de `MScoreDetail`/`ZScoreDetail`/`SloanDetail` (rejet NaN/inf uniforme) ; deux `@model_validator(mode="after")` (style `stock_valuation/schemas.py:98`) bornent la plausibilité : `z_score` hors `[-50, 50]` et `m_score` hors `[-20, 20]` rejetés (bornes larges documentées depuis les `references/` — Altman Z réel ~[-5, 15], Beneish M réel ~[-5, 2])
-- Tests : unitaire `tests/services/test_retry.py` (temperature=0 par défaut + non-écrasement d'un temperature explicite, +2) ; unitaire `tests/skills/test_earnings_quality.py` (inf/nan → `ValidationError`, hors-bornes → `ValidationError`, scores plausibles acceptés, +6) — aucune régression des fixtures golden existantes
-
-**Version** : 10.14.0
-**Tests** : 1 486 backend collectés (1 482 passés, 3 skipped, 1 xfailed — +8) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
-
-**Note d'environnement :** session web — `temperature=0` change le comportement de tous les skills ; la suite `pytest` (Claude mocké) reste verte sans rien prouver sur la qualité réelle. **Aucune clé Anthropic disponible dans le conteneur → les `evals` ciblées n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). Le rejet NaN/inf et les bornes de plausibilité sont validés sur payloads construits (pas live). Pas de test navigateur live.
 
 ---
 
