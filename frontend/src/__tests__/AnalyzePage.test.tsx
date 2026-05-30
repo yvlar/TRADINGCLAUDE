@@ -33,6 +33,7 @@ const _MOCK_RESPONSE: AnalyzeResponse = {
     valeur_intrinseque_simple: 95.0,
     valeur_intrinseque_ajustee: 87.5,
     marge_securite: 0.09,
+    graham_number: 88.2,
     drapeaux_rouges: [],
     verdict: 'CANDIDAT_SOLIDE',
     verdict_detail: 'BNS passe 5/8 critères.',

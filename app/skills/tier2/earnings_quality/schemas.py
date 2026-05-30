@@ -5,10 +5,14 @@ from pydantic import BaseModel, Field, computed_field, model_validator
 from app.skills.base import Citation
 from app.utils.numeric_validation import FiniteFloatOrNone, valider_borne_plausible
 
-# Bornes de plausibilité larges — au-delà, la valeur est invraisemblable et trahit une sortie LLM erronée.
-# Altman Z réel ~[-5, 15] ; Beneish M réel ~[-5, 2] (cf. .claude/skills/earnings-quality-fraud-detection/references/).
-_Z_SCORE_BORNE = 50.0
-_M_SCORE_BORNE = 20.0
+# Bornes de plausibilité — au-delà, la valeur trahit une donnée d'entrée corrompue (ou une
+# sortie LLM erronée). Calibrées larges depuis Sprint 128 : les scores sont désormais calculés
+# de façon déterministe en Python ; un Altman Z à composante market-value (X4 = capitalisation /
+# passifs) peut légitimement dépasser 50 pour une société très peu endettée (X4 élevé) — borner
+# à 50 supprimerait silencieusement earnings_quality (skill optionnel) pour les sociétés les plus
+# saines. Les bornes restent une 2ᵉ ligne de défense contre une entrée aberrante (passifs ≈ 0).
+_Z_SCORE_BORNE = 200.0
+_M_SCORE_BORNE = 30.0
 
 
 class EarningsQualityRatios(BaseModel):
@@ -23,7 +27,9 @@ class EarningsQualityRatios(BaseModel):
     cogs_t: float
     cogs_t1: float
     net_income_t: float
+    net_income_t1: float | None = None
     cfo_t: float
+    cfo_t1: float | None = None
     ebit_t: float | None = None
     sga_t: float | None = None
     sga_t1: float | None = None

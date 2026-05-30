@@ -1,12 +1,12 @@
-# Sprint 128 — Calculs financiers déterministes en Python (le pivot)
+# Sprint 129 — Conformité : disclaimers & avertissement de risque
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.14.0 — Sprint 127 complété)
+## État du projet (v10.15.0 — Sprint 128 complété)
 
-**Origine de ce sprint** — Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1), défaut existentiel. Le Sprint 127 a fixé `temperature=0` (reproductibilité) et ajouté des garde-fous de plausibilité (rejet NaN/inf + bornes larges) sur les scores `earnings_quality`. Mais les scores phares (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Graham Number, ossature DCF) sont **toujours produits par le LLM**, donc ni numériquement fiables ni auditables. Sprint 128 rapatrie ces calculs en Python : le LLM **commente** des chiffres calculés au lieu de les produire.
+**Origine de ce sprint** — Suite de la file issue de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Le Sprint 128 a rapatrié les scores financiers phares en Python (déterministes, auditables). Le système émet désormais des verdicts d'achat/vente explicites, fiables… mais **sans aucun disclaimer** : exposition réglementaire (AMF/SEC/MiFID) si diffusé. Sprint 129 ajoute l'avertissement « recherche éducative — pas un conseil financier » dans l'UI et les rapports PDF.
 
 > **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas (cf. `.claude/rules/workflow-sprint.md`).
 
@@ -15,67 +15,64 @@
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (pointeurs vers `.claude/rules/`)
-2. `ROADMAP.md` — état courant v10.14.0, Sprint 127 ✅
-3. `.claude/rules/donnees-financieres.md` — validation `None`/div0, valeurs aberrantes, traçabilité source+date (cœur du sprint : c'est la discipline de calcul financier qu'on encode en Python)
-4. `.claude/rules/base-connaissances-skills.md` — protocole obligatoire : lire les `SKILL.md` + `references/*.md` AVANT de coder les formules (les seuils et formules font foi : `.claude/skills/earnings-quality-fraud-detection/references/{altman-z-score,beneish-m-score,piotroski-f-score,montier-c-score,sloan-accruals}.md`)
-5. `.claude/rules/api-skills-tier2.md` — schemas Pydantic font foi, pattern `execute()`, recâblage des skills
+2. `ROADMAP.md` — état courant v10.15.0, Sprint 128 ✅
+3. `.claude/rules/conventions-frontend.md` — React 18, TS strict, test composant obligatoire (cœur du sprint : composant disclaimer + tests)
+4. `.claude/rules/securite.md` — pas de secret/donnée sensible exposée (le disclaimer touche les surfaces publiques : UI résultats, pied de page, PDF)
 
 ---
 
-## TÂCHE — Sprint 128 : Calculs financiers déterministes en Python
+## TÂCHE — Sprint 129 : Conformité réglementaire (disclaimers)
 
-**Objectif** : créer un module de calcul Python déterministe pour les scores aujourd'hui délégués au LLM, et recâbler les skills pour qu'ils reçoivent les scores **calculés** (le LLM interprète/commente, il ne les produit plus). Réduit la non-fiabilité numérique et rend chaque score auditable.
+**Objectif** : afficher un avertissement clair « Ce système produit de la recherche éducative — pas un conseil financier. Investir comporte un risque de perte en capital. » à chaque endroit où un verdict actionnable est présenté : résultats d'analyse, pied de page global, et rapports PDF générés.
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Scores remplis par le LLM** (EXISTANT, à recâbler) — `app/skills/tier2/earnings_quality/schemas.py` : `MScoreDetail`:78 (`m_score`:87), `ZScoreDetail`:99 (`z_score`:101), `FScoreDetail`:119 (`f_score`:121), `CScoreDetail`:131 (`c_score`:133), `SloanDetail`:137 (`accrual_ratio`:138). Le Sprint 127 borne déjà ces valeurs (NaN/inf + plausibilité) — Sprint 128 les **produit** au lieu de les borner.
-2. **Inputs bruts déjà extraits** (EXISTANT) — `app/skills/tier1/yahoo_finance.py` : `extract`:156 (Graham), `extract_earnings_quality`:234 (les 2 exercices nécessaires au M/Z/F/C/Sloan), `extract_valuation`:370 (DCF). `EarningsQualityRatios` (`app/skills/tier2/earnings_quality/schemas.py:14`) porte déjà les champs T/T-1 nécessaires aux formules.
-3. **Matrice DCF produite par le LLM** (EXISTANT) — `app/skills/tier2/stock_valuation/schemas.py` : `SensitivityMatrix`:78 (`wacc_range`:79), `matrice_sensibilite`:91 ; validateur d'ordre/cohérence déjà en place (l.98).
-4. **Graham Number — n'existe nulle part en Python** (À CRÉER, vérifié : `grep "graham_number" app/` **vide** cette session) : produit aujourd'hui par le prompt graham. Formule canonique `√(22.5 × EPS × BVPS)` (cf. `.claude/rules/variables-financieres.md`, ligne `graham_number`).
+1. **Aucun disclaimer aujourd'hui** (vérifié : `grep -rni "disclaimer|conseil financier|recherche éducative" app/ frontend/src/` **vide** cette session) — À CRÉER intégralement.
+2. **Verdicts actionnables émis** (EXISTANT) — ex. `app/skills/tier2/fisher_scuttlebutt/schemas.py:32` (`verdict: ACHAT_FORT|ACHAT|CONSERVER|EVITER`, validateur :49). Tous les skills tier2 émettent un verdict du même type — c'est ce qui crée l'exposition réglementaire.
+3. **Génération PDF** (EXISTANT) — `app/services/pdf_report_service.py` : `_build_verdicts_rows`:144, `_table_verdicts`:182 (table des verdicts par skill). Le bloc disclaimer s'insère dans le `story` ReportLab, après la table des verdicts.
 
 ### Spécification
 
-1. **Module de calcul** `app/services/financial_calculations.py` (nouveau) — fonctions pures, typées, async-free (calcul CPU) :
-   - `altman_z_score(...)`, `beneish_m_score(...)`, `piotroski_f_score(...)`, `montier_c_score(...)`, `sloan_accrual_ratio(...)`, `graham_number(eps, bvps)`. Chaque fonction lit ses formules/seuils dans les `references/` (NE PAS inventer les coefficients — les recopier depuis les fichiers de référence). Retour `float | None` avec `None` si une donnée requise manque (jamais d'exception sur donnée absente — cf. `donnees-financieres.md`).
-   - Variantes Z (original/Z'/Z'') : choisir selon le profil ou exposer la variante en paramètre ; les banques/assureurs (`is_financial`) → `None` (modèle inapplicable, documenté dans les références).
-2. **Recâblage des skills** — `earnings_quality` et `graham_analysis` (et `stock_valuation` pour l'ossature DCF si le périmètre tient) : calculer les scores AVANT l'appel Claude, les passer au prompt comme données d'entrée, et demander au LLM d'**interpréter** (pas de recalculer). Décider : soit le skill remplit les `*Detail.score` depuis le Python et le LLM ne fournit que `interpretation`/`drapeaux_rouges`, soit on conserve le schema et on substitue le score Python post-parse. Documenter le choix.
-3. **Ne pas casser** les garde-fous Sprint 127 (ils restent une 2ᵉ ligne de défense) ni les bornes `f_score ge=0 le=9` / `c_score ge=0 le=6`.
+1. **Frontend — composant `Disclaimer`** (`frontend/src/components/Disclaimer.tsx`, nouveau) : bandeau réutilisable (variante `inline` pour les résultats, variante `footer` discrète). Texte FR. `data-testid="disclaimer"`. Affiché dans `AnalysisResult.tsx` (haut ou bas du bloc résultats) et dans le shell global (pied de page de `App.tsx`).
+2. **PDF — bloc disclaimer** : ajouter au `story` de `pdf_report_service.py` (et, si le périmètre tient, aux rapports screener/watchlist/mensuel qui réutilisent le même service) un paragraphe d'avertissement avant/après la table des verdicts. Style discret mais lisible.
+3. **Texte centralisé** : une seule source de vérité pour le texte (constante TS partagée + constante Python) afin d'éviter la dérive de formulation entre UI et PDF.
 
 ### Tests obligatoires (pyramide)
-- **Unitaire** (`tests/services/test_financial_calculations.py`) : chaque fonction sur un cas connu (valeur attendue calculée à la main depuis les références) + cas `None`/div0 (donnée manquante → `None`, jamais d'exception) + cas banque → `None`. Vecteur de test idéal : un titre dont le Z/M est documenté (ex. Enron M-Score > -1.78 cité dans `beneish-m-score.md`).
-- **Intégration** (`tests/skills/`) : `earnings_quality.execute()` mocké → vérifier que le score retourné provient du calcul Python, pas du bloc LLM (injecter un score LLM différent et constater qu'il est ignoré/écrasé).
-- Aucune régression de la suite skills/orchestrateur.
+- **Composant** (`frontend/src/__tests__/Disclaimer.test.tsx`) : rend le texte attendu + présence dans `AnalysisResult` (happy path) ; variante footer.
+- **Unitaire/intégration backend** : un test sur `pdf_report_service` vérifiant que le `story` (ou les `Paragraph`) contient le texte du disclaimer pour un rapport ticker.
+- Aucune régression Vitest / pytest.
 
 ### ⚠️ Evals concernées
-Le sprint change ce que le LLM reçoit et produit (il commente au lieu de calculer) → **prompts de skills modifiés**. Si une clé Anthropic est disponible, lancer les `evals` ciblées (`tests/evals/`) sur `earnings_quality` + `graham_analysis` pour constater que les verdicts restent cohérents avec des scores désormais déterministes. Sinon, **le dire explicitement** plutôt que de prétendre les avoir passées (cf. Sprint 127 : aucune clé dans le conteneur web).
+**Aucune** — sprint d'affichage pur, aucun prompt de skill ni l'orchestrateur n'est modifié. (Le dire dans la note d'environnement.)
 
 ### Note d'environnement (session web)
-Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). Commandes :
+Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). Si le frontend manque des types (`@testing-library/jest-dom`, `vitest/globals`), lancer `cd frontend && npm install` (node_modules parfois partiel à l'amorçage).
 - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `.venv/bin/ruff check app/ tests/`
-- ⚠️ le cwd persiste entre commandes Bash — revenir à la racine avant les commandes backend
-- Stack Docker non démarrée → tests sur mocks. Sprint backend pur, sans migration ni frontend (sauf si le recâblage modifie la forme d'un champ exposé → alors mettre à jour `frontend/src/types/index.ts` + un test composant).
+- Frontend : `cd frontend && npm run typecheck && npm run lint && node node_modules/vitest/vitest.mjs run`
+- ⚠️ le cwd persiste entre commandes Bash — revenir à la racine avant les commandes backend.
+- Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 129 — Conformité : disclaimers & avertissement de risque
-**Objectif** : afficher « recherche éducative — pas un conseil financier » + avertissement de risque dans l'UI (résultats, pied de page) et dans les rapports PDF.
-**Complexité** : Faible
-**Justification** : le système émet des verdicts d'achat/vente explicites sans aucun disclaimer (revue §6) — exposition réglementaire (AMF/SEC/MiFID) si diffusé.
-**Référence** : EXISTANT (vérifié cette session) — **aucun** disclaimer (`grep -i "disclaimer\|conseil financier" app/ frontend/src/` vide) ; verdicts émis dans les schemas (ex. `app/skills/tier2/fisher_scuttlebutt/schemas.py:32`, validateur :49 — `ACHAT_FORT|ACHAT|CONSERVER|EVITER`) ; génération PDF `app/services/pdf_report_service.py` (fichier présent). À CRÉER — composant disclaimer (`frontend/src/components/`) + bloc dans le PDF.
-
 ### Sprint 130 — Données : honnêteté du label + repli multi-sources
 **Objectif** : corriger l'étiquette `eps_growth_10y` (en réalité ~4 ans) et ajouter un repli/seconde source quand `yfinance` échoue.
 **Complexité** : Moyenne
 **Justification** : source unique gratuite et retardée = SPOF + biais silencieux dans les seuils Graham (revue §2, §5).
-**Référence** : EXISTANT (vérifié cette session) — calcul ~4 ans `app/skills/tier1/yahoo_finance.py:18` (`_compute_eps_growth`) ; label trompeur `app/skills/tier2/graham_analysis/schemas.py:19` (`eps_growth_10y`, validateur :42). À CRÉER — renommage cohérent du champ (backend + `frontend/src/types/index.ts`) + couche de repli données.
+**Référence** : EXISTANT (vérifié cette session) — calcul `app/skills/tier1/yahoo_finance.py:18` (`_compute_eps_growth`), câblé l.202 ; label trompeur `app/skills/tier2/graham_analysis/schemas.py:20` (`eps_growth_10y`). À CRÉER — renommage cohérent du champ (backend + `frontend/src/types/index.ts`) + couche de repli données.
 
-### Sprint 131 — Auditabilité : persistance des intermédiaires de calcul
-**Objectif** : persister les variables intermédiaires des scores déterministes du Sprint 128 (X1-X5 du Z, les 8 ratios du M, etc.) pour qu'une analyse soit rejouable et explicable a posteriori.
+### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes
+**Objectif** : remplir EN PYTHON les sous-composantes des scores du Sprint 128 (X1-X5 du Z, les 8 indices du M) — aujourd'hui encore issues du LLM — et les persister pour qu'une analyse soit rejouable et explicable.
 **Complexité** : Moyenne
-**Justification** : sans les intermédiaires, un score calculé reste une boîte noire pour l'utilisateur — l'auditabilité promise par le Sprint 128 n'est complète qu'avec la trace.
-**Référence** : DÉPEND du Sprint 128 (module `app/services/financial_calculations.py` à créer). Les `*Detail` d'`earnings_quality` portent déjà les sous-composantes (`MScoreDetail.dsri/gmi/...` `app/skills/tier2/earnings_quality/schemas.py:79-86`) — À VÉRIFIER après Sprint 128 si elles sont remplies par le Python. Persistance via `analysis_history` (table EXISTANTE).
+**Justification** : le Sprint 128 ne rend déterministe que le score agrégé ; les `*Detail` (dsri, gmi…) restent LLM (cf. « Limites connues » du bloc Sprint 128 dans `ROADMAP.md`) — l'auditabilité n'est complète qu'avec la trace des intermédiaires.
+**Référence** : DÉPEND du Sprint 128 — `app/services/financial_calculations.py` (créé). Les champs cibles existent : `MScoreDetail.dsri/gmi/...` `app/skills/tier2/earnings_quality/schemas.py:79-86`. Persistance via `analysis_history` (table EXISTANTE, `infra/postgres/init.sql:4`).
+
+### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation)
+**Objectif** : étendre l'approche Sprint 128 à la valorisation — calculer en Python l'ossature DCF (WACC, valeur actualisée, matrice de sensibilité) et laisser le LLM commenter la narrative.
+**Complexité** : Élevée
+**Justification** : `stock_valuation` produit encore une matrice de sensibilité entièrement LLM — même défaut de fiabilité numérique que les scores avant Sprint 128.
+**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier2/stock_valuation/schemas.py:78` (`SensitivityMatrix`, `wacc_range`:79), `matrice_sensibilite`:91, validateur de cohérence l.109-115. À CRÉER — fonction DCF déterministe dans `app/services/financial_calculations.py` + recâblage du skill.
 
 ---
 
@@ -83,14 +80,12 @@ Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setu
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.14.0), .claude/rules/donnees-financieres.md,
-base-connaissances-skills.md et api-skills-tier2.md avant de commencer.
-Sprint actif : 128 — Calculs financiers déterministes en Python : créer
-app/services/financial_calculations.py (Altman Z, Beneish M, Piotroski F, Montier C,
-Sloan, Graham Number) avec formules/seuils RECOPIÉS depuis .claude/skills/.../references/,
-puis recâbler earnings_quality + graham_analysis pour que le LLM COMMENTE des scores
-calculés en Python (il ne les produit plus). Gestion None/div0/banques → None sans exception.
-Tests unitaires (cas connu calculé à la main + None + banque) + intégration (score Python
-prime sur le bloc LLM) obligatoires. Prompts de skills modifiés → lancer les evals ciblées
-si clé Anthropic dispo, sinon le dire explicitement.
+Lis CLAUDE.md, ROADMAP.md (v10.15.0), .claude/rules/conventions-frontend.md et
+.claude/rules/securite.md avant de commencer.
+Sprint actif : 129 — Conformité (disclaimers) : créer un composant Disclaimer réutilisable
+(frontend/src/components/Disclaimer.tsx) affiché dans AnalysisResult + pied de page global,
+et un bloc disclaimer dans les rapports PDF (app/services/pdf_report_service.py), avec un
+texte centralisé (constante partagée TS + Python). Aucun prompt de skill modifié → evals
+non concernées. Tests composant (Disclaimer) + test backend (le story PDF contient le texte)
+obligatoires.
 ```

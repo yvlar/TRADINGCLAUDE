@@ -8,20 +8,38 @@ from typing import Any, ClassVar
 import anthropic
 
 from app.rag.service import RagService
+from app.services.financial_calculations import graham_number
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
 from app.utils.tool_schema import build_tool_schema
 
-from .schemas import GrahamAnalysisInput, GrahamAnalysisOutput
+from .schemas import GrahamAnalysisInput, GrahamAnalysisOutput, GrahamRatios
 
 logger = logging.getLogger(__name__)
 
 # Schéma dérivé de Pydantic — computed_fields et champs post-assignés exclus.
+# graham_number est calculé en Python et injecté post-parse — jamais produit par le LLM.
 _GRAHAM_TOOL_SCHEMA = build_tool_schema(
     GrahamAnalysisOutput,
-    exclude={"defensive_score", "defensive_verdict", "confidence_score", "citations", "cost_usd"},
+    exclude={
+        "defensive_score",
+        "defensive_verdict",
+        "confidence_score",
+        "citations",
+        "cost_usd",
+        "graham_number",
+    },
 )
+
+
+def _bpa_effectif(ratios: GrahamRatios) -> float | None:
+    """BPA TTM fourni, ou reconstitué via price/pe quand absent (cf. schema GrahamRatios)."""
+    if ratios.eps_ttm is not None:
+        return ratios.eps_ttm
+    if ratios.pe is not None and ratios.pe != 0:
+        return ratios.price / ratios.pe
+    return None
 
 
 class GrahamAnalysisSkill(SkillBase):
@@ -97,6 +115,16 @@ class GrahamAnalysisSkill(SkillBase):
         parts.append(
             f"Analyse les ratios financiers de **{input_data.ticker}** :\n\n"
             f"```json\n{ratios_json}\n```\n\n"
+        )
+
+        gn = graham_number(_bpa_effectif(input_data.ratios), input_data.ratios.book_value)
+        if gn is not None:
+            parts.append(
+                f"**Nombre de Graham** (calculé en Python, déterministe) : {gn:.2f} — "
+                "compare-le au cours pour juger la sous-évaluation ; ne le recalcule pas.\n\n"
+            )
+
+        parts.append(
             "Applique les 8 critères défensifs et les 5 critères entrepreneuriaux de Graham. "
             "Retourne l'analyse structurée via l'outil graham_output."
         )
@@ -145,6 +173,10 @@ class GrahamAnalysisSkill(SkillBase):
 
         data = dict(tool_use_block.input)
         data["citations"] = []
+        # Score déterministe calculé en Python — prime sur toute valeur LLM (Sprint 128).
+        data["graham_number"] = graham_number(
+            _bpa_effectif(input_data.ratios), input_data.ratios.book_value
+        )
 
         cost_usd = calculate_cost(response.usage, self._model)
 

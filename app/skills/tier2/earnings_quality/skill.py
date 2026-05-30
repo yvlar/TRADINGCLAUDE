@@ -2,26 +2,164 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
 import anthropic
 
 from app.rag.service import RagService
+from app.services.financial_calculations import (
+    altman_z_score,
+    beneish_m_score,
+    montier_c_score,
+    piotroski_f_score,
+    sloan_accrual_ratio,
+)
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
 from app.utils.tool_schema import build_tool_schema
 
-from .schemas import EarningsQualityInput, EarningsQualityOutput
+from .schemas import EarningsQualityInput, EarningsQualityOutput, EarningsQualityRatios
 
 logger = logging.getLogger(__name__)
 
-# Schéma dérivé de Pydantic — computed_field confidence_score et champs post-assignés exclus.
+# Schéma dérivé de Pydantic — confidence_score (computed) et champs post-assignés exclus.
+# Les scores numériques restent dans le schéma (le LLM les peuple) mais sont écrasés
+# post-parse par les valeurs Python déterministes (Sprint 128).
 _EARNINGS_TOOL_SCHEMA = build_tool_schema(
     EarningsQualityOutput,
     exclude={"confidence_score", "citations", "cost_usd"},
 )
+
+
+@dataclass(frozen=True)
+class _ScoresDeterministes:
+    """Scores calculés en Python — autorité sur les valeurs produites par le LLM."""
+
+    m_score: float | None
+    z_score: float | None
+    z_variante: str
+    f_score: int | None
+    c_score: int | None
+    accrual_ratio: float | None
+
+
+def _scores_depuis_ratios(
+    ratios: EarningsQualityRatios, is_financial: bool
+) -> _ScoresDeterministes:
+    """Mappe EarningsQualityRatios → les cinq scores déterministes (financial_calculations)."""
+    return _ScoresDeterministes(
+        m_score=beneish_m_score(
+            receivables_t=ratios.receivables_t,
+            receivables_t1=ratios.receivables_t1,
+            sales_t=ratios.sales_t,
+            sales_t1=ratios.sales_t1,
+            cogs_t=ratios.cogs_t,
+            cogs_t1=ratios.cogs_t1,
+            current_assets_t=ratios.current_assets_t,
+            current_assets_t1=ratios.current_assets_t1,
+            ppe_net_t=ratios.ppe_net_t,
+            ppe_net_t1=ratios.ppe_net_t1,
+            total_assets_t=ratios.total_assets_t,
+            total_assets_t1=ratios.total_assets_t1,
+            depreciation_t=ratios.depreciation_t,
+            depreciation_t1=ratios.depreciation_t1,
+            sga_t=ratios.sga_t,
+            sga_t1=ratios.sga_t1,
+            net_income_t=ratios.net_income_t,
+            cfo_t=ratios.cfo_t,
+            ltd_t=ratios.ltd_t,
+            ltd_t1=ratios.ltd_t1,
+            current_liabilities_t=ratios.current_liabilities_t,
+            current_liabilities_t1=ratios.current_liabilities_t1,
+            is_financial=is_financial,
+        ),
+        z_score=altman_z_score(
+            current_assets=ratios.current_assets_t,
+            current_liabilities=ratios.current_liabilities_t,
+            retained_earnings=ratios.retained_earnings_t,
+            ebit=ratios.ebit_t,
+            total_assets=ratios.total_assets_t,
+            total_liabilities=ratios.total_liabilities_t,
+            sales=ratios.sales_t,
+            market_value_equity=ratios.market_cap_t,
+            book_value_equity=ratios.book_equity_t,
+            variant="original",
+            is_financial=is_financial,
+        ),
+        z_variante="Z_original",
+        f_score=piotroski_f_score(
+            net_income_t=ratios.net_income_t,
+            total_assets_t=ratios.total_assets_t,
+            total_assets_t1=ratios.total_assets_t1,
+            net_income_t1=ratios.net_income_t1,
+            cfo_t=ratios.cfo_t,
+            ltd_t=ratios.ltd_t,
+            ltd_t1=ratios.ltd_t1,
+            current_assets_t=ratios.current_assets_t,
+            current_liabilities_t=ratios.current_liabilities_t,
+            current_assets_t1=ratios.current_assets_t1,
+            current_liabilities_t1=ratios.current_liabilities_t1,
+            sales_t=ratios.sales_t,
+            sales_t1=ratios.sales_t1,
+            cogs_t=ratios.cogs_t,
+            cogs_t1=ratios.cogs_t1,
+            shares_issued_net=ratios.shares_issued_net,
+            is_financial=is_financial,
+        ),
+        c_score=montier_c_score(
+            net_income_t=ratios.net_income_t,
+            cfo_t=ratios.cfo_t,
+            net_income_t1=ratios.net_income_t1,
+            cfo_t1=ratios.cfo_t1,
+            receivables_t=ratios.receivables_t,
+            receivables_t1=ratios.receivables_t1,
+            sales_t=ratios.sales_t,
+            sales_t1=ratios.sales_t1,
+            inventory_t=ratios.inventory_t,
+            inventory_t1=ratios.inventory_t1,
+            cogs_t=ratios.cogs_t,
+            cogs_t1=ratios.cogs_t1,
+            depreciation_t=ratios.depreciation_t,
+            depreciation_t1=ratios.depreciation_t1,
+            ppe_gross_t=ratios.ppe_gross_t,
+            ppe_gross_t1=ratios.ppe_gross_t1,
+            total_assets_t=ratios.total_assets_t,
+            total_assets_t1=ratios.total_assets_t1,
+        ),
+        accrual_ratio=sloan_accrual_ratio(
+            net_income_t=ratios.net_income_t,
+            cfo_t=ratios.cfo_t,
+            total_assets_t=ratios.total_assets_t,
+            total_assets_t1=ratios.total_assets_t1,
+        ),
+    )
+
+
+def _fmt(valeur: float | int | None) -> str:
+    """Rend un score pour le prompt — DONNÉES_MANQUANTES si non calculable."""
+    if valeur is None:
+        return "DONNÉES_MANQUANTES"
+    return f"{valeur:.3f}" if isinstance(valeur, float) else str(valeur)
+
+
+def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None:
+    """
+    Écrase les scores numériques du bloc LLM par les valeurs Python (Sprint 128).
+    Les champs entiers (f/c_score) n'acceptent pas None — si le calcul Python échoue
+    (donnée manquante / financière), la valeur LLM est conservée pour respecter le schéma.
+    """
+    data.setdefault("m_score", {})["m_score"] = scores.m_score
+    z = data.setdefault("z_score", {})
+    z["z_score"] = scores.z_score
+    z["variante"] = scores.z_variante
+    data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio
+    if scores.f_score is not None:
+        data.setdefault("f_score", {})["f_score"] = scores.f_score
+    if scores.c_score is not None:
+        data.setdefault("c_score", {})["c_score"] = scores.c_score
 
 
 class EarningsQualitySkill(SkillBase):
@@ -113,8 +251,24 @@ class EarningsQualitySkill(SkillBase):
             f"Analyse la qualité des bénéfices de **{input_data.ticker}** "
             f"via les cinq cadres (M-Score, Z-Score, F-Score, C-Score, Accruals) :\n\n"
             f"```json\n{ratios_json}\n```\n\n"
-            "Retourne l'analyse structurée via l'outil earnings_quality_output."
         )
+
+        # Scores calculés en Python (déterministes) — le LLM les interprète, ne les recalcule pas.
+        # is_financial=False ici car le secteur n'est connu qu'après l'appel ; le gate sectoriel
+        # définitif (M/Z/F → None pour une financière) est appliqué post-parse dans execute().
+        scores = _scores_depuis_ratios(input_data.ratios, is_financial=False)
+        parts.append(
+            "## Scores déterministes (calculés en Python — interprète-les, ne les recalcule pas)\n"
+            f"- M-Score (Beneish) : {_fmt(scores.m_score)}\n"
+            f"- Z-Score (Altman, {scores.z_variante}) : {_fmt(scores.z_score)}\n"
+            f"- F-Score (Piotroski) : {_fmt(scores.f_score)}\n"
+            f"- C-Score (Montier) : {_fmt(scores.c_score)}\n"
+            f"- Accruals (Sloan) : {_fmt(scores.accrual_ratio)}\n"
+            "Ces valeurs font autorité et remplaceront les tiennes ; concentre-toi sur "
+            "l'interprétation, les drapeaux rouges et le verdict.\n\n"
+        )
+
+        parts.append("Retourne l'analyse structurée via l'outil earnings_quality_output.")
 
         return "\n".join(parts)
 
@@ -159,6 +313,11 @@ class EarningsQualitySkill(SkillBase):
 
         data = dict(tool_use_block.input)
         data["citations"] = []
+        # Substitution déterministe (Sprint 128) : les scores Python priment sur le bloc LLM.
+        # Le gate sectoriel utilise le drapeau is_financial classé par le LLM (M/Z/F → None pour
+        # une financière, conformément aux références qui excluent banques/assureurs/REIT).
+        is_financial = bool(data.get("is_financial", False))
+        _injecter_scores(data, _scores_depuis_ratios(input_data.ratios, is_financial))
 
         cost_usd = calculate_cost(response.usage, self._model)
 

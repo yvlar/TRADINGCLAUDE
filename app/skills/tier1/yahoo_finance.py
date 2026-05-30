@@ -334,6 +334,8 @@ class YahooFinanceExtractor:
 
         return EarningsQualityRatios(
             **required_vals,
+            net_income_t1=_val(income_ni, 1),
+            cfo_t1=_val(cf_ops, 1),
             ebit_t=_val(income_ebit, 0),
             sga_t=_val(income_sga, 0),
             sga_t1=_val(income_sga, 1),
