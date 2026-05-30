@@ -10,6 +10,25 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅
+
+**Objectif :** Le Sprint 128 a rendu déterministes les *scores agrégés* d'`earnings_quality` (Altman Z, Beneish M, Piotroski F, Montier C, Sloan), mais leurs *sous-composantes* restaient produites par le LLM — auditabilité incomplète (cf. « Limites connues » du Sprint 128). Calculer EN PYTHON les 8 indices du M-Score (DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI) et les termes X1-X5 du Z-Score, puis les substituer post-parse (comme les scores agrégés) pour qu'une analyse soit entièrement rejouable et explicable. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
+
+**Livrables :**
+- `app/services/financial_calculations.py` — deux dataclasses `BeneishComponents` (8 indices + `m_score`) et `AltmanComponents` (X1-X5 + `variante` + `z_score`) ; nouvelles fonctions pures `beneish_m_score_detail()` et `altman_z_score_detail()` exposant chaque intermédiaire (un indice/terme calculable est exposé **même si le score agrégé est `None`** — auditabilité partielle). `beneish_m_score()`/`altman_z_score()` deviennent de minces délégateurs (`.m_score`/`.z_score`) — comportement agrégé strictement préservé. `is_financial=True` → tous les intermédiaires `None`. Variante service exclut X5 ; X4 = market value (original) ou book equity (private/service)
+- `app/skills/tier2/earnings_quality/schemas.py` — `ZScoreDetail` gagne `x1`-`x5` (`FiniteFloatOrNone`, **défaut `None`** : rétrocompatible avec les analyses persistées avant ce sprint, rechargées via `report.py`). `MScoreDetail` portait déjà les 8 indices (peuplés par le LLM jusqu'ici)
+- `app/skills/tier2/earnings_quality/skill.py` — `_ScoresDeterministes` porte désormais les dataclasses `m`/`z` ; `_injecter_scores` substitue les 8 indices + X1-X5 via `asdict().update()` (les noms de champs des dataclasses miroitent le schéma → substitution en bloc, `interpretation` LLM préservé). Gate sectoriel `is_financial` post-parse conservé
+- `app/skills/tier2/earnings_quality/prompts/system.md` — note « scores calculés en amont » étendue aux sous-composantes ; X1-X5 ajoutés à l'exemple JSON
+- Persistance : aucune migration — l'output JSON (`earnings_output.model_dump()` → `analysis_history.result`, `core.py:1696`) porte déjà les `*Detail` enrichis (confirmé par `grep`)
+- Tests : unitaires `test_financial_calculations.py` (indices Beneish stable = 1.0/TATA=0 ; termes Altman X1-X5 connus ; cohérence agrégé↔détail ; indice/terme partiel exposé alors que le score est `None` ; banque → tout `None`) ; intégration `test_earnings_quality.py` (indices/termes Python priment sur un bloc LLM aberrant + persistés ; financière → indices/termes annulés)
+
+**Limites connues :** les signaux détaillés du F-Score (`criteria[].passe`) et du C-Score (`signaux[].present`) restent interprétés par le LLM (seuls leurs scores agrégés sont déterministes depuis Sprint 128) — hors périmètre nommé du sprint (indices Beneish + termes Altman). L'UI (`EarningsQualitySection.tsx`) n'affiche pas encore X1-X5 (déjà rendus pour le M-Score) — affichage = sprint futur ; les valeurs sont néanmoins persistées et auditables dans le JSON.
+
+**Version** : 10.18.0
+**Tests** : 1 544 backend collectés (1 540 passés, 3 skipped, 1 xfailed — +11) ; 414 Vitest verts (inchangé, sprint backend pur) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — le prompt `earnings_quality` est modifié (note + exemple JSON) → **evals `earnings_quality` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (vérifié : la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe des intermédiaires est validée sur payloads construits (le bloc LLM injecte un indice/terme aberrant, la valeur Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 130 — Données : honnêteté du label + repli multi-sources ✅
 
 **Objectif :** Le champ `eps_growth_10y` annonçait « 10 ans » mais `_compute_eps_growth` calcule en réalité la croissance sur l'horizon disponible (~4 ans) ; et `yfinance` est une source unique (SPOF). Corriger le label trompeur de bout en bout, exposer l'horizon réel, et ajouter un repli quand la source primaire ne renvoie rien. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §2, §5).

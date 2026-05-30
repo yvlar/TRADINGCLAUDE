@@ -15,9 +15,9 @@ class GrahamRatios(BaseModel):
     """Ratios financiers fournis manuellement par l'utilisateur en Phase 0."""
 
     pe: float | None = Field(None, description="Price/Earnings ratio (cours / BPA). None si société déficitaire sans BPA publiable.")
-    pb: float = Field(description="Price/Book ratio (cours / valeur comptable par action)")
+    pb: float | None = Field(None, description="Price/Book ratio (cours / valeur comptable par action). None si donnée absente de la source — jamais 0.0 trompeur.")
     current_ratio: float | None = Field(None, description="Actif circulant / Passif circulant (None pour les banques)")
-    debt_equity: float = Field(description="Dette totale / Capitaux propres")
+    debt_equity: float | None = Field(None, description="Dette totale / Capitaux propres. None si donnée absente de la source — jamais 0.0 trompeur.")
     eps_growth_total: float = Field(
         description="Croissance totale du BPA sur l'horizon réellement disponible (voir eps_growth_years, souvent ~4 ans — PAS 10). Format fraction (0.85 = 85 % total sur la période)"
     )
@@ -26,7 +26,7 @@ class GrahamRatios(BaseModel):
         description="Nombre d'années réellement couvertes par eps_growth_total. None si horizon inconnu (donnée absente ou repli de source).",
     )
     price: float = Field(description="Cours actuel de l'action")
-    book_value: float = Field(description="Valeur comptable par action (book value per share)")
+    book_value: float | None = Field(None, description="Valeur comptable par action (book value per share). None si donnée absente de la source — jamais 0.0 trompeur.")
     eps_ttm: float | None = Field(None, description="BPA des 12 derniers mois. Calculé price/pe si absent.")
     revenue_bn: float | None = Field(None, description="Revenus annuels en milliards de la devise du titre")
     dividend_years: int | None = Field(None, description="Nombre d'années consécutives de dividendes versés")
@@ -48,7 +48,7 @@ class GrahamRatios(BaseModel):
                 "GrahamRatios: P/E négatif (pe=%.2f) — déficit ou BPA négatif", self.pe
             )
 
-        if self.pb < 0:
+        if self.pb is not None and self.pb < 0:
             _logger.warning(
                 "GrahamRatios: P/B négatif (pb=%.2f) — valeur comptable négative (cas extrême)", self.pb
             )

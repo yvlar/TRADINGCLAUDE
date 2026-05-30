@@ -212,6 +212,29 @@ async def test_graham_number_none_si_bpa_negatif(graham_output_msft: GrahamAnaly
 
 
 @pytest.mark.asyncio
+async def test_graham_execute_ratios_none_ne_plante_pas(graham_output_msft: GrahamAnalysisOutput):
+    """Ratios primaires absents (pb/book_value/debt_equity None) → execute() OK, graham_number None."""
+    skill = _make_graham_skill()
+    tool_input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score", "graham_number"}
+    )
+    mock_response = _make_mock_response(tool_input)
+
+    # Données manquantes honnêtes : aucun 0.0 trompeur, BVPS absent → graham_number incalculable
+    input_data = GrahamAnalysisInput(
+        ticker="TST",
+        ratios=GrahamRatios(pe=None, pb=None, current_ratio=None, debt_equity=None,
+                            eps_growth_total=0.0, price=100.0, book_value=None),
+    )
+
+    with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
+               new_callable=AsyncMock, return_value=mock_response):
+        output, _ = await skill.execute(input_data)
+
+    assert output.graham_number is None
+
+
+@pytest.mark.asyncio
 async def test_graham_execute_leve_value_error_sans_tool_use_block():
     """execute() doit lever ValueError si la réponse ne contient aucun bloc tool_use."""
     skill = _make_graham_skill()

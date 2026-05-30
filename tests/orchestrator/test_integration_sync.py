@@ -27,15 +27,14 @@ BODY_TEST = {
     },
 }
 
-BODY_SANS_PB = {
-    # pb manquant — pe est optionnel depuis Sprint 36, pb reste requis
+BODY_SANS_PRICE = {
+    # price manquant — pb/debt_equity/book_value optionnels (pb depuis Sprint 135), price reste requis
     "ticker": TICKER_TEST,
     "ratios": {
         "pe": 11.0,
         "current_ratio": 2.0,
         "debt_equity": 0.30,
         "eps_growth_total": 0.30,
-        "price": 100.0,
         "book_value": 66.0,
     },
 }
@@ -78,7 +77,7 @@ async def test_analyze_skills_applied_contient_graham(client):
 
 
 async def test_analyze_ratios_manquants_422(client):
-    r = await client.post("/analyze", json=BODY_SANS_PB)
+    r = await client.post("/analyze", json=BODY_SANS_PRICE)
     assert r.status_code == 422
 
 
