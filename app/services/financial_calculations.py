@@ -45,6 +45,15 @@ def _somme(a: float | None, b: float | None) -> float | None:
     return a + b if a is not None and b is not None else None
 
 
+def _part_non_courante(
+    current_assets: float | None, ppe: float | None, total_assets: float | None
+) -> float | None:
+    """Part des actifs « non tangibles » (AQI Beneish) : 1 - (CA + PPE) / TA. Securities = 0."""
+    if current_assets is None or ppe is None or total_assets is None or total_assets == 0:
+        return None
+    return 1 - (current_assets + ppe) / total_assets
+
+
 def graham_number(eps: float | None, bvps: float | None) -> float | None:
     """
     Nombre de Graham : √(22.5 × EPS × BVPS) (variables-financieres.md).
@@ -91,8 +100,7 @@ def altman_z_score(
     if variant == "service":
         # Z'' — exclut X5, X4 = book equity / total liabilities
         x4 = _ratio(book_value_equity, total_liabilities)
-        composantes = (x1, x2, x3, x4)
-        if any(c is None for c in composantes):
+        if x1 is None or x2 is None or x3 is None or x4 is None:
             return None
         a, b, c, d = _Z_SERVICE
         return a * x1 + b * x2 + c * x3 + d * x4
@@ -100,16 +108,14 @@ def altman_z_score(
     if variant == "private":
         # Z' — X4 = book equity / total liabilities
         x4 = _ratio(book_value_equity, total_liabilities)
-        composantes = (x1, x2, x3, x4, x5)
-        if any(c is None for c in composantes):
+        if x1 is None or x2 is None or x3 is None or x4 is None or x5 is None:
             return None
         a, b, c, d, e = _Z_PRIVATE
         return a * x1 + b * x2 + c * x3 + d * x4 + e * x5
 
     # original — X4 = market value of equity / total liabilities
     x4 = _ratio(market_value_equity, total_liabilities)
-    composantes = (x1, x2, x3, x4, x5)
-    if any(c is None for c in composantes):
+    if x1 is None or x2 is None or x3 is None or x4 is None or x5 is None:
         return None
     a, b, c, d, e = _Z_ORIGINAL
     return a * x1 + b * x2 + c * x3 + d * x4 + e * x5
@@ -158,16 +164,8 @@ def beneish_m_score(
     gmi = _ratio(gm_t1, gm_t)
 
     # AQI = (1 - (CA_t + PPE_t)/TA_t) / (1 - (CA_{t-1} + PPE_{t-1})/TA_{t-1})  [securities = 0]
-    aqi_t = (
-        1 - (current_assets_t + ppe_net_t) / total_assets_t
-        if None not in (current_assets_t, ppe_net_t, total_assets_t) and total_assets_t != 0
-        else None
-    )
-    aqi_t1 = (
-        1 - (current_assets_t1 + ppe_net_t1) / total_assets_t1
-        if None not in (current_assets_t1, ppe_net_t1, total_assets_t1) and total_assets_t1 != 0
-        else None
-    )
+    aqi_t = _part_non_courante(current_assets_t, ppe_net_t, total_assets_t)
+    aqi_t1 = _part_non_courante(current_assets_t1, ppe_net_t1, total_assets_t1)
     aqi = _ratio(aqi_t, aqi_t1)
 
     # SGI = Sales_t / Sales_{t-1}
@@ -189,8 +187,16 @@ def beneish_m_score(
     lev_t1 = _ratio(_somme(ltd_t1, current_liabilities_t1), total_assets_t1)
     lvgi = _ratio(lev_t, lev_t1)
 
-    indices = (dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi)
-    if any(i is None for i in indices):
+    if (
+        dsri is None
+        or gmi is None
+        or aqi is None
+        or sgi is None
+        or depi is None
+        or sgai is None
+        or tata is None
+        or lvgi is None
+    ):
         return None
 
     return (
