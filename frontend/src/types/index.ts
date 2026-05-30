@@ -57,6 +57,8 @@ export interface GrahamRatios {
   revenue_bn?: number | null
   dividend_years?: number | null
   no_deficit_years?: number | null
+  ratios_fetched_at?: string | null
+  ratios_source?: string | null
 }
 
 // ---- Critères Graham ----

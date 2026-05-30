@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.main import app
 from app.skills.tier1.yahoo_finance import (
+    RATIOS_SOURCE,
     YahooFinanceExtractor,
     _compute_dividend_years,
     _compute_eps_growth,
@@ -188,6 +189,18 @@ class TestYahooFinanceExtract:
         with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
             result = await extractor.extract("BNS")
         assert result.pe == pytest.approx(80.0 / 7.25, rel=0.01)
+
+    @pytest.mark.asyncio
+    async def test_extract_pose_source_et_date_recuperation(self):
+        """extract() horodate les ratios (UTC, au moment de l'extraction) et pose la source littérale."""
+        extractor = YahooFinanceExtractor()
+        avant = datetime.now(timezone.utc)
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_BNS_FINANCIER)):
+            result = await extractor.extract("BNS")
+        assert result.ratios_source == RATIOS_SOURCE
+        assert result.ratios_fetched_at is not None
+        assert result.ratios_fetched_at.tzinfo is not None
+        assert result.ratios_fetched_at >= avant
 
     @pytest.mark.asyncio
     async def test_timeout_gere(self):

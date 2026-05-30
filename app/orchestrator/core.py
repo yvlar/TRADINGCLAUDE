@@ -1687,7 +1687,8 @@ class Orchestrator:
             skills_list.append("esg_simplified")
         skills_used = _json.dumps(skills_list)
 
-        input_data = _json.dumps(request.ratios.model_dump() if request.ratios is not None else {})
+        # mode="json" : sérialise ratios_fetched_at (datetime) en ISO string pour _json.dumps
+        input_data = _json.dumps(request.ratios.model_dump(mode="json") if request.ratios is not None else {})
 
         result_dict: dict = {}
         if graham_output:

@@ -149,6 +149,37 @@ async def test_cache_key_differente_si_ratios_diff(
     assert key1 != key2
 
 
+async def test_cache_key_avec_tracabilite_ne_plante_pas(
+    cache: AnalysisCacheService, ratios_bns: GrahamRatios
+):
+    """Ratios horodatés (ratios_fetched_at datetime) → pas de TypeError json.dumps (Sprint 134)."""
+    from datetime import datetime, timezone
+
+    horodate = ratios_bns.model_copy(
+        update={
+            "ratios_fetched_at": datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+            "ratios_source": "Yahoo Finance",
+        }
+    )
+    key = cache._cache_key("BNS", "value_graham", horodate)
+    assert key.startswith("analysis:BNS:value_graham:")
+
+
+async def test_cache_key_ignore_horodatage_recuperation(
+    cache: AnalysisCacheService, ratios_bns: GrahamRatios
+):
+    """Deux extractions des mêmes ratios à des moments différents → même clé (cache effectif)."""
+    from datetime import datetime, timezone
+
+    t1 = ratios_bns.model_copy(
+        update={"ratios_fetched_at": datetime(2026, 5, 30, tzinfo=timezone.utc), "ratios_source": "Yahoo Finance"}
+    )
+    t2 = ratios_bns.model_copy(
+        update={"ratios_fetched_at": datetime(2026, 6, 15, tzinfo=timezone.utc), "ratios_source": "Yahoo Finance"}
+    )
+    assert cache._cache_key("BNS", "value_graham", t1) == cache._cache_key("BNS", "value_graham", t2)
+
+
 async def test_cache_ttl_transmis(
     mock_redis: AsyncMock,
     ratios_bns: GrahamRatios,

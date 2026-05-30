@@ -13,6 +13,11 @@ interface AnalyzeFormProps {
   initialTicker?: string
 }
 
+// Clés numériques éditables des ratios (exclut la traçabilité string : ratios_source / ratios_fetched_at)
+type NumericRatioKey = {
+  [K in keyof GrahamRatios]-?: NonNullable<GrahamRatios[K]> extends number ? K : never
+}[keyof GrahamRatios]
+
 const DEFAULT_RATIOS: GrahamRatios = {
   pe: 11.0,
   pb: 1.3,
@@ -65,7 +70,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
     }
   }
 
-  function setRatio(key: keyof GrahamRatios, val: string) {
+  function setRatio(key: NumericRatioKey, val: string) {
     setRatios((prev) => ({ ...prev, [key]: parseNum(val) }))
   }
 
@@ -137,7 +142,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
                 ['eps_ttm', 'EPS TTM'],
                 ['revenue_bn', 'Revenus (Md$)'],
                 ['dividend_years', 'Années dividendes'],
-              ] as [keyof GrahamRatios, string][]
+              ] as [NumericRatioKey, string][]
             ).map(([key, label]) => (
               <div key={key} className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground">{label}</label>
@@ -157,6 +162,12 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
               </div>
             ))}
           </div>
+          {ratios.ratios_fetched_at && (
+            <p className="text-xs text-muted-foreground mt-3" data-testid="ratios-source">
+              Source : {ratios.ratios_source ?? 'source n.d.'} · récupéré le{' '}
+              {ratios.ratios_fetched_at.slice(0, 10)}
+            </p>
+          )}
         </CardContent>
       </Card>
 

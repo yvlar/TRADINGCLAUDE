@@ -145,6 +145,30 @@ describe('AnalyzeForm', () => {
     })
   })
 
+  it('affiche la source et la date de récupération des ratios après Auto-fill', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce({
+      graham: {
+        ...MOCK_GRAHAM_RATIOS,
+        ratios_source: 'Yahoo Finance',
+        ratios_fetched_at: '2026-05-30T12:00:00Z',
+      },
+      earnings_quality: null,
+    })
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      const source = screen.getByTestId('ratios-source')
+      expect(source).toHaveTextContent('Yahoo Finance')
+      expect(source).toHaveTextContent('2026-05-30')
+    })
+  })
+
+  it('n’affiche pas la source des ratios avant Auto-fill', () => {
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    expect(screen.queryByTestId('ratios-source')).not.toBeInTheDocument()
+  })
+
   it("affiche un message d'erreur si ticker introuvable (404)", async () => {
     vi.mocked(getExtract).mockRejectedValueOnce(new ApiError(404, 'Not Found'))
     render(<AnalyzeForm onSubmit={vi.fn()} />)
