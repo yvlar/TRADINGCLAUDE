@@ -39,6 +39,32 @@ class TestCallClaudeWithRetry:
         assert call_kwargs["timeout"] == 42.0
 
     @pytest.mark.asyncio
+    async def test_temperature_zero_par_defaut(self):
+        """temperature=0 est injectée par défaut pour rendre les analyses reproductibles."""
+        mock_client = AsyncMock()
+        mock_client.messages.create.return_value = MagicMock()
+
+        await call_claude_with_retry(
+            mock_client, model="test", messages=[], max_tokens=10
+        )
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0
+
+    @pytest.mark.asyncio
+    async def test_temperature_explicite_non_ecrasee(self):
+        """Un temperature fourni explicitement par un skill n'est pas écrasé."""
+        mock_client = AsyncMock()
+        mock_client.messages.create.return_value = MagicMock()
+
+        await call_claude_with_retry(
+            mock_client, model="test", messages=[], max_tokens=10, temperature=0.7
+        )
+
+        call_kwargs = mock_client.messages.create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.7
+
+    @pytest.mark.asyncio
     async def test_retry_sur_erreur_529(self):
         """Retente sur APIStatusError 529, réussit au 2e essai."""
         mock_response = MagicMock()

@@ -94,6 +94,50 @@ class TestEarningsQualitySchemas:
     def test_cost_usd_defaut_zero(self, earnings_output_msft: EarningsQualityOutput):
         assert earnings_output_msft.cost_usd == 0.0
 
+    def test_z_score_infini_rejete(self, earnings_output_msft: EarningsQualityOutput):
+        """Un z_score non fini (inf) produit par le LLM est rejeté avant persistance."""
+        data = earnings_output_msft.model_dump()
+        data["z_score"]["z_score"] = float("inf")
+        with pytest.raises(ValidationError):
+            EarningsQualityOutput.model_validate(data)
+
+    def test_m_score_nan_rejete(self, earnings_output_msft: EarningsQualityOutput):
+        """Un m_score NaN produit par le LLM est rejeté avant persistance."""
+        data = earnings_output_msft.model_dump()
+        data["m_score"]["m_score"] = float("nan")
+        with pytest.raises(ValidationError):
+            EarningsQualityOutput.model_validate(data)
+
+    def test_accrual_ratio_infini_rejete(self, earnings_output_msft: EarningsQualityOutput):
+        """Tout ratio float|None exposé rejette NaN/inf (réflexe généralisé)."""
+        data = earnings_output_msft.model_dump()
+        data["sloan"]["accrual_ratio"] = float("-inf")
+        with pytest.raises(ValidationError):
+            EarningsQualityOutput.model_validate(data)
+
+    def test_z_score_hors_plage_rejete(self, earnings_output_msft: EarningsQualityOutput):
+        """Un z_score fini mais invraisemblable (|Z| > 50) est rejeté."""
+        data = earnings_output_msft.model_dump()
+        data["z_score"]["z_score"] = 999.0
+        with pytest.raises(ValidationError):
+            EarningsQualityOutput.model_validate(data)
+
+    def test_m_score_hors_plage_rejete(self, earnings_output_msft: EarningsQualityOutput):
+        """Un m_score fini mais invraisemblable (|M| > 20) est rejeté."""
+        data = earnings_output_msft.model_dump()
+        data["m_score"]["m_score"] = -75.0
+        with pytest.raises(ValidationError):
+            EarningsQualityOutput.model_validate(data)
+
+    def test_score_plausible_accepte(self, earnings_output_msft: EarningsQualityOutput):
+        """Un z_score/m_score dans les bornes plausibles passe sans erreur (pas de régression)."""
+        data = earnings_output_msft.model_dump()
+        data["z_score"]["z_score"] = 3.5
+        data["m_score"]["m_score"] = -2.1
+        output = EarningsQualityOutput.model_validate(data)
+        assert output.z_score.z_score == 3.5
+        assert output.m_score.m_score == -2.1
+
 
 class TestEarningsQualitySkill:
     @pytest.fixture
