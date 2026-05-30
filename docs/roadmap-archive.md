@@ -10,6 +10,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 129 — Conformité : disclaimers & avertissement de risque ✅
+
+**Objectif :** Le système émet des verdicts d'achat/vente explicites mais sans aucun disclaimer — exposition réglementaire (AMF/SEC/MiFID). Afficher un avertissement clair « recherche éducative — pas un conseil financier » à chaque endroit où un verdict actionnable est présenté : résultats d'analyse, pied de page global, et rapports PDF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill ni orchestrateur modifié.
+
+**Livrables :**
+- `app/services/disclaimer.py` (nouveau) — source de vérité unique du texte backend : `DISCLAIMER_TITLE`/`DISCLAIMER_TEXT` + helper `build_disclaimer_flowables()` (Spacer + HRFlowable + Paragraph discret) réutilisé tel quel par les 3 services PDF
+- `app/services/pdf_report_service.py` + `screener_pdf_service.py` + `watchlist_pdf_service.py` — `story.extend(build_disclaimer_flowables())` inséré avant le pied de page. `monthly_report_service.py` **non modifié** : il compose les PDF watchlist + screener qui portent désormais le disclaimer (pas de duplication)
+- `frontend/src/constants/disclaimer.ts` (nouveau) — source de vérité unique du texte frontend (`DISCLAIMER_HEADING`/`DISCLAIMER_TEXT`, aligné mot pour mot sur le backend)
+- `frontend/src/components/Disclaimer.tsx` (nouveau) — composant réutilisable, variantes `inline` (bandeau encadré) et `footer` (ligne discrète), `data-testid="disclaimer"`, `role="note"` ; affiché dans `AnalysisResult.tsx` (bas du bloc résultats) et dans le pied de page global de `App.tsx`
+- Tests : composant `frontend/src/__tests__/Disclaimer.test.tsx` (inline + footer + défaut + présence dans `AnalysisResult`) ; backend `tests/services/test_disclaimer.py` (helper ; story du rapport ticker / screener / watchlist contient le texte via capture de `SimpleDocTemplate.build`)
+
+**Version** : 10.16.0
+**Tests** : 1 526 backend collectés (1 522 passés, 3 skipped, 1 xfailed — +4) ; 412 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Stack Docker non démarrée → les rapports PDF sont exercés sur mocks (capture du `story` ReportLab, pas de rendu navigateur). Le `node_modules` frontend était partiel à l'amorçage → `npm install` exécuté. Pas de test navigateur live.
+
 ### Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅
 
 **Objectif :** Rapatrier en Python les scores financiers jusqu'ici produits par le LLM (donc ni numériquement fiables ni auditables). Le LLM **interprète** désormais des chiffres calculés au lieu de les produire. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend + touche frontend mineure.

@@ -4,6 +4,7 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { WorkflowSelector } from '../components/WorkflowSelector'
 import { ScreenerTable } from '../components/ScreenerTable'
+import { Disclaimer } from '../components/Disclaimer'
 import { SkeletonTable } from '../components/ui/skeleton'
 import { PageTransition } from '../components/PageTransition'
 import { postScreen, exportScreen, downloadScreenerPdf } from '../api/analyze'
@@ -155,6 +156,7 @@ export default function ScreenerPage() {
             workflow={result.workflow}
             durationMs={result.duration_ms}
           />
+          <Disclaimer variant="inline" />
         </>
       )}
     </div>

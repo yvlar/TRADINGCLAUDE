@@ -119,4 +119,21 @@ describe('ScreenerPage', () => {
     expect(screen.queryByTestId('export-csv')).not.toBeInTheDocument()
     expect(screen.queryByTestId('export-xlsx')).not.toBeInTheDocument()
   })
+
+  it('affiche le disclaimer de conformité une fois les résultats présents', async () => {
+    const user = userEvent.setup()
+    vi.mocked(analyzeApi.postScreen).mockResolvedValue(MOCK_RESULT)
+
+    render(<ScreenerPage />, { wrapper })
+    await user.click(screen.getByText('Lancer le screener'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('disclaimer')).toBeInTheDocument()
+    })
+  })
+
+  it("n'affiche pas le disclaimer sur la page vide (avant tout screener)", () => {
+    render(<ScreenerPage />, { wrapper })
+    expect(screen.queryByTestId('disclaimer')).not.toBeInTheDocument()
+  })
 })
