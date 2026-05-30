@@ -222,8 +222,10 @@ def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
         ("P/B", _fmt_num(r.pb)),
         ("Dette / Capitaux propres", _fmt_num(r.debt_equity)),
         (
-            "Croissance BPA 10 ans",
-            f"{r.eps_growth_10y:.0%}" if r.eps_growth_10y is not None else "—",
+            f"Croissance BPA sur {r.eps_growth_years} ans"
+            if r.eps_growth_years
+            else "Croissance BPA (horizon n.d.)",
+            f"{r.eps_growth_total:.0%}" if r.eps_growth_total is not None else "—",
         ),
         ("Ratio de liquidité", _fmt_num(r.current_ratio)),
     ]

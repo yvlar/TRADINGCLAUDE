@@ -15,20 +15,24 @@ from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 logger = logging.getLogger(__name__)
 
 
-def _compute_eps_growth(income: Any, shares: float) -> float:
+def _compute_eps_growth(income: Any, shares: float) -> tuple[float, int | None]:
     """
-    Calcule la croissance totale du BPA depuis income_stmt (horizon max disponible, ~4 ans).
-    Format : fraction totale (0.74 = +74 % sur la période). Retourne 0.0 si calcul impossible.
+    Calcule la croissance totale du BPA depuis income_stmt sur l'horizon réellement disponible.
+    Retourne (croissance_totale, horizon_ans) : croissance en fraction (0.74 = +74 %) et le
+    nombre d'années couvertes (intervalles entre exercices = nb de points - 1). Honnêteté du
+    label : N points annuels couvrent N-1 années de croissance, pas N (ni « 10 ans »).
+    Retourne (0.0, None) si le calcul est impossible — None signale « horizon inconnu », ce qui
+    déclenche le repli de source côté appelant.
     """
     if income is None or shares <= 0:
-        return 0.0
+        return 0.0, None
     ni_row = None
     for key in ("Net Income", "Net Income Common Stockholders", "NetIncome"):
         if key in income.index:
             ni_row = income.loc[key]
             break
     if ni_row is None:
-        return 0.0
+        return 0.0, None
     values: list[float] = []
     for v in ni_row:
         try:
@@ -38,13 +42,13 @@ def _compute_eps_growth(income: Any, shares: float) -> float:
         except (TypeError, ValueError):
             continue
     if len(values) < 2:
-        return 0.0
+        return 0.0, None
     # yfinance trie les colonnes du plus récent au plus ancien
     eps_recent = values[0] / shares
     eps_oldest = values[-1] / shares
     if eps_oldest <= 0:
-        return 0.0
-    return round((eps_recent / eps_oldest) - 1.0, 4)
+        return 0.0, None
+    return round((eps_recent / eps_oldest) - 1.0, 4), len(values) - 1
 
 
 def _compute_dividend_years(dividends: Any) -> int | None:
@@ -199,7 +203,21 @@ class YahooFinanceExtractor:
         revenue_bn: float | None = revenue / 1e9 if revenue is not None else None
 
         shares = info.get("sharesOutstanding")
-        eps_growth_10y = _compute_eps_growth(income, shares) if income is not None and shares else 0.0
+        eps_growth_total, eps_growth_years = (
+            _compute_eps_growth(income, shares) if income is not None and shares else (0.0, None)
+        )
+        # Repli de source : income_stmt absent/vide → utiliser info.earningsGrowth (croissance
+        # annuelle ~1 an publiée par yfinance), tracé explicitement plutôt que de tomber muettement
+        # à 0.0 (cf. donnees-financieres.md : toujours tracer la source, jamais d'exception).
+        if eps_growth_years is None:
+            fallback = info.get("earningsGrowth")
+            if fallback is not None:
+                eps_growth_total = float(fallback)
+                eps_growth_years = 1
+                logger.info(
+                    "eps_growth %s : repli sur info.earningsGrowth (horizon 1 an) faute d'income_stmt",
+                    ticker,
+                )
         dividend_years = _compute_dividend_years(dividends)
         no_deficit_years = _compute_no_deficit_years(income, shares) if income is not None and shares else None
 
@@ -208,7 +226,8 @@ class YahooFinanceExtractor:
             pb=info.get("priceToBook") or 0.0,
             current_ratio=None if is_financial else info.get("currentRatio"),
             debt_equity=debt_equity,
-            eps_growth_10y=eps_growth_10y,
+            eps_growth_total=eps_growth_total,
+            eps_growth_years=eps_growth_years,
             price=float(price),
             book_value=info.get("bookValue") or 0.0,
             eps_ttm=eps_ttm,

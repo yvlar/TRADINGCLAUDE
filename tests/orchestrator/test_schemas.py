@@ -112,7 +112,7 @@ class TestGrahamRatios:
     def test_champs_requis_valides(self):
         ratios = GrahamRatios(
             pe=15.0, pb=1.2, current_ratio=2.5, debt_equity=0.3,
-            eps_growth_10y=0.40, price=100.0, book_value=83.0,
+            eps_growth_total=0.40, price=100.0, book_value=83.0,
         )
         assert ratios.pe == 15.0
         assert ratios.pb == 1.2
@@ -123,7 +123,7 @@ class TestGrahamRatios:
     def test_champs_optionnels_absents_par_defaut_none(self):
         ratios = GrahamRatios(
             pe=10.0, pb=1.0, current_ratio=2.0,
-            debt_equity=0.2, eps_growth_10y=0.5,
+            debt_equity=0.2, eps_growth_total=0.5,
             price=50.0, book_value=50.0,
         )
         assert ratios.eps_ttm is None
@@ -141,7 +141,7 @@ class TestGrahamRatios:
         """pe=None est valide depuis Sprint 36 — sociétés sans bénéfices publiables (RIVN, NKLA…)."""
         ratios = GrahamRatios(
             pe=None, pb=1.0, current_ratio=2.0, debt_equity=0.2,
-            eps_growth_10y=0.3, price=50.0, book_value=50.0,
+            eps_growth_total=0.3, price=50.0, book_value=50.0,
         )
         assert ratios.pe is None
 
@@ -149,7 +149,7 @@ class TestGrahamRatios:
         """pe < 0 est valide — déficit explicite."""
         ratios = GrahamRatios(
             pe=-5.0, pb=1.0, current_ratio=2.0, debt_equity=0.2,
-            eps_growth_10y=0.3, price=50.0, book_value=50.0,
+            eps_growth_total=0.3, price=50.0, book_value=50.0,
         )
         assert ratios.pe == -5.0
 
@@ -157,15 +157,31 @@ class TestGrahamRatios:
         with pytest.raises(ValidationError):
             GrahamRatios(
                 pe=10.0, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=0.3, price=50.0, book_value=50.0,
+                eps_growth_total=0.3, price=50.0, book_value=50.0,
             )
 
     def test_eps_growth_negatif_accepte(self):
         ratios = GrahamRatios(
             pe=5.0, pb=0.5, current_ratio=1.5, debt_equity=0.5,
-            eps_growth_10y=-0.15, price=30.0, book_value=60.0,
+            eps_growth_total=-0.15, price=30.0, book_value=60.0,
         )
-        assert ratios.eps_growth_10y == -0.15
+        assert ratios.eps_growth_total == -0.15
+
+    def test_eps_growth_years_optionnel_defaut_none(self):
+        """eps_growth_years absent → None (horizon inconnu), pas d'erreur."""
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+        )
+        assert ratios.eps_growth_years is None
+
+    def test_eps_growth_years_renseigne(self):
+        """eps_growth_years exposé tel quel (horizon réel du calcul)."""
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, eps_growth_years=4, price=80.0, book_value=61.5,
+        )
+        assert ratios.eps_growth_years == 4
 
 
 class TestGrahamAnalysisInput:
@@ -668,7 +684,7 @@ class TestGrahamRatiosValidateurs:
         with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
             ratios = GrahamRatios(
                 pe=-5.0, pb=1.0, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=0.3, price=50.0, book_value=50.0,
+                eps_growth_total=0.3, price=50.0, book_value=50.0,
             )
         assert ratios.pe == -5.0
         assert "P/E négatif" in caplog.text
@@ -678,7 +694,7 @@ class TestGrahamRatiosValidateurs:
         with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
             ratios = GrahamRatios(
                 pe=10.0, pb=-0.5, current_ratio=1.5, debt_equity=0.3,
-                eps_growth_10y=0.2, price=50.0, book_value=-25.0,
+                eps_growth_total=0.2, price=50.0, book_value=-25.0,
             )
         assert ratios.pb == -0.5
         assert "P/B négatif" in caplog.text
@@ -688,10 +704,10 @@ class TestGrahamRatiosValidateurs:
         with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
             ratios = GrahamRatios(
                 pe=15.0, pb=2.0, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=6.5, price=100.0, book_value=50.0,
+                eps_growth_total=6.5, price=100.0, book_value=50.0,
             )
-        assert ratios.eps_growth_10y == 6.5
-        assert "eps_growth_10y" in caplog.text
+        assert ratios.eps_growth_total == 6.5
+        assert "eps_growth_total" in caplog.text
 
     def test_triangle_pe_incoherent_loggue_warning_sans_erreur(self, caplog):
         import logging
@@ -699,7 +715,7 @@ class TestGrahamRatiosValidateurs:
             # pe=15.0, price/eps_ttm = 100/3 ≈ 33.3 → écart > 15 %
             ratios = GrahamRatios(
                 pe=15.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=0.3, price=100.0, book_value=66.0,
+                eps_growth_total=0.3, price=100.0, book_value=66.0,
                 eps_ttm=3.0,
             )
         assert ratios.pe == 15.0
@@ -711,7 +727,7 @@ class TestGrahamRatiosValidateurs:
             # pe=10.0, price/eps_ttm = 100/10 = 10.0 → cohérent
             ratios = GrahamRatios(
                 pe=10.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
-                eps_growth_10y=0.3, price=100.0, book_value=66.0,
+                eps_growth_total=0.3, price=100.0, book_value=66.0,
                 eps_ttm=10.0,
             )
         assert ratios.pe == 10.0
@@ -721,7 +737,7 @@ class TestGrahamRatiosValidateurs:
         """Données aberrantes → WARNING uniquement, jamais de ValidationError."""
         ratios = GrahamRatios(
             pe=15.0, pb=1.5, current_ratio=2.0, debt_equity=0.2,
-            eps_growth_10y=10.0,  # 1000 % — très suspect
+            eps_growth_total=10.0,  # 1000 % — très suspect
             price=100.0, book_value=66.0,
             eps_ttm=1.0,  # pe_calcule = 100.0 ≠ 15.0
         )
@@ -732,7 +748,7 @@ class TestGrahamRatiosValidateurs:
         with caplog.at_level(logging.WARNING, logger="app.skills.tier2.graham_analysis.schemas"):
             GrahamRatios(
                 pe=12.0, pb=1.2, current_ratio=2.5, debt_equity=0.3,
-                eps_growth_10y=0.45, price=60.0, book_value=50.0,
+                eps_growth_total=0.45, price=60.0, book_value=50.0,
                 eps_ttm=5.0,  # 60/5 = 12.0 = pe → cohérent
             )
         assert caplog.text == ""

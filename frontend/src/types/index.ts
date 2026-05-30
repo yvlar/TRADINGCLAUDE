@@ -49,7 +49,8 @@ export interface GrahamRatios {
   pb: number | null
   current_ratio: number | null
   debt_equity: number | null
-  eps_growth_10y: number | null
+  eps_growth_total: number | null
+  eps_growth_years?: number | null
   price: number | null
   book_value: number | null
   eps_ttm?: number | null

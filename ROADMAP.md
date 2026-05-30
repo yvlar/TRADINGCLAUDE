@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 129 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 130 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.16.0 |
+| **Version** | 10.17.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 130 — Données : honnêteté du label + repli multi-sources |
-| **Dernier sprint complété** | Sprint 129 — Conformité : disclaimers & avertissement de risque ✅ |
+| **Sprint actif** | Sprint 131 — Auditabilité : persistance des sous-composantes déterministes |
+| **Dernier sprint complété** | Sprint 130 — Données : honnêteté du label + repli multi-sources ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -80,6 +80,26 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 130 — Données : honnêteté du label + repli multi-sources ✅
+
+**Objectif :** Le champ `eps_growth_10y` annonçait « 10 ans » mais `_compute_eps_growth` calcule en réalité la croissance sur l'horizon disponible (~4 ans) ; et `yfinance` est une source unique (SPOF). Corriger le label trompeur de bout en bout, exposer l'horizon réel, et ajouter un repli quand la source primaire ne renvoie rien. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §2, §5).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — `_compute_eps_growth` retourne désormais `(croissance_totale, horizon_ans)` où l'horizon = `len(valeurs) - 1` (N exercices annuels couvrent N-1 années de croissance — pas N, pas 10). `extract()` câble `eps_growth_total` + `eps_growth_years`. **Repli de source** : si `income_stmt` absent/vide, repli explicite et tracé (`logger.info`) sur `info.earningsGrowth` (croissance YoY, horizon 1 an) au lieu de tomber muettement à `0.0`. `ValuationRatios` (chemin `extract_valuation`) inchangé
+- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios.eps_growth_10y` → `eps_growth_total: float` (croissance totale honnête) + nouveau `eps_growth_years: int | None` (horizon réel, `None` si inconnu) ; validateur de plausibilité (> 500 %) renommé et message corrigé
+- `app/skills/tier2/graham_analysis/prompts/system.md` — toutes les références `eps_growth_10y` → `eps_growth_total` ; **correction d'un bug d'annualisation** : la formule supposait exactement 10 ans (`g = (1+x)^0.1 - 1`) → utilise désormais l'horizon réel `g = (1 + eps_growth_total)^(1/eps_growth_years) - 1` (pas d'annualisation si horizon inconnu)
+- `app/services/pdf_report_service.py` — libellé honnête « Croissance BPA sur N ans » (`eps_growth_years`) ou « (horizon n.d.) » si inconnu, au lieu de « 10 ans »
+- `frontend/src/types/index.ts` + `AnalyzeForm.tsx` — `GrahamRatios.eps_growth_total` + `eps_growth_years?` ; libellé du champ « Croissance EPS (totale) » (au lieu de « 10a ») + indice « sur N ans » affiché après auto-fill (`data-testid="eps-growth-horizon"`)
+- `.claude/rules/variables-financieres.md` — tableau standardisé mis à jour (`eps_growth_total`/`epsGrowthTotal` + `eps_growth_years`/`epsGrowthYears`) ; note de périmètre sur les champs `eps_growth_10y` distincts d'`EsgInput`/`ValuationRatios` (hors scope)
+- Tests : unitaires `_compute_eps_growth` (tuple + horizon 2/4 points + base négative + repli `info`) ; intégration `extract()` (horizon exposé, repli déclenché, absence sans repli → `0.0`/`None`) ; schema (`eps_growth_years` optionnel + renseigné) ; PDF (`_build_ratios_rows` libellé « sur N ans »/« horizon n.d. ») ; composant `AnalyzeForm` (libellé honnête + indice « sur 4 ans » après auto-fill)
+
+**Périmètre :** `EsgInput` (`esg_simplified`) et `ValuationRatios` (`stock_valuation`) conservent un champ `eps_growth_10y` distinct (sources différentes : saisie ESG / `info.earningsGrowth` / `None`, jamais le calcul tier1 corrigé) — hors scope, documenté.
+
+**Version** : 10.17.0
+**Tests** : 1 533 backend collectés (1 529 passés, 3 skipped, 1 xfailed — +7) ; 414 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — le prompt `graham_analysis` est modifié (renommage + correction d'annualisation) → **evals `graham_analysis` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). Stack Docker non démarrée → extraction yfinance exercée sur mocks (pas d'appel réseau live). Pas de test navigateur live.
+
 ### Sprint 129 — Conformité : disclaimers & avertissement de risque ✅
 
 **Objectif :** Le système émet des verdicts d'achat/vente explicites mais sans aucun disclaimer — exposition réglementaire (AMF/SEC/MiFID). Afficher un avertissement clair « recherche éducative — pas un conseil financier » à chaque endroit où un verdict actionnable est présenté : résultats d'analyse, pied de page global, et rapports PDF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill ni orchestrateur modifié.
@@ -130,26 +150,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 486 backend collectés (1 482 passés, 3 skipped, 1 xfailed — +8) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
 
 **Note d'environnement :** session web — `temperature=0` change le comportement de tous les skills ; la suite `pytest` (Claude mocké) reste verte sans rien prouver sur la qualité réelle. **Aucune clé Anthropic disponible dans le conteneur → les `evals` ciblées n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). Le rejet NaN/inf et les bornes de plausibilité sont validés sur payloads construits (pas live). Pas de test navigateur live.
-
-### Sprint 126 — Annotations enrichies : tags + filtres ✅
-
-**Objectif :** Ajouter un champ `tags` (mots-clés libres) aux annotations, filtrable via `GET /history?tags=value,growth`, avec chips affichées/éditables dans `AnnotationSection` et en lecture seule dans `HistoryTable`. Les annotations (Sprint 78) étaient du texte libre sans structure ; les tags offrent un filtrage sémantique léger du portefeuille sans RAG. (Travail initialement cadré comme Sprint 125 ; renuméroté 126 après la re-priorisation sécurité P0.)
-
-**Livrables :**
-- `infra/postgres/migration_sprint126.sql` + bootstrap lifespan (`app/api/main.py`) — colonne `tags TEXT[] NOT NULL DEFAULT '{}'` + index GIN `idx_annotations_tags`. Type `TEXT[]` retenu (et non JSONB) : mapping natif asyncpg `list[str] ↔ text[]` + opérateur de confinement `@>` (match de TOUS les tags) sur index GIN `array_ops`
-- `app/models/annotation.py` — `tags: list[str]` sur `Annotation` + `AnnotationCreate` ; `field_validator` autoritaire serveur (minuscules, sans espaces, sans doublons ni vides) — aligne la casse stockée sur le filtre `@>` sensible à la casse
-- `app/services/annotation_service.py` — `upsert` persiste les tags (`$3::text[]`), `get`/`get_all_with_ticker` les renvoient
-- `app/orchestrator/core.py` — `HistoryEntry.tags` ; `get_history` + `get_history_paged` (lignes ET comptage) joignent `annotations` (LEFT JOIN, `analysis_id` UNIQUE → pas de duplication) et filtrent `a.tags @> $N::text[]` ; helper `_row_to_history_entry` (dé-duplication du mapping, garde NULL → `[]`)
-- `app/api/main.py` — `_parse_tags_param` (CSV → liste minuscule, 422 si vide/virgules seules) câblé sur `/history` et `/history-paged`
-- `frontend/src/components/TagChip.tsx` — chip réutilisable (variante lecture seule + variante avec bouton ×)
-- `frontend/src/components/AnnotationSection.tsx` — chips éditables (ajout via input/Entrée, suppression), persistés via le client annotations ; `HistoryTable.tsx` — chips lecture seule ; `HistoryPage.tsx` — champ filtre `tags` câblé sur `getHistoryPaged`
-- `frontend/src/types/index.ts` — `Annotation.tags`, `AnnotationCreate.tags`, `HistoryEntry.tags` (`string[]`)
-- Tests : intégration `tests/api/test_history_tags_filter.py` (CSV→liste, minuscules, 422, jointure + `@>` lié, comptage) ; unitaire `tests/services/test_annotation_service.py` (upsert/get tags) ; endpoint `tests/api/test_annotations_endpoint.py` (round-trip + normalisation) ; composant `AnnotationSection` (ajout/retrait/erreur) + `HistoryTable` (chips) + `HistoryPage` (filtre tags)
-
-**Version** : 10.12.0
-**Tests** : 1 462 backend collectés (1 458 passés, 3 skipped, 1 xfailed — +14) ; 406 Vitest verts (+6) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : la migration SQL et le filtre `@>` ne sont pas exercés live (syntaxe validée + jointure/binding `$N::text[]` vérifiés sur pool asyncpg mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
 
 ---
 

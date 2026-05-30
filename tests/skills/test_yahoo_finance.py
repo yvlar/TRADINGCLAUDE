@@ -211,7 +211,7 @@ class TestYahooFinanceExtract:
 
     @pytest.mark.asyncio
     async def test_eps_growth_calcule_depuis_income(self):
-        """income_stmt avec 2 ans → eps_growth_10y calculé (non nul)."""
+        """income_stmt avec 2 ans → eps_growth_total calculé (non nul) + horizon réel exposé."""
         extractor = YahooFinanceExtractor()
         income = pd.DataFrame({
             "2024": {"Net Income": 12_000_000_000.0},
@@ -221,8 +221,36 @@ class TestYahooFinanceExtract:
         raw = {"info": info, "income": income, "dividends": None}
         with patch.object(extractor, "_fetch_info_and_history", return_value=raw):
             result = await extractor.extract("BNS")
-        # 12B/1B = 12 eps récent, 8B/1B = 8 eps ancien → growth = (12/8)-1 = 0.5
-        assert result.eps_growth_10y == pytest.approx(0.5)
+        # 12B/1B = 12 eps récent, 8B/1B = 8 eps ancien → growth = (12/8)-1 = 0.5 sur 1 intervalle
+        assert result.eps_growth_total == pytest.approx(0.5)
+        assert result.eps_growth_years == 1
+
+    @pytest.mark.asyncio
+    async def test_eps_growth_repli_sur_info_quand_income_absent(self):
+        """income_stmt absent + info.earningsGrowth présent → repli tracé (horizon 1 an)."""
+        extractor = YahooFinanceExtractor()
+        info = {
+            **_INFO_BNS_FINANCIER,
+            "sharesOutstanding": 1_000_000_000,
+            "earningsGrowth": 0.12,
+        }
+        raw = {"info": info, "income": None, "dividends": None}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=raw):
+            result = await extractor.extract("BNS")
+        assert result.eps_growth_total == pytest.approx(0.12)
+        assert result.eps_growth_years == 1
+
+    @pytest.mark.asyncio
+    async def test_eps_growth_sans_income_ni_repli(self):
+        """income absent ET info.earningsGrowth absent → 0.0 et horizon None (pas d'exception)."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items() if k != "earningsGrowth"}
+        info = {**info, "sharesOutstanding": 1_000_000_000}
+        raw = {"info": info, "income": None, "dividends": None}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=raw):
+            result = await extractor.extract("BNS")
+        assert result.eps_growth_total == 0.0
+        assert result.eps_growth_years is None
 
     @pytest.mark.asyncio
     async def test_dividend_years_compte_consecutif(self):
@@ -363,7 +391,7 @@ async def async_client_extract(analyze_response_msft):
         pb=1.3,
         current_ratio=None,
         debt_equity=0.45,
-        eps_growth_10y=0.0,
+        eps_growth_total=0.0,
         price=80.0,
         book_value=61.5,
     )
@@ -441,7 +469,7 @@ class TestExtractEndpoint:
         app.state.yahoo_extractor.extract.side_effect = None
         app.state.yahoo_extractor.extract.return_value = GrahamRatios(
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
-            eps_growth_10y=0.0, price=80.0, book_value=61.5,
+            eps_growth_total=0.0, price=80.0, book_value=61.5,
         )
 
     @pytest.mark.asyncio
@@ -466,7 +494,7 @@ class TestExtractEndpoint:
         app.state.yahoo_extractor.extract.side_effect = None
         app.state.yahoo_extractor.extract.return_value = GrahamRatios(
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
-            eps_growth_10y=0.0, price=80.0, book_value=61.5,
+            eps_growth_total=0.0, price=80.0, book_value=61.5,
         )
 
 
@@ -481,24 +509,38 @@ def _make_income_2cols(ni_recent: float, ni_oldest: float) -> pd.DataFrame:
 
 
 class TestComputeEpsGrowth:
-    def test_croissance_positive(self):
-        """net income 8B → 12B, 1B actions → growth = 0.50."""
+    def test_croissance_positive_avec_horizon(self):
+        """net income 8B → 12B, 1B actions → growth = 0.50 sur 1 an (2 points = 1 intervalle)."""
         income = _make_income_2cols(12_000_000_000.0, 8_000_000_000.0)
-        assert _compute_eps_growth(income, 1_000_000_000) == pytest.approx(0.5)
+        growth, years = _compute_eps_growth(income, 1_000_000_000)
+        assert growth == pytest.approx(0.5)
+        assert years == 1
 
-    def test_base_negative_retourne_zero(self):
-        """BPA ancien négatif (déficit) → impossible de calculer, retourne 0.0."""
+    def test_quatre_points_horizon_trois_ans(self):
+        """4 exercices annuels → horizon = 3 ans (N points couvrent N-1 années de croissance)."""
+        income = pd.DataFrame({
+            "2024": {"Net Income": 16_000_000_000.0},
+            "2023": {"Net Income": 14_000_000_000.0},
+            "2022": {"Net Income": 12_000_000_000.0},
+            "2021": {"Net Income": 8_000_000_000.0},
+        })
+        growth, years = _compute_eps_growth(income, 1_000_000_000)
+        assert growth == pytest.approx(1.0)  # (16/8) - 1
+        assert years == 3
+
+    def test_base_negative_retourne_zero_horizon_none(self):
+        """BPA ancien négatif (déficit) → impossible de calculer, retourne (0.0, None)."""
         income = _make_income_2cols(10_000_000_000.0, -2_000_000_000.0)
-        assert _compute_eps_growth(income, 1_000_000_000) == 0.0
+        assert _compute_eps_growth(income, 1_000_000_000) == (0.0, None)
 
-    def test_une_seule_periode_retourne_zero(self):
-        """Une seule colonne → insuffisant pour calculer la croissance."""
+    def test_une_seule_periode_retourne_zero_horizon_none(self):
+        """Une seule colonne → insuffisant pour calculer la croissance → (0.0, None)."""
         income = pd.DataFrame({"2024": {"Net Income": 10_000_000_000.0}})
-        assert _compute_eps_growth(income, 1_000_000_000) == 0.0
+        assert _compute_eps_growth(income, 1_000_000_000) == (0.0, None)
 
-    def test_income_none_retourne_zero(self):
-        """income = None → retourne 0.0 sans exception."""
-        assert _compute_eps_growth(None, 1_000_000_000) == 0.0
+    def test_income_none_retourne_zero_horizon_none(self):
+        """income = None → retourne (0.0, None) sans exception."""
+        assert _compute_eps_growth(None, 1_000_000_000) == (0.0, None)
 
 
 class TestComputeDividendYears:

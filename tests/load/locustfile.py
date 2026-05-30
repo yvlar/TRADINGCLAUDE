@@ -10,7 +10,7 @@ GRAHAM_PAYLOAD = {
         "pb": 1.3,
         "current_ratio": None,
         "debt_equity": 0.45,
-        "eps_growth_10y": 0.27,
+        "eps_growth_total": 0.27,
         "price": 80.0,
         "book_value": 61.5,
     },
@@ -22,7 +22,7 @@ _RATIOS_BANQUES = {
     "pb": 1.3,
     "current_ratio": None,
     "debt_equity": 0.45,
-    "eps_growth_10y": 0.27,
+    "eps_growth_total": 0.27,
     "price": 80.0,
     "book_value": 61.5,
 }

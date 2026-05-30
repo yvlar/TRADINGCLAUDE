@@ -18,7 +18,7 @@ const DEFAULT_RATIOS: GrahamRatios = {
   pb: 1.3,
   current_ratio: null,
   debt_equity: 0.45,
-  eps_growth_10y: 0.27,
+  eps_growth_total: 0.27,
   price: 80.0,
   book_value: 61.5,
   eps_ttm: 7.25,
@@ -131,7 +131,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
                 ['pb', 'P/B'],
                 ['current_ratio', 'Current Ratio'],
                 ['debt_equity', 'Debt/Equity'],
-                ['eps_growth_10y', 'Croissance EPS 10a'],
+                ['eps_growth_total', 'Croissance EPS (totale)'],
                 ['price', 'Prix ($)'],
                 ['book_value', 'Valeur comptable'],
                 ['eps_ttm', 'EPS TTM'],
@@ -149,6 +149,11 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
                   placeholder="null"
                   aria-label={label}
                 />
+                {key === 'eps_growth_total' && ratios.eps_growth_years != null && (
+                  <span className="text-xs text-muted-foreground" data-testid="eps-growth-horizon">
+                    sur {ratios.eps_growth_years} ans
+                  </span>
+                )}
               </div>
             ))}
           </div>

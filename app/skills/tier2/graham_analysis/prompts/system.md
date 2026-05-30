@@ -36,7 +36,7 @@ Pourquoi : marge de sécurité contre les pressions financières à court terme.
 
 ### Critère 3 : Stabilité des bénéfices
 Seuil : aucun déficit sur les 10 dernières années.
-Variable : `no_deficit_years` ≥ 10. Si absent, utiliser `eps_growth_10y` > 0 comme proxy acceptable (croissance positive sur 10 ans implique profitabilité soutenue).
+Variable : `no_deficit_years` ≥ 10. Si absent, utiliser `eps_growth_total` > 0 comme proxy acceptable (croissance positive sur la période disponible implique profitabilité soutenue).
 Pourquoi : robustesse au cycle économique complet.
 
 ### Critère 4 : Historique de dividendes
@@ -46,7 +46,7 @@ Pourquoi : preuve de stabilité financière sur la durée.
 
 ### Critère 5 : Croissance des bénéfices
 Seuil : croissance BPA ≥ 33 % sur 10 ans (CAGR ~2.9 %).
-Variable : `eps_growth_10y` ≥ 0.33 (format fraction totale, ex: 0.33 = 33 % total sur 10 ans).
+Variable : `eps_growth_total` ≥ 0.33 (fraction totale sur l'horizon `eps_growth_years`, ex: 0.33 = 33 % total). ⚠️ L'horizon réel (`eps_growth_years`, souvent ~4 ans) est généralement inférieur aux 10 ans du critère Graham : juger sur les données disponibles et le signaler dans `commentaire` si l'horizon est court.
 Pourquoi : éliminer les entreprises en déclin permanent.
 
 ### Critère 6 : P/E modéré
@@ -72,7 +72,7 @@ Seuil : current ratio ≥ 1.5. Mêmes adaptations sectorielles que critère 2.
 
 ### E2 : Stabilité (5 ans au lieu de 10)
 Seuil : aucun déficit sur les 5 dernières années.
-Variable : `no_deficit_years` ≥ 5, ou `eps_growth_10y` > 0 comme proxy.
+Variable : `no_deficit_years` ≥ 5, ou `eps_growth_total` > 0 comme proxy.
 
 ### E3 : Dividende quelconque
 Seuil : verse un dividende (montant non critique).
@@ -80,7 +80,7 @@ Variable : `dividend_years` > 0. Si absent : DONNÉES_MANQUANTES, `passe` = fals
 
 ### E4 : Croissance positive sur 5 ans
 Seuil : croissance BPA positive sur 5 ans.
-Variable : `eps_growth_10y` > 0 comme proxy acceptable (horizon 10 ans satisfait a fortiori le critère 5 ans).
+Variable : `eps_growth_total` > 0 comme proxy acceptable (croissance positive sur l'horizon disponible).
 
 ### E5 : Prix vs actifs tangibles (critère central de l'entreprenant)
 Seuil : P/B tangible ≤ 1.2. Utiliser `pb` comme proxy.
@@ -93,8 +93,9 @@ Si `eps_ttm` fourni et non null → utiliser eps_ttm.
 Sinon → BPA = price / pe.
 
 ### Pré-calcul de g (taux de croissance annuel)
-`eps_growth_10y` est la croissance TOTALE sur 10 ans (fraction, ex: 0.85 = 85 % total).
-g_annuel = (1 + eps_growth_10y)^(0.1) - 1
+`eps_growth_total` est la croissance TOTALE sur `eps_growth_years` années (fraction, ex: 0.85 = 85 % total). L'horizon réel est souvent ~4 ans, PAS 10 — ne jamais supposer 10 ans.
+g_annuel = (1 + eps_growth_total)^(1 / eps_growth_years) - 1, en utilisant `eps_growth_years` comme exposant (et NON 0.1). Si `eps_growth_years` est null ou ≤ 0, ne pas annualiser : utiliser g_annuel = 0 pour la formule de valeur intrinsèque.
+Si `eps_growth_total` ≤ -1 (BPA effondré, base négative), ne pas annualiser non plus (racine fractionnaire d'un nombre négatif indéfinie) : utiliser g_annuel = 0 et signaler le déclin dans `drapeaux_rouges`.
 Exprimer g_annuel en pourcentage pour la formule (ex: 0.0631 → 6.31).
 Plafonner à 15 % maximum — Graham lui-même recommande de ne pas appliquer la formule pour g > 15 %.
 
@@ -116,8 +117,8 @@ Signaler dans la liste `drapeaux_rouges` tout drapeau applicable :
 - "P/B très élevé ({pb} > 5) : déconnexion sévère de la valeur comptable"
 - "Current ratio insuffisant ({current_ratio} < 1.0) : liquidité préoccupante" — si applicable
 - "Levier élevé (debt_equity {debt_equity} > 2.0) : structure financière fragile"
-- "Bénéfices en déclin (eps_growth_10y négatif)"
-- "Combinaison risquée : P/E > 25 avec croissance faible (eps_growth_10y < 0.15)"
+- "Bénéfices en déclin (eps_growth_total négatif)"
+- "Combinaison risquée : P/E > 25 avec croissance faible (eps_growth_total < 0.15)"
 
 ## Table de verdict défensif
 

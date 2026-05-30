@@ -16,7 +16,7 @@ import pytest_asyncio
 from app.api.endpoints.ticker_report import _reconstruct_analyze_response
 from app.api.main import app
 from app.services.composite_history_service import CompositeHistoryPoint
-from app.services.pdf_report_service import PdfReportService
+from app.services.pdf_report_service import PdfReportService, _build_ratios_rows
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 
 # ---------------------------------------------------------------------------
@@ -51,6 +51,34 @@ def _make_history(n: int = 3, ticker: str = "BNS") -> list[CompositeHistoryPoint
         )
         for i in range(n)
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tests : libellé honnête de la croissance BPA (Sprint 130)
+# ---------------------------------------------------------------------------
+
+
+class TestRatiosRowsLabel:
+    def _ratios(self, **kwargs) -> GrahamRatios:
+        base = dict(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+        )
+        base.update(kwargs)
+        return GrahamRatios(**base)
+
+    def test_libelle_indique_horizon_reel(self):
+        """eps_growth_years renseigné → libellé « sur N ans » (pas « 10 ans »)."""
+        rows = _build_ratios_rows(self._ratios(eps_growth_years=4))
+        labels = [label for label, _ in rows]
+        assert "Croissance BPA sur 4 ans" in labels
+        assert all("10 ans" not in label for label in labels)
+
+    def test_libelle_horizon_inconnu(self):
+        """eps_growth_years None → libellé « horizon n.d. » plutôt qu'un faux « 10 ans »."""
+        rows = _build_ratios_rows(self._ratios(eps_growth_years=None))
+        labels = [label for label, _ in rows]
+        assert "Croissance BPA (horizon n.d.)" in labels
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +343,7 @@ class TestTickerReportTargetedEndpoint:
         analysis_id = str(uuid.uuid4())
         ratios = GrahamRatios(
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
-            eps_growth_10y=0.27, price=80.0, book_value=61.5, eps_ttm=7.25,
+            eps_growth_total=0.27, price=80.0, book_value=61.5, eps_ttm=7.25,
         )
         row = _make_analysis_row(
             graham_output_msft, ticker="BNS", ratios=ratios, analysis_id=analysis_id
@@ -388,7 +416,7 @@ class TestPdfReportEnrichi:
         svc = PdfReportService()
         ratios = GrahamRatios(
             pe=34.2, pb=12.1, current_ratio=1.34, debt_equity=0.28,
-            eps_growth_10y=0.85, price=420.0, book_value=35.0, eps_ttm=11.2,
+            eps_growth_total=0.85, price=420.0, book_value=35.0, eps_ttm=11.2,
         )
         pdf = await svc.generate_ticker_report(
             ticker="MSFT",

@@ -90,7 +90,7 @@ BODY_MSFT = {
         "pb": 12.1,
         "current_ratio": 1.34,
         "debt_equity": 0.28,
-        "eps_growth_10y": 0.85,
+        "eps_growth_total": 0.85,
         "price": 420.0,
         "book_value": 35.0,
     },
@@ -245,7 +245,7 @@ class TestAnalyze:
             "ticker": "MSFT",
             "ratios": {
                 "pe": 34.2, "current_ratio": 1.34, "debt_equity": 0.28,
-                "eps_growth_10y": 0.85, "price": 420.0, "book_value": 35.0,
+                "eps_growth_total": 0.85, "price": 420.0, "book_value": 35.0,
             },
         }
         r = await async_client.post("/analyze", json=body_invalide)
@@ -269,7 +269,7 @@ class TestAnalyze:
             "ticker": "BNS",
             "ratios": {
                 "pe": 11.0, "pb": 1.3, "current_ratio": None,
-                "debt_equity": 0.45, "eps_growth_10y": 0.27,
+                "debt_equity": 0.45, "eps_growth_total": 0.27,
                 "price": 80.0, "book_value": 61.5,
             },
         }

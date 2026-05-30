@@ -20,7 +20,7 @@ _BODY_TEST = {
         "pb": 1.5,
         "current_ratio": 2.0,
         "debt_equity": 0.30,
-        "eps_growth_10y": 0.30,
+        "eps_growth_total": 0.30,
         "price": 100.0,
         "book_value": 66.0,
     },
