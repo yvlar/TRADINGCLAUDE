@@ -17,6 +17,7 @@ import { DamodaranSection } from './DamodaranSection'
 import { MarksSection } from './MarksSection'
 import { PabraiSection } from './PabraiSection'
 import { CanadianTaxSection } from './CanadianTaxSection'
+import { Disclaimer } from './Disclaimer'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -228,6 +229,8 @@ export function AnalysisResult({
       {result.thesis && <ThesisSection output={result.thesis} />}
       {result.munger && <MungerSection output={result.munger} />}
       {result.canadian_tax && <CanadianTaxSection output={result.canadian_tax} />}
+
+      <Disclaimer variant="inline" />
     </div>
   )
 }

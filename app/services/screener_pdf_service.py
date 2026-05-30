@@ -19,6 +19,8 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.services.disclaimer import build_disclaimer_flowables
+
 if TYPE_CHECKING:
     from app.api.endpoints.screen import ScreenResult
 
@@ -211,7 +213,8 @@ class ScreenerPdfService:
             )
             story.append(t_top)
 
-        # --- Pied de page ---
+        # --- Avertissement réglementaire + pied de page ---
+        story.extend(build_disclaimer_flowables())
         story.append(Spacer(1, 0.8 * cm))
         _hr(story)
         story.append(

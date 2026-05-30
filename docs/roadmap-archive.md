@@ -10,6 +10,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 125 — Durcissement sécurité auth & fail-safe (P0) ✅
+
+**Objectif :** Éliminer quatre faiblesses de sécurité de la couche auth/middleware relevées par la revue expert FinTech (`docs/revue-expert-fintech.md` §5), sans changer le comportement fonctionnel pour un déploiement correctement configuré. Sprint backend pur — aucune migration DB, aucun changement de prompt de skill (evals non concernées).
+
+**Livrables :**
+- `app/utils/jwt_secret.py` — `resolve_jwt_secret()` : **fail-fast** par défaut. Si `JWT_SECRET_KEY` absent, lève `RuntimeError` sauf si `APP_ENV ∈ {dev, development, test, testing}` (repli secret de dev toléré). `APP_ENV` absent = traité comme production (refus). Chaîne vide traitée comme absente. Câblé dans `auth_token_service.py` ET `password_reset_service.py` (qui partageaient le même secret de repli codé en dur — trou fermé partout)
+- `app/services/auth_token_service.py` — `is_jti_blacklisted` **fail-closed** : appel Redis enveloppé dans `try/except` → panne Redis = token considéré révoqué (`True`). Les deux appelants (`middleware/auth.py:99`, `endpoints/auth.py:105`) rejettent en 401. Contraire au rate-limiting fail-open, par choix de sécurité
+- `app/utils/error_sanitization.py` — `log_internal_error()` (log serveur-side + `correlation_id`) + `sanitized_http_500()` (HTTPException 500 au body générique). Appliqué au global exception handler (`main.py`), au `/analyze`, et à **tous les endpoints à chemin 500** (report, screen, screener_report, monthly_report, ticker_report, compare, extract, annotations, export) + au flux SSE `analyze_stream.py` — `str(exc)` ne sort plus jamais dans un body HTTP/SSE (anti-énumération d'utilisateurs)
+- `app/api/main.py` — CORS durci : `allow_methods` explicite (`GET/POST/PUT/DELETE/OPTIONS`) ; origines lues depuis `CORS_ORIGINS` (CSV) avec repli localhost en dev
+- `.env.example` — `APP_ENV=dev` + `CORS_ORIGINS` documentés
+- `tests/conftest.py` — `os.environ.setdefault("APP_ENV", "test")` pour que le lifespan réel exercé en test tolère le repli secret
+- Tests : unitaire `tests/services/test_jwt_secret.py` (8) + `test_auth_token_service.py` (fail-fast init + fail-closed blacklist, 5) ; intégration `tests/api/test_exception_sanitization.py` (global handler + `/analyze` + `/screen` n'exposent pas `str(exc)`, 3) — aucune régression des tests auth existants
+
+**Version** : 10.13.0
+**Tests** : 1 478 backend collectés (1 474 passés, 3 skipped, 1 xfailed — +16) ; 406 Vitest verts (inchangé, sprint backend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : le fail-closed Redis et le fail-fast au boot lifespan sont validés sur mocks (`AsyncMock` levant une exception, `monkeypatch` sur `APP_ENV`/`JWT_SECRET_KEY`), pas live. CORS vérifié observablement (parsing CSV + méthodes explicites via introspection du middleware). Pas de test navigateur live. Sprint sans changement de prompt → evals non concernées.
+
 ### Sprint 124 — Persistance des préférences Screener côté serveur ✅
 
 **Objectif :** Migrer le tri + les filtres du Screener du `localStorage` (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié, pour offrir une continuité multi-appareils. Le `localStorage` reste un fallback hors-ligne / anti-flash.

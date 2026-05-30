@@ -22,6 +22,7 @@ from reportlab.platypus import (
 )
 
 from app.services.composite_history_service import CompositeHistoryPoint
+from app.services.disclaimer import build_disclaimer_flowables
 
 if TYPE_CHECKING:
     from app.orchestrator.core import AnalyzeResponse
@@ -429,7 +430,8 @@ class PdfReportService:
                 if d.verdict_detail:
                     story.append(Paragraph(d.verdict_detail, styles["corps"]))
 
-        # --- Pied de page ---
+        # --- Avertissement réglementaire + pied de page ---
+        story.extend(build_disclaimer_flowables())
         story.append(Spacer(1, 1 * cm))
         _hr(story)
         story.append(

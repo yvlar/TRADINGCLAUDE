@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { RouteFallback } from './components/RouteFallback'
 import { Button } from './components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
+import { Disclaimer } from './components/Disclaimer'
 // Imports dynamiques par page : chaque page (et recharts, embarqué par Dashboard/Esg/
 // Watchlist/Compare) forme un chunk séparé, exclu du bundle d'entrée (Sprint 123).
 const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
@@ -193,6 +194,11 @@ function AppShell() {
           </Routes>
         </Suspense>
       </main>
+      <footer className="border-t border-border mt-8">
+        <div className="max-w-shell mx-auto w-full px-6 py-4">
+          <Disclaimer variant="footer" />
+        </div>
+      </footer>
     </>
   )
 }

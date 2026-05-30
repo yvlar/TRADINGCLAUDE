@@ -10,6 +10,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
+from app.services.disclaimer import build_disclaimer_flowables
 from app.services.report import _composite_alerte, _composite_label
 from app.services.screener_pdf_service import (
     _BLEU_TITRE,
@@ -184,7 +185,8 @@ class WatchlistPdfService:
             ]))
             story.append(t_top)
 
-        # --- Pied de page ---
+        # --- Avertissement réglementaire + pied de page ---
+        story.extend(build_disclaimer_flowables())
         story.append(Spacer(1, 0.8 * cm))
         _hr(story)
         story.append(Paragraph(f"Copilote Financier IA — {date_str}", styles["pied_page"]))
