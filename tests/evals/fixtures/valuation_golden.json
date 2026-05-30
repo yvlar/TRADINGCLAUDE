@@ -1,0 +1,152 @@
+[
+  {
+    "id": "valuation-001",
+    "description": "Industrielle stable et bon marche -- FCF solide, P/E bas, croissance moderee -> ne doit pas etre jugee SUREVALUE",
+    "input": {
+      "ticker": "INDU.TO",
+      "ratios": {
+        "price": 50.0,
+        "eps_ttm": 5.0,
+        "eps_growth_5y": 0.06,
+        "book_value": 30.0,
+        "revenue_bn": 8.0,
+        "revenue_growth_5y": 0.05,
+        "free_cash_flow_bn": 2.0,
+        "roic": 0.14,
+        "roe": 0.16,
+        "net_margin": 0.12,
+        "debt_equity": 0.4,
+        "pe": 10.0,
+        "pb": 1.67,
+        "ev_ebitda": 7.0,
+        "dividend_yield": 0.03,
+        "shares_outstanding_m": 200.0,
+        "sector": "Industrials"
+      }
+    },
+    "expected": {
+      "dcf_applicable": true,
+      "verdict_allowed": ["SOUS_EVALUE", "JUSTE_VALEUR"]
+    }
+  },
+  {
+    "id": "valuation-002",
+    "description": "Techno tres chere -- P/E 100, FCF faible vs capitalisation -> ne doit pas etre jugee SOUS_EVALUE",
+    "input": {
+      "ticker": "GROW.TO",
+      "ratios": {
+        "price": 200.0,
+        "eps_ttm": 2.0,
+        "eps_growth_5y": 0.25,
+        "book_value": 10.0,
+        "revenue_bn": 5.0,
+        "revenue_growth_5y": 0.30,
+        "free_cash_flow_bn": 0.5,
+        "roic": 0.10,
+        "roe": 0.12,
+        "net_margin": 0.08,
+        "debt_equity": 0.1,
+        "pe": 100.0,
+        "pb": 20.0,
+        "ev_ebitda": 40.0,
+        "dividend_yield": 0.0,
+        "shares_outstanding_m": 300.0,
+        "sector": "Technology"
+      }
+    },
+    "expected": {
+      "dcf_applicable": true,
+      "verdict_allowed": ["SUREVALUE", "JUSTE_VALEUR"]
+    }
+  },
+  {
+    "id": "valuation-003",
+    "description": "Consommation de base mature -- valorisation pleine, croissance lente",
+    "input": {
+      "ticker": "STAP.TO",
+      "ratios": {
+        "price": 60.0,
+        "eps_ttm": 2.5,
+        "eps_growth_5y": 0.04,
+        "book_value": 6.0,
+        "revenue_bn": 45.0,
+        "revenue_growth_5y": 0.04,
+        "free_cash_flow_bn": 9.0,
+        "roic": 0.12,
+        "roe": 0.40,
+        "net_margin": 0.22,
+        "debt_equity": 1.5,
+        "pe": 24.0,
+        "pb": 10.0,
+        "ev_ebitda": 18.0,
+        "dividend_yield": 0.03,
+        "shares_outstanding_m": 4300.0,
+        "sector": "Consumer Staples"
+      }
+    },
+    "expected": {
+      "dcf_applicable": true,
+      "verdict_allowed": ["JUSTE_VALEUR", "SUREVALUE", "SOUS_EVALUE"]
+    }
+  },
+  {
+    "id": "valuation-004",
+    "description": "Banque canadienne -- secteur Financial Services -> DCF inapplicable, methode sectorielle prime",
+    "input": {
+      "ticker": "BNS.TO",
+      "ratios": {
+        "price": 65.0,
+        "eps_ttm": 6.5,
+        "eps_growth_5y": 0.03,
+        "book_value": 55.0,
+        "revenue_bn": 32.0,
+        "revenue_growth_5y": 0.02,
+        "free_cash_flow_bn": null,
+        "roic": null,
+        "roe": 0.13,
+        "net_margin": 0.28,
+        "debt_equity": null,
+        "pe": 10.0,
+        "pb": 1.18,
+        "ev_ebitda": null,
+        "dividend_yield": 0.06,
+        "shares_outstanding_m": 1200.0,
+        "sector": "Financial Services"
+      }
+    },
+    "expected": {
+      "dcf_applicable": false,
+      "verdict_allowed": ["SOUS_EVALUE", "JUSTE_VALEUR", "SUREVALUE"]
+    }
+  },
+  {
+    "id": "valuation-005",
+    "description": "FPI / REIT -- secteur Real Estate -> DCF inapplicable, NAV/FFO priment",
+    "input": {
+      "ticker": "REIT-UN.TO",
+      "ratios": {
+        "price": 20.0,
+        "eps_ttm": 1.2,
+        "eps_growth_5y": 0.03,
+        "book_value": 25.0,
+        "revenue_bn": 1.1,
+        "revenue_growth_5y": 0.03,
+        "free_cash_flow_bn": 0.45,
+        "roic": 0.06,
+        "roe": 0.08,
+        "net_margin": 0.35,
+        "debt_equity": 1.0,
+        "pe": 16.7,
+        "pb": 0.8,
+        "ev_ebitda": 16.0,
+        "dividend_yield": 0.06,
+        "shares_outstanding_m": 170.0,
+        "sector": "Real Estate"
+      }
+    },
+    "expected": {
+      "dcf_applicable": false,
+      "verdict_allowed": ["SOUS_EVALUE", "JUSTE_VALEUR", "SUREVALUE"]
+    }
+  }
+]

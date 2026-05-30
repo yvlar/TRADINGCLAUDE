@@ -61,3 +61,11 @@ def load_multi_model_golden() -> list[dict]:
     if not path.exists():
         return []
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_valuation_golden() -> list[dict]:
+    """Charge tests/evals/fixtures/valuation_golden.json."""
+    path = _FIXTURES_DIR / "valuation_golden.json"
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
