@@ -51,6 +51,28 @@ def _compute_eps_growth(income: Any, shares: float) -> tuple[float, int | None]:
     return round((eps_recent / eps_oldest) - 1.0, 4), len(values) - 1
 
 
+def _resolve_eps_growth(
+    income: Any, shares: float | None, info: dict[str, Any], ticker: str
+) -> tuple[float, int | None]:
+    """
+    Résout la croissance du BPA avec repli de source (cf. donnees-financieres.md).
+    Source primaire : `income_stmt`. Si indisponible, repli tracé sur `info.earningsGrowth`
+    (croissance annuelle ~1 an publiée par yfinance) au lieu de tomber muettement à 0.0.
+    """
+    if income is not None and shares:
+        eps_growth_total, eps_growth_years = _compute_eps_growth(income, shares)
+        if eps_growth_years is not None:
+            return eps_growth_total, eps_growth_years
+    fallback = info.get("earningsGrowth")
+    if fallback is not None:
+        logger.info(
+            "eps_growth %s : repli sur info.earningsGrowth (horizon 1 an) faute d'income_stmt",
+            ticker,
+        )
+        return float(fallback), 1
+    return 0.0, None
+
+
 def _compute_dividend_years(dividends: Any) -> int | None:
     """
     Compte les années consécutives avec au moins un dividende depuis l'année courante.
@@ -203,21 +225,7 @@ class YahooFinanceExtractor:
         revenue_bn: float | None = revenue / 1e9 if revenue is not None else None
 
         shares = info.get("sharesOutstanding")
-        eps_growth_total, eps_growth_years = (
-            _compute_eps_growth(income, shares) if income is not None and shares else (0.0, None)
-        )
-        # Repli de source : income_stmt absent/vide → utiliser info.earningsGrowth (croissance
-        # annuelle ~1 an publiée par yfinance), tracé explicitement plutôt que de tomber muettement
-        # à 0.0 (cf. donnees-financieres.md : toujours tracer la source, jamais d'exception).
-        if eps_growth_years is None:
-            fallback = info.get("earningsGrowth")
-            if fallback is not None:
-                eps_growth_total = float(fallback)
-                eps_growth_years = 1
-                logger.info(
-                    "eps_growth %s : repli sur info.earningsGrowth (horizon 1 an) faute d'income_stmt",
-                    ticker,
-                )
+        eps_growth_total, eps_growth_years = _resolve_eps_growth(income, shares, info, ticker)
         dividend_years = _compute_dividend_years(dividends)
         no_deficit_years = _compute_no_deficit_years(income, shares) if income is not None and shares else None
 
