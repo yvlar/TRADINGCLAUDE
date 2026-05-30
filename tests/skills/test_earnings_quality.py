@@ -138,6 +138,14 @@ class TestEarningsQualitySchemas:
         assert output.z_score.z_score == 3.5
         assert output.m_score.m_score == -2.1
 
+    def test_z_score_deterministe_eleve_accepte(self, earnings_output_msft: EarningsQualityOutput):
+        """Sprint 128 : un Z déterministe élevé (société très peu endettée, X4 grand) n'est
+        plus rejeté — borne élargie pour ne pas supprimer earnings_quality des plus saines."""
+        data = earnings_output_msft.model_dump()
+        data["z_score"]["z_score"] = 120.0
+        output = EarningsQualityOutput.model_validate(data)
+        assert output.z_score.z_score == 120.0
+
 
 class TestEarningsQualitySkill:
     @pytest.fixture
@@ -255,6 +263,111 @@ class TestEarningsQualitySkill:
         call_kwargs = mock_client.messages.create.call_args.kwargs
         user_content = call_kwargs["messages"][0]["content"]
         assert "Contexte Graham" not in user_content
+
+    @pytest.mark.asyncio
+    async def test_scores_python_priment_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Le bloc LLM renvoie des scores aberrants → les valeurs Python déterministes les écrasent."""
+        from app.services.financial_calculations import (
+            altman_z_score,
+            sloan_accrual_ratio,
+        )
+
+        # Le LLM « hallucine » des scores différents de la réalité calculée.
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["z_score"]["z_score"] = 1.23
+        data["sloan"]["accrual_ratio"] = 0.99
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        z_attendu = altman_z_score(
+            current_assets=ratios_earnings_msft.current_assets_t,
+            current_liabilities=ratios_earnings_msft.current_liabilities_t,
+            retained_earnings=ratios_earnings_msft.retained_earnings_t,
+            ebit=ratios_earnings_msft.ebit_t,
+            total_assets=ratios_earnings_msft.total_assets_t,
+            total_liabilities=ratios_earnings_msft.total_liabilities_t,
+            sales=ratios_earnings_msft.sales_t,
+            market_value_equity=ratios_earnings_msft.market_cap_t,
+        )
+        sloan_attendu = sloan_accrual_ratio(
+            net_income_t=ratios_earnings_msft.net_income_t,
+            cfo_t=ratios_earnings_msft.cfo_t,
+            total_assets_t=ratios_earnings_msft.total_assets_t,
+            total_assets_t1=ratios_earnings_msft.total_assets_t1,
+        )
+        assert output.z_score.z_score == pytest.approx(z_attendu)
+        assert output.z_score.z_score != 1.23
+        assert output.sloan.accrual_ratio == pytest.approx(sloan_attendu)
+
+    @pytest.mark.asyncio
+    async def test_message_utilisateur_contient_scores_deterministes(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Le message envoyé au LLM expose les scores calculés en Python à interpréter."""
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(earnings_output_msft)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        await skill.execute(inp)
+
+        user_content = mock_client.messages.create.call_args.kwargs["messages"][0]["content"]
+        assert "Scores déterministes" in user_content
+        assert "Z-Score" in user_content
+
+    @pytest.mark.asyncio
+    async def test_financiere_annule_z_et_m(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Si le LLM classe l'entreprise is_financial, M/Z calculés sont None (modèle inapplicable)."""
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        data["z_score"]["z_score"] = 3.0
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        assert output.z_score.z_score is None
+        assert output.m_score.m_score is None
 
     @pytest.mark.asyncio
     async def test_execute_cost_usd_injecte_dans_output(

@@ -5,6 +5,7 @@ import logging
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 from app.skills.base import Citation
+from app.utils.numeric_validation import FiniteFloatOrNone
 
 _logger = logging.getLogger(__name__)
 
@@ -109,6 +110,10 @@ class GrahamAnalysisOutput(BaseModel):
     )
     marge_securite: float | None = Field(
         None, description="(V_ajustée - prix) / V_ajustée. Positif = sous-évalué."
+    )
+    graham_number: FiniteFloatOrNone = Field(
+        None,
+        description="√(22.5 × BPA × valeur comptable) — calculé en Python (Sprint 128), jamais par le LLM. Null si BPA/BVPS ≤ 0 ou absent.",
     )
     drapeaux_rouges: list[str] = Field(description="Drapeaux rouges identifiés depuis les ratios")
     verdict: str = Field(description="REJETER | WATCHLIST | CANDIDAT_SOLIDE | EXEMPLAIRE")

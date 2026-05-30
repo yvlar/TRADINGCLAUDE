@@ -180,6 +180,13 @@ export function AnalysisResult({
                 )}
               </p>
             )}
+            {g.graham_number != null && (
+              <p className="text-sm" data-testid="graham-number">
+                Nombre de Graham :{' '}
+                <span className="font-semibold">${g.graham_number.toFixed(2)}</span>
+                <span className="text-muted-foreground ml-2">√(22.5 × BPA × valeur comptable)</span>
+              </p>
+            )}
             {g.drapeaux_rouges.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {g.drapeaux_rouges.map((d, i) => (

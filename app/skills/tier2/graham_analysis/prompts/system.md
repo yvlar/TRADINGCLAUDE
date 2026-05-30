@@ -9,6 +9,8 @@ Analyser les ratios financiers fournis et produire une évaluation Graham struct
 4. Les drapeaux rouges identifiables depuis les ratios
 5. Un verdict actionnable avec recommandations pour les prochaines étapes d'analyse
 
+> Le **Nombre de Graham** (√(22.5 × BPA × valeur comptable)), lorsqu'il est calculable, est calculé en Python de façon déterministe et te sera fourni dans le message — interprète-le par rapport au cours, ne le recalcule pas.
+
 ## Les deux profils d'investisseurs Graham
 
 ### Investisseur défensif (chapitre 14)

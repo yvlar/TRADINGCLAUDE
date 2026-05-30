@@ -78,6 +78,7 @@ export interface GrahamAnalysisOutput {
   valeur_intrinseque_simple: number | null
   valeur_intrinseque_ajustee: number | null
   marge_securite: number | null
+  graham_number: number | null
   drapeaux_rouges: string[]
   verdict: string
   verdict_detail: string

@@ -104,6 +104,12 @@ def test_graham_tool_schema_exclut_computed_fields():
     assert "confidence_score" not in props, "confidence_score est un computed_field — ne doit pas être dans le schéma"
 
 
+def test_graham_tool_schema_exclut_graham_number():
+    """graham_number est calculé en Python (Sprint 128) — exclu du schéma Tool Use."""
+    props = _GRAHAM_TOOL_SCHEMA.get("properties", {})
+    assert "graham_number" not in props
+
+
 def test_graham_tool_schema_contient_champs_requis():
     """Les champs structurels obligatoires doivent rester dans le schéma."""
     props = _GRAHAM_TOOL_SCHEMA.get("properties", {})
@@ -155,6 +161,54 @@ async def test_graham_execute_extrait_tool_use_block(graham_output_msft: GrahamA
     assert output.defensive_score == graham_output_msft.defensive_score
     assert output.defensive_verdict == graham_output_msft.defensive_verdict
     assert isinstance(usage.cost_usd, float)
+
+
+@pytest.mark.asyncio
+async def test_graham_number_calcule_en_python(graham_output_msft: GrahamAnalysisOutput):
+    """graham_number provient du calcul Python, jamais du bloc LLM (qui ne le fournit pas)."""
+    from app.services.financial_calculations import graham_number
+
+    skill = _make_graham_skill()
+    tool_input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score", "graham_number"}
+    )
+    mock_response = _make_mock_response(tool_input)
+
+    # eps_ttm=10, book_value=25 → √(22.5·10·25) = √5625 = 75.0
+    input_data = GrahamAnalysisInput(
+        ticker="TST",
+        ratios=GrahamRatios(pe=10.0, pb=1.0, current_ratio=2.0, debt_equity=0.3,
+                            eps_growth_10y=0.5, price=100.0, book_value=25.0, eps_ttm=10.0),
+    )
+
+    with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
+               new_callable=AsyncMock, return_value=mock_response):
+        output, _ = await skill.execute(input_data)
+
+    assert output.graham_number == pytest.approx(graham_number(10.0, 25.0))
+    assert output.graham_number == pytest.approx(75.0)
+
+
+@pytest.mark.asyncio
+async def test_graham_number_none_si_bpa_negatif(graham_output_msft: GrahamAnalysisOutput):
+    """BPA reconstitué négatif (P/E < 0) → graham_number None, sans exception."""
+    skill = _make_graham_skill()
+    tool_input = graham_output_msft.model_dump(
+        exclude={"defensive_score", "defensive_verdict", "confidence_score", "graham_number"}
+    )
+    mock_response = _make_mock_response(tool_input)
+
+    input_data = GrahamAnalysisInput(
+        ticker="TST",
+        ratios=GrahamRatios(pe=-12.0, pb=1.0, current_ratio=2.0, debt_equity=0.3,
+                            eps_growth_10y=0.5, price=100.0, book_value=25.0),
+    )
+
+    with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
+               new_callable=AsyncMock, return_value=mock_response):
+        output, _ = await skill.execute(input_data)
+
+    assert output.graham_number is None
 
 
 @pytest.mark.asyncio

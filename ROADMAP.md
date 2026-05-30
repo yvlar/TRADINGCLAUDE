@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.14.0 |
+| **Version** | 10.15.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 128 — Calculs financiers déterministes en Python (le pivot) |
-| **Dernier sprint complété** | Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅ |
+| **Sprint actif** | Sprint 129 — Conformité : disclaimers & avertissement de risque |
+| **Dernier sprint complété** | Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -19,7 +19,7 @@
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB)
+- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 126)
@@ -79,6 +79,26 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅
+
+**Objectif :** Rapatrier en Python les scores financiers jusqu'ici produits par le LLM (donc ni numériquement fiables ni auditables). Le LLM **interprète** désormais des chiffres calculés au lieu de les produire. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend + touche frontend mineure.
+
+**Livrables :**
+- `app/services/financial_calculations.py` (nouveau) — fonctions pures, typées, sans I/O : `altman_z_score` (variantes original/private/service ; `is_financial` → `None`), `beneish_m_score` (8 indices), `piotroski_f_score` (9 critères, 0-9), `montier_c_score` (6 signaux, 0-6), `sloan_accrual_ratio`, `graham_number` (√(22.5 × BPA × BVPS)). Coefficients RECOPIÉS depuis `.claude/skills/earnings-quality-fraud-detection/references/`. Retour `float | None` (ou `int | None`) — jamais d'exception sur donnée manquante / div0 (cf. `donnees-financieres.md`)
+- `app/skills/tier2/earnings_quality/skill.py` — helper `_scores_depuis_ratios` (mappe `EarningsQualityRatios` → les 5 scores) + `_injecter_scores` : substitution **post-parse** des scores numériques (M/Z/F/C/Sloan) par les valeurs Python, qui priment sur le bloc LLM. Scores aussi injectés dans le message utilisateur pour interprétation. Gate sectoriel via `is_financial` (LLM) → M/Z/F `None` pour une financière. Garde-fous Sprint 127 (NaN/inf + bornes plausibilité) conservés en 2ᵉ ligne, mais **bornes élargies** (Z 50→200, M 20→30) : un Altman Z déterministe à composante market-value peut légitimement dépasser 50 pour une société peu endettée — borner trop serré supprimait silencieusement earnings_quality (skill optionnel) des sociétés les plus saines (corrigé suite revue indépendante)
+- `app/skills/tier2/graham_analysis/{schemas,skill}.py` — nouveau champ `graham_number` (`FiniteFloatOrNone`, exclu du tool schema, calculé en Python), BPA reconstitué via `price/pe` si `eps_ttm` absent
+- `app/skills/tier2/earnings_quality/schemas.py` + `app/skills/tier1/yahoo_finance.py` — champs `net_income_t1` / `cfo_t1` (exercice T-1) ajoutés pour fiabiliser F-Score (critère 3) et C-Score (signal 1)
+- Prompts `earnings_quality` + `graham_analysis` — note « scores calculés en amont, interprète-les, ne les recalcule pas »
+- `frontend/src/types/index.ts` + `AnalysisResult.tsx` — champ `graham_number` typé + affichage « Nombre de Graham »
+- Tests : unitaire `tests/services/test_financial_calculations.py` (28 — vecteurs calculés à la main + None/div0 + banque) ; intégration `tests/skills/test_earnings_quality.py` (score Python prime sur bloc LLM, financière annule M/Z, message contient les scores) + `tests/skills/test_graham_tool_use.py` (graham_number calculé, None si BPA négatif, exclusion du tool schema) ; composant `AnalysisResultGrahamNumber.test.tsx`
+
+**Limites connues :** les sous-composantes des `*Detail` (dsri, gmi… du M ; X1-X5 du Z) restent issues du LLM — seul le score agrégé est déterministe. Leur persistance est l'objet du Sprint 131 suggéré.
+
+**Version** : 10.15.0
+**Tests** : 1 522 backend collectés (1 518 passés, 3 skipped, 1 xfailed — +36) ; 408 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — **aucune clé Anthropic dans le conteneur → les `evals` ciblées (`earnings_quality` + `graham_analysis`, prompts modifiés) n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte un score aberrant, le score Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅
 
 **Objectif :** (1) rendre les analyses reproductibles en fixant `temperature=0` sur tous les appels Claude ; (2) ajouter des garde-fous Pydantic de plausibilité post-LLM sur les scores clés d'`earnings_quality`, pour qu'un chiffre aberrant produit par le modèle soit rejeté avant persistance. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §3, §1). Sprint backend pur — aucune migration DB, aucun frontend.
@@ -131,24 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 462 backend collectés (1 458 passés, 3 skipped, 1 xfailed — +14) ; 406 Vitest verts (+6) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : la migration SQL et le filtre `@>` ne sont pas exercés live (syntaxe validée + jointure/binding `$N::text[]` vérifiés sur pool asyncpg mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
-
-### Sprint 124 — Persistance des préférences Screener côté serveur ✅
-
-**Objectif :** Migrer le tri + les filtres du Screener du `localStorage` (Sprint 109) vers une table `user_preferences` PostgreSQL liée au compte authentifié, pour offrir une continuité multi-appareils. Le `localStorage` reste un fallback hors-ligne / anti-flash.
-
-**Livrables :**
-- `infra/postgres/migration_sprint124.sql` + bootstrap lifespan (`app/api/main.py`) + `init.sql` — table `user_preferences (user_id UUID, key TEXT, value JSONB, updated_at, PRIMARY KEY (user_id, key))` ; FK `REFERENCES users(id) ON DELETE CASCADE` posée par le lifespan + la migration (la table `users` n'existe pas dans le schéma Phase 0 `init.sql`)
-- `app/services/user_preferences_service.py` — `get_preference` / `upsert_preference` (asyncpg, `INSERT ... ON CONFLICT (user_id, key) DO UPDATE`) ; `_decode_jsonb` gère JSONB renvoyé en `str` (aucun codec) ou déjà décodé
-- `app/api/endpoints/preferences.py` — `GET`/`PUT /preferences/screener`, auth-scopés via `_get_current_user` (cookie JWT) plutôt que `request.state.user_id` (jamais posé en mode dev/test où l'auth est bypassée) ; GET tolère une préférence corrompue (→ `ScreenerPreferences()` au lieu d'un 500) ; schemas Pydantic v2 dédiés (`app/models/preferences.py`)
-- `frontend/src/api/preferences.ts` — client typé `getScreenerPreferences`/`putScreenerPreferences` (CSRF/cookies, échec silencieux → `null`)
-- `frontend/src/types/index.ts` — types `ScreenerSortKey`/`ScreenerSortState`/`ScreenerPreferences` (source canonique ; `screenerView.ts` réexporte `SortKey`/`SortState`, suppression du doublon)
-- `frontend/src/components/ScreenerTable.tsx` — hydratation serveur au montage (fallback localStorage si 401 / réseau KO / champ null), persistance serveur + miroir localStorage à chaque changement de tri/filtre
-- Tests : intégration `tests/api/test_preferences_endpoints.py` (401, round-trip, upsert idempotent, 422 clé invalide, JSONB str, valeur corrompue) ; unitaire `tests/services/test_user_preferences_service.py` ; composant `frontend/src/__tests__/ScreenerTablePreferences.test.tsx` (hydratation, filtre serveur, fallback localStorage, persistance)
-
-**Version** : 10.11.0
-**Tests** : 1 448 backend collectés (1 444 passés, 3 skipped, 1 xfailed — +6 Sprint 124) ; 400 Vitest verts (+4 Sprint 124) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : la migration SQL n'est pas exécutée live (syntaxe validée + tests d'intégration sur pool stateful mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
 
 ---
 
