@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 # Calculs financiers déterministes — scores autrefois produits par le LLM, désormais
 # calculés en Python pour fiabilité numérique et auditabilité (Sprint 128).
 #
@@ -54,6 +56,45 @@ def _part_non_courante(
     return 1 - (current_assets + ppe) / total_assets
 
 
+# Étiquettes de variante exposées dans l'output persisté (auditabilité Sprint 131).
+_Z_VARIANTE_LABELS = {"original": "Z_original", "private": "Z_prime", "service": "Z_double_prime"}
+
+
+@dataclass(frozen=True)
+class BeneishComponents:
+    """Les 8 indices intermédiaires du M-Score de Beneish + le score agrégé (Sprint 131).
+
+    Chaque indice peut valoir None indépendamment du score : une sous-composante
+    calculable est persistée même si une autre manque (auditabilité partielle).
+    """
+
+    dsri: float | None
+    gmi: float | None
+    aqi: float | None
+    sgi: float | None
+    depi: float | None
+    sgai: float | None
+    tata: float | None
+    lvgi: float | None
+    m_score: float | None
+
+
+@dataclass(frozen=True)
+class AltmanComponents:
+    """Les 5 termes X1-X5 du Z-Score d'Altman + variante et score agrégé (Sprint 131).
+
+    X5 vaut None pour la variante service (Z'' exclut Sales/TA).
+    """
+
+    x1: float | None
+    x2: float | None
+    x3: float | None
+    x4: float | None
+    x5: float | None
+    variante: str
+    z_score: float | None
+
+
 def graham_number(eps: float | None, bvps: float | None) -> float | None:
     """
     Nombre de Graham : √(22.5 × EPS × BVPS) (variables-financieres.md).
@@ -63,6 +104,57 @@ def graham_number(eps: float | None, bvps: float | None) -> float | None:
     if eps is None or bvps is None or eps <= 0 or bvps <= 0:
         return None
     return (22.5 * eps * bvps) ** 0.5
+
+
+def altman_z_score_detail(
+    *,
+    current_assets: float | None,
+    current_liabilities: float | None,
+    retained_earnings: float | None,
+    ebit: float | None,
+    total_assets: float | None,
+    total_liabilities: float | None,
+    sales: float | None,
+    market_value_equity: float | None = None,
+    book_value_equity: float | None = None,
+    variant: str = "original",
+    is_financial: bool = False,
+) -> AltmanComponents:
+    """
+    Détail du Z-Score d'Altman (1968) — termes X1-X5 + score agrégé. `variant` ∈
+    {original, private, service}. Banques/assureurs/REIT → tous les termes None
+    (modèle inapplicable). Un terme calculable est exposé même si le score agrégé
+    est None (auditabilité, Sprint 131). Jamais d'exception.
+    """
+    variante = _Z_VARIANTE_LABELS.get(variant, variant)
+    if is_financial or total_assets is None or total_assets == 0:
+        return AltmanComponents(None, None, None, None, None, variante, None)
+
+    working_capital = (
+        current_assets - current_liabilities
+        if current_assets is not None and current_liabilities is not None
+        else None
+    )
+    x1 = _ratio(working_capital, total_assets)
+    x2 = _ratio(retained_earnings, total_assets)
+    x3 = _ratio(ebit, total_assets)
+    # X4 = market value of equity / TL (original) ou book equity / TL (private, service)
+    equity = market_value_equity if variant == "original" else book_value_equity
+    x4 = _ratio(equity, total_liabilities)
+    # X5 = Sales / TA — exclu de la variante service (Z'')
+    x5 = None if variant == "service" else _ratio(sales, total_assets)
+
+    if variant == "service":
+        a, b, c, d = _Z_SERVICE
+        z = a * x1 + b * x2 + c * x3 + d * x4 if None not in (x1, x2, x3, x4) else None
+    else:
+        a, b, c, d, e = _Z_PRIVATE if variant == "private" else _Z_ORIGINAL
+        z = (
+            a * x1 + b * x2 + c * x3 + d * x4 + e * x5
+            if None not in (x1, x2, x3, x4, x5)
+            else None
+        )
+    return AltmanComponents(x1, x2, x3, x4, x5, variante, z)
 
 
 def altman_z_score(
@@ -79,49 +171,23 @@ def altman_z_score(
     variant: str = "original",
     is_financial: bool = False,
 ) -> float | None:
-    """
-    Z-Score d'Altman (1968). `variant` ∈ {original, private, service}.
-    Banques/assureurs/REIT → None (modèle inapplicable, cf. référence).
-    None si une composante requise de la variante manque (jamais d'exception).
-    """
-    if is_financial or total_assets is None or total_assets == 0:
-        return None
-
-    working_capital = (
-        current_assets - current_liabilities
-        if current_assets is not None and current_liabilities is not None
-        else None
-    )
-    x1 = _ratio(working_capital, total_assets)
-    x2 = _ratio(retained_earnings, total_assets)
-    x3 = _ratio(ebit, total_assets)
-    x5 = _ratio(sales, total_assets)
-
-    if variant == "service":
-        # Z'' — exclut X5, X4 = book equity / total liabilities
-        x4 = _ratio(book_value_equity, total_liabilities)
-        if x1 is None or x2 is None or x3 is None or x4 is None:
-            return None
-        a, b, c, d = _Z_SERVICE
-        return a * x1 + b * x2 + c * x3 + d * x4
-
-    if variant == "private":
-        # Z' — X4 = book equity / total liabilities
-        x4 = _ratio(book_value_equity, total_liabilities)
-        if x1 is None or x2 is None or x3 is None or x4 is None or x5 is None:
-            return None
-        a, b, c, d, e = _Z_PRIVATE
-        return a * x1 + b * x2 + c * x3 + d * x4 + e * x5
-
-    # original — X4 = market value of equity / total liabilities
-    x4 = _ratio(market_value_equity, total_liabilities)
-    if x1 is None or x2 is None or x3 is None or x4 is None or x5 is None:
-        return None
-    a, b, c, d, e = _Z_ORIGINAL
-    return a * x1 + b * x2 + c * x3 + d * x4 + e * x5
+    """Z-Score agrégé d'Altman — voir `altman_z_score_detail` pour les termes X1-X5."""
+    return altman_z_score_detail(
+        current_assets=current_assets,
+        current_liabilities=current_liabilities,
+        retained_earnings=retained_earnings,
+        ebit=ebit,
+        total_assets=total_assets,
+        total_liabilities=total_liabilities,
+        sales=sales,
+        market_value_equity=market_value_equity,
+        book_value_equity=book_value_equity,
+        variant=variant,
+        is_financial=is_financial,
+    ).z_score
 
 
-def beneish_m_score(
+def beneish_m_score_detail(
     *,
     receivables_t: float | None,
     receivables_t1: float | None,
@@ -146,14 +212,15 @@ def beneish_m_score(
     current_liabilities_t: float | None,
     current_liabilities_t1: float | None,
     is_financial: bool = False,
-) -> float | None:
+) -> BeneishComponents:
     """
-    M-Score de Beneish (1999) — 8 indices T/T-1. Banques/assureurs/REIT → None
-    (exclus de l'échantillon d'origine). None si une donnée requise manque.
-    AQI : les « titres » (securities) sont supposés nuls (champ absent du contrat de données).
+    Détail du M-Score de Beneish (1999) — 8 indices T/T-1 + score agrégé.
+    Banques/assureurs/REIT → tous les indices None (exclus de l'échantillon d'origine).
+    Un indice calculable est exposé même si le score agrégé est None (auditabilité,
+    Sprint 131). AQI : « titres » (securities) supposés nuls (champ absent du contrat).
     """
     if is_financial:
-        return None
+        return BeneishComponents(None, None, None, None, None, None, None, None, None)
 
     # DSRI = (Recv_t / Sales_t) / (Recv_{t-1} / Sales_{t-1})
     dsri = _ratio(_ratio(receivables_t, sales_t), _ratio(receivables_t1, sales_t1))
@@ -187,29 +254,76 @@ def beneish_m_score(
     lev_t1 = _ratio(_somme(ltd_t1, current_liabilities_t1), total_assets_t1)
     lvgi = _ratio(lev_t, lev_t1)
 
-    if (
-        dsri is None
-        or gmi is None
-        or aqi is None
-        or sgi is None
-        or depi is None
-        or sgai is None
-        or tata is None
-        or lvgi is None
-    ):
-        return None
+    indices = (dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi)
+    if None in indices:
+        m_score = None
+    else:
+        m_score = (
+            _M_CONST
+            + _M_DSRI * dsri
+            + _M_GMI * gmi
+            + _M_AQI * aqi
+            + _M_SGI * sgi
+            + _M_DEPI * depi
+            + _M_SGAI * sgai
+            + _M_TATA * tata
+            + _M_LVGI * lvgi
+        )
+    return BeneishComponents(dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi, m_score)
 
-    return (
-        _M_CONST
-        + _M_DSRI * dsri
-        + _M_GMI * gmi
-        + _M_AQI * aqi
-        + _M_SGI * sgi
-        + _M_DEPI * depi
-        + _M_SGAI * sgai
-        + _M_TATA * tata
-        + _M_LVGI * lvgi
-    )
+
+def beneish_m_score(
+    *,
+    receivables_t: float | None,
+    receivables_t1: float | None,
+    sales_t: float | None,
+    sales_t1: float | None,
+    cogs_t: float | None,
+    cogs_t1: float | None,
+    current_assets_t: float | None,
+    current_assets_t1: float | None,
+    ppe_net_t: float | None,
+    ppe_net_t1: float | None,
+    total_assets_t: float | None,
+    total_assets_t1: float | None,
+    depreciation_t: float | None,
+    depreciation_t1: float | None,
+    sga_t: float | None,
+    sga_t1: float | None,
+    net_income_t: float | None,
+    cfo_t: float | None,
+    ltd_t: float | None,
+    ltd_t1: float | None,
+    current_liabilities_t: float | None,
+    current_liabilities_t1: float | None,
+    is_financial: bool = False,
+) -> float | None:
+    """M-Score agrégé de Beneish — voir `beneish_m_score_detail` pour les 8 indices."""
+    return beneish_m_score_detail(
+        receivables_t=receivables_t,
+        receivables_t1=receivables_t1,
+        sales_t=sales_t,
+        sales_t1=sales_t1,
+        cogs_t=cogs_t,
+        cogs_t1=cogs_t1,
+        current_assets_t=current_assets_t,
+        current_assets_t1=current_assets_t1,
+        ppe_net_t=ppe_net_t,
+        ppe_net_t1=ppe_net_t1,
+        total_assets_t=total_assets_t,
+        total_assets_t1=total_assets_t1,
+        depreciation_t=depreciation_t,
+        depreciation_t1=depreciation_t1,
+        sga_t=sga_t,
+        sga_t1=sga_t1,
+        net_income_t=net_income_t,
+        cfo_t=cfo_t,
+        ltd_t=ltd_t,
+        ltd_t1=ltd_t1,
+        current_liabilities_t=current_liabilities_t,
+        current_liabilities_t1=current_liabilities_t1,
+        is_financial=is_financial,
+    ).m_score
 
 
 def piotroski_f_score(

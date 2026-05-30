@@ -9,7 +9,9 @@ import pytest
 
 from app.services.financial_calculations import (
     altman_z_score,
+    altman_z_score_detail,
     beneish_m_score,
+    beneish_m_score_detail,
     graham_number,
     montier_c_score,
     piotroski_f_score,
@@ -116,6 +118,88 @@ class TestBeneishMScore:
 
     def test_division_par_zero_retourne_none(self):
         assert beneish_m_score(**{**_BENEISH_STABLE, "sales_t1": 0}) is None
+
+
+class TestBeneishMScoreDetail:
+    """Sprint 131 — les 8 indices intermédiaires sont calculés et exposés en Python."""
+
+    def test_entreprise_stable_indices_unitaires(self):
+        # T == T-1 → chaque indice = 1.0 ; TATA = (NI-CFO)/TA = 0.
+        d = beneish_m_score_detail(**_BENEISH_STABLE)
+        assert d.dsri == pytest.approx(1.0)
+        assert d.gmi == pytest.approx(1.0)
+        assert d.aqi == pytest.approx(1.0)
+        assert d.sgi == pytest.approx(1.0)
+        assert d.depi == pytest.approx(1.0)
+        assert d.sgai == pytest.approx(1.0)
+        assert d.tata == pytest.approx(0.0)
+        assert d.lvgi == pytest.approx(1.0)
+        assert d.m_score == pytest.approx(-2.48, abs=1e-9)
+
+    def test_agrege_coherent_avec_detail(self):
+        # beneish_m_score doit retourner exactement le m_score du détail (délégation).
+        assert beneish_m_score(**_BENEISH_STABLE) == beneish_m_score_detail(**_BENEISH_STABLE).m_score
+
+    def test_indice_partiel_expose_meme_si_score_none(self):
+        # depreciation_t1 absent → DEPI seul incalculable, mais DSRI reste exposé ;
+        # le score agrégé devient None sans annuler les autres indices (auditabilité).
+        d = beneish_m_score_detail(**{**_BENEISH_STABLE, "depreciation_t1": None})
+        assert d.depi is None
+        assert d.dsri == pytest.approx(1.0)
+        assert d.m_score is None
+
+    def test_banque_tous_indices_none(self):
+        d = beneish_m_score_detail(**{**_BENEISH_STABLE, "is_financial": True})
+        assert d.m_score is None
+        assert d.dsri is None and d.tata is None and d.lvgi is None
+
+
+class TestAltmanZScoreDetail:
+    """Sprint 131 — les termes X1-X5 sont calculés et exposés en Python."""
+
+    def _vecteur(self, **overrides):
+        base = dict(
+            current_assets=100, current_liabilities=50, retained_earnings=40,
+            ebit=30, total_assets=200, total_liabilities=150, sales=260,
+            market_value_equity=300, book_value_equity=180,
+        )
+        base.update(overrides)
+        return base
+
+    def test_original_termes_connus(self):
+        d = altman_z_score_detail(**self._vecteur())
+        assert d.variante == "Z_original"
+        assert d.x1 == pytest.approx(0.25)   # (100-50)/200
+        assert d.x2 == pytest.approx(0.20)   # 40/200
+        assert d.x3 == pytest.approx(0.15)   # 30/200
+        assert d.x4 == pytest.approx(2.0)    # 300/150 (market value)
+        assert d.x5 == pytest.approx(1.3)    # 260/200
+        assert d.z_score == pytest.approx(3.575, rel=1e-9)
+
+    def test_agrege_coherent_avec_detail(self):
+        assert altman_z_score(**self._vecteur()) == altman_z_score_detail(**self._vecteur()).z_score
+
+    def test_service_exclut_x5_et_utilise_book_equity(self):
+        d = altman_z_score_detail(**self._vecteur(), variant="service")
+        assert d.variante == "Z_double_prime"
+        assert d.x5 is None              # Z'' exclut Sales/TA
+        assert d.x4 == pytest.approx(1.2)  # 180/150 (book equity)
+        attendu = 6.56 * 0.25 + 3.26 * 0.20 + 6.72 * 0.15 + 1.05 * 1.2
+        assert d.z_score == pytest.approx(attendu, rel=1e-9)
+
+    def test_terme_partiel_expose_meme_si_score_none(self):
+        # retained_earnings absent → X2 seul incalculable, X1/X3/X4/X5 restent exposés.
+        d = altman_z_score_detail(**self._vecteur(retained_earnings=None))
+        assert d.x2 is None
+        assert d.x1 == pytest.approx(0.25)
+        assert d.x3 == pytest.approx(0.15)
+        assert d.z_score is None
+
+    def test_banque_tous_termes_none(self):
+        d = altman_z_score_detail(**self._vecteur(), is_financial=True)
+        assert d.variante == "Z_original"
+        assert d.x1 is None and d.x4 is None and d.x5 is None
+        assert d.z_score is None
 
 
 class TestPiotroskiFScore:
