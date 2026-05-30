@@ -23,7 +23,8 @@ const MOCK_GRAHAM_RATIOS = {
   eps_ttm: 7.25,
   revenue_bn: 38,
   debt_equity: 0.45,
-  eps_growth_10y: 0.27,
+  eps_growth_total: 0.27,
+  eps_growth_years: 4,
   dividend_years: 190,
   current_ratio: null,
 }
@@ -125,6 +126,22 @@ describe('AnalyzeForm', () => {
     await userEvent.click(screen.getByTestId('autofill-button'))
     await waitFor(() => {
       expect(screen.getByDisplayValue('11')).toBeInTheDocument()
+    })
+  })
+
+  it("affiche le libellé honnête « Croissance EPS (totale) » (pas « 10a »)", () => {
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    expect(screen.getByText('Croissance EPS (totale)')).toBeInTheDocument()
+    expect(screen.queryByText('Croissance EPS 10a')).not.toBeInTheDocument()
+  })
+
+  it('affiche l’horizon réel « sur N ans » après Auto-fill', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce(MOCK_EXTRACT_RESPONSE)
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      expect(screen.getByTestId('eps-growth-horizon')).toHaveTextContent('sur 4 ans')
     })
   })
 

@@ -56,7 +56,7 @@ RATIOS_MINI = GrahamRatios(
     pb=1.3,
     current_ratio=None,
     debt_equity=0.45,
-    eps_growth_10y=0.27,
+    eps_growth_total=0.27,
     price=80.0,
     book_value=61.5,
 )
@@ -111,7 +111,7 @@ async def test_screen_ticker_normalise_majuscules(client):
         "ratios_map": {
             "msft": {
                 "pe": 34.2, "pb": 12.1, "current_ratio": 1.34,
-                "debt_equity": 0.28, "eps_growth_10y": 0.85,
+                "debt_equity": 0.28, "eps_growth_total": 0.85,
                 "price": 420.0, "book_value": 35.0,
             }
         },
@@ -308,7 +308,7 @@ async def test_screen_endpoint_avec_ratios_map(client):
                 "pb": 12.1,
                 "current_ratio": 1.34,
                 "debt_equity": 0.28,
-                "eps_growth_10y": 0.85,
+                "eps_growth_total": 0.85,
                 "price": 420.0,
                 "book_value": 35.0,
             }

@@ -191,7 +191,7 @@ def _make_yahoo_mock():
     mock = AsyncMock()
     mock.extract = AsyncMock(return_value=GrahamRatios(
         pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
-        eps_growth_10y=0.27, price=80.0, book_value=61.5,
+        eps_growth_total=0.27, price=80.0, book_value=61.5,
         eps_ttm=7.25, revenue_bn=38.0, dividend_years=190,
     ))
     mock.extract_earnings_quality = AsyncMock(return_value=EarningsQualityRatios(

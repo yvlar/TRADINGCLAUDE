@@ -19,7 +19,7 @@ RATIOS_MINI = GrahamRatios(
     pb=1.3,
     current_ratio=None,
     debt_equity=0.45,
-    eps_growth_10y=0.27,
+    eps_growth_total=0.27,
     price=80.0,
     book_value=61.5,
 )
@@ -355,7 +355,7 @@ async def test_endpoint_screen_avec_filtre_composite_label(client):
                 "pb": 1.3,
                 "current_ratio": None,
                 "debt_equity": 0.45,
-                "eps_growth_10y": 0.27,
+                "eps_growth_total": 0.27,
                 "price": 80.0,
                 "book_value": 61.5,
             }
@@ -381,7 +381,7 @@ async def test_endpoint_screen_avec_min_composite_score(client):
                 "pb": 1.4,
                 "current_ratio": None,
                 "debt_equity": 0.50,
-                "eps_growth_10y": 0.30,
+                "eps_growth_total": 0.30,
                 "price": 90.0,
                 "book_value": 65.0,
             }
@@ -405,7 +405,7 @@ async def test_endpoint_screen_avec_filter_workflow(client):
                 "pb": 1.2,
                 "current_ratio": None,
                 "debt_equity": 0.40,
-                "eps_growth_10y": 0.35,
+                "eps_growth_total": 0.35,
                 "price": 130.0,
                 "book_value": 110.0,
             }

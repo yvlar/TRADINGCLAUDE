@@ -26,7 +26,8 @@ Utiliser **exactement** ces identifiants. Toute déviation introduit des incohé
 | `fcf` | `fcf` | `float \| None` | Free cash flow |
 | `roic` | `roic` | `float \| None` | Return on invested capital |
 | `roe` | `roe` | `float \| None` | Return on equity |
-| `eps_growth_10y` | `epsGrowth10y` | `float \| None` | Croissance totale BPA sur 10 ans (fraction : `0.85` = 85 %) |
+| `eps_growth_total` | `epsGrowthTotal` | `float \| None` | Croissance totale BPA sur l'horizon réellement disponible (fraction : `0.85` = 85 %). Pour `GrahamRatios` — calculé par le tier1 sur ~4 ans, pas 10 |
+| `eps_growth_years` | `epsGrowthYears` | `int \| None` | Horizon réel (en années) couvert par `eps_growth_total`. `None` si inconnu (donnée absente ou repli de source) |
 | `current_ratio` | `currentRatio` | `float \| None` | Actif circulant / Passif circulant — `null` normal pour banques |
 | `debt_equity` | `debtEquity` | `float \| None` | Dette totale / Capitaux propres |
 | `cost_usd` | `costUsd` | `float` | Coût API Claude de l'appel en USD — jamais `None` |
@@ -39,6 +40,11 @@ Utiliser **exactement** ces identifiants. Toute déviation introduit des incohé
 - Python backend : `snake_case` — schemas Pydantic, fonctions, variables
 - TypeScript frontend : `camelCase` — types `index.ts`, props, variables
 - Les schemas Pydantic utilisent `snake_case` ; le frontend convertit via `types/index.ts`
+
+> **Note de périmètre** — `EsgInput` (`esg_simplified`) et `ValuationRatios` (`stock_valuation`)
+> conservent un champ `eps_growth_10y` distinct, alimenté par d'autres sources (saisie ESG,
+> `info.earningsGrowth`, ou `None`) et non par le calcul tier1 trompeur corrigé ici. Le standard
+> ci-dessus s'applique au ratio Graham calculé ; ne pas confondre les deux.
 
 ### Exemples
 

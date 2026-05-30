@@ -149,7 +149,7 @@ async def test_graham_execute_extrait_tool_use_block(graham_output_msft: GrahamA
     input_data = GrahamAnalysisInput(
         ticker="MSFT",
         ratios=GrahamRatios(pe=34.2, pb=12.1, current_ratio=1.34, debt_equity=0.28,
-                            eps_growth_10y=0.85, price=420.0, book_value=35.0),
+                            eps_growth_total=0.85, price=420.0, book_value=35.0),
     )
 
     with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
@@ -178,7 +178,7 @@ async def test_graham_number_calcule_en_python(graham_output_msft: GrahamAnalysi
     input_data = GrahamAnalysisInput(
         ticker="TST",
         ratios=GrahamRatios(pe=10.0, pb=1.0, current_ratio=2.0, debt_equity=0.3,
-                            eps_growth_10y=0.5, price=100.0, book_value=25.0, eps_ttm=10.0),
+                            eps_growth_total=0.5, price=100.0, book_value=25.0, eps_ttm=10.0),
     )
 
     with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
@@ -201,7 +201,7 @@ async def test_graham_number_none_si_bpa_negatif(graham_output_msft: GrahamAnaly
     input_data = GrahamAnalysisInput(
         ticker="TST",
         ratios=GrahamRatios(pe=-12.0, pb=1.0, current_ratio=2.0, debt_equity=0.3,
-                            eps_growth_10y=0.5, price=100.0, book_value=25.0),
+                            eps_growth_total=0.5, price=100.0, book_value=25.0),
     )
 
     with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
@@ -219,7 +219,7 @@ async def test_graham_execute_leve_value_error_sans_tool_use_block():
     input_data = GrahamAnalysisInput(
         ticker="TST",
         ratios=GrahamRatios(pe=10.0, pb=1.0, current_ratio=2.0, debt_equity=0.3,
-                            eps_growth_10y=0.5, price=100.0, book_value=50.0),
+                            eps_growth_total=0.5, price=100.0, book_value=50.0),
     )
 
     with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",
@@ -241,7 +241,7 @@ async def test_graham_execute_passe_tools_et_tool_choice(graham_output_msft: Gra
     input_data = GrahamAnalysisInput(
         ticker="MSFT",
         ratios=GrahamRatios(pe=34.2, pb=12.1, current_ratio=1.34, debt_equity=0.28,
-                            eps_growth_10y=0.85, price=420.0, book_value=35.0),
+                            eps_growth_total=0.85, price=420.0, book_value=35.0),
     )
 
     with patch("app.skills.tier2.graham_analysis.skill.call_claude_with_retry",

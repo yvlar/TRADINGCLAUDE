@@ -17,8 +17,12 @@ class GrahamRatios(BaseModel):
     pb: float = Field(description="Price/Book ratio (cours / valeur comptable par action)")
     current_ratio: float | None = Field(None, description="Actif circulant / Passif circulant (None pour les banques)")
     debt_equity: float = Field(description="Dette totale / Capitaux propres")
-    eps_growth_10y: float = Field(
-        description="Croissance totale du BPA sur 10 ans, format fraction (0.85 = 85 % total)"
+    eps_growth_total: float = Field(
+        description="Croissance totale du BPA sur l'horizon réellement disponible (voir eps_growth_years, souvent ~4 ans — PAS 10). Format fraction (0.85 = 85 % total sur la période)"
+    )
+    eps_growth_years: int | None = Field(
+        None,
+        description="Nombre d'années réellement couvertes par eps_growth_total. None si horizon inconnu (donnée absente ou repli de source).",
     )
     price: float = Field(description="Cours actuel de l'action")
     book_value: float = Field(description="Valeur comptable par action (book value per share)")
@@ -40,10 +44,10 @@ class GrahamRatios(BaseModel):
                 "GrahamRatios: P/B négatif (pb=%.2f) — valeur comptable négative (cas extrême)", self.pb
             )
 
-        if self.eps_growth_10y > 5.0:
+        if self.eps_growth_total > 5.0:
             _logger.warning(
-                "GrahamRatios: eps_growth_10y=%.2f suspect (> 500%% de croissance sur 10 ans)",
-                self.eps_growth_10y,
+                "GrahamRatios: eps_growth_total=%.2f suspect (> 500%% de croissance sur la période)",
+                self.eps_growth_total,
             )
 
         # Triangle pe / price / eps_ttm

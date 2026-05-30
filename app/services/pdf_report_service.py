@@ -142,6 +142,11 @@ def _fmt_num(valeur: float | None, gabarit: str = "{:.2f}") -> str:
     return gabarit.format(valeur) if valeur is not None else "—"
 
 
+def _fmt_eps_growth_label(years: int | None) -> str:
+    """Libellé honnête de la croissance BPA : « sur N ans » ou horizon inconnu (Sprint 130)."""
+    return f"Croissance BPA sur {years} ans" if years else "Croissance BPA (horizon n.d.)"
+
+
 def _build_verdicts_rows(la: "AnalyzeResponse") -> list[tuple[str, str, str]]:
     """Construit les lignes (skill, verdict, détail) pour chaque skill présent dans l'analyse."""
     rows: list[tuple[str, str, str]] = []
@@ -222,8 +227,8 @@ def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
         ("P/B", _fmt_num(r.pb)),
         ("Dette / Capitaux propres", _fmt_num(r.debt_equity)),
         (
-            "Croissance BPA 10 ans",
-            f"{r.eps_growth_10y:.0%}" if r.eps_growth_10y is not None else "—",
+            _fmt_eps_growth_label(r.eps_growth_years),
+            f"{r.eps_growth_total:.0%}" if r.eps_growth_total is not None else "—",
         ),
         ("Ratio de liquidité", _fmt_num(r.current_ratio)),
     ]
