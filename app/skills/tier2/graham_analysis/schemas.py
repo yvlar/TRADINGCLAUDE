@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from pydantic import BaseModel, Field, computed_field, model_validator
 
@@ -30,6 +31,14 @@ class GrahamRatios(BaseModel):
     revenue_bn: float | None = Field(None, description="Revenus annuels en milliards de la devise du titre")
     dividend_years: int | None = Field(None, description="Nombre d'années consécutives de dividendes versés")
     no_deficit_years: int | None = Field(None, description="Nombre d'années sans déficit sur les dernières années")
+    ratios_fetched_at: datetime | None = Field(
+        None,
+        description="Date UTC de récupération des ratios depuis la source. None pour les analyses persistées avant ce champ ou les ratios saisis manuellement.",
+    )
+    ratios_source: str | None = Field(
+        None,
+        description="Source des ratios (ex. « Yahoo Finance »). None si inconnue (analyse ancienne ou saisie manuelle).",
+    )
 
     @model_validator(mode="after")
     def valider_coherence_ratios(self) -> "GrahamRatios":

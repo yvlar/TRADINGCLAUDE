@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 133 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 134 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.20.0 |
+| **Version** | 10.21.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 134 — Traçabilité source+date des ratios dans l'UI/PDF |
-| **Dernier sprint complété** | Sprint 133 — Disclaimer : Screener + Comparer ✅ |
+| **Sprint actif** | Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) |
+| **Dernier sprint complété** | Sprint 134 — Traçabilité source+date des ratios ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -51,7 +51,7 @@
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
-- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance, streaming SSE skill par skill, badge « score depuis cache <24h »
+- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134), streaming SSE skill par skill, badge « score depuis cache <24h »
 - **Screener** — batch 2-20 tickers, tri + filtres composite **persistés côté serveur** (continuité multi-appareils, fallback localStorage hors-ligne — Sprint 124) + colonne fraîcheur (badge frais/périmé >24h) + export CSV filtré
 - **History** — historique par ticker, recherche full-text `q` cross-ticker (index GIN pg_trgm), filtre par plage de dates, suppression par analyse
 - **Watchlist** — positions surveillées, analyses manuelles, seuils ESG + prix éditables inline, score composite historique, export Excel
@@ -79,6 +79,24 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 134 — Traçabilité source+date des ratios ✅
+
+**Objectif :** `donnees-financieres.md` impose que toute donnée financière porte sa source et sa date de récupération (« une donnée sans date est inutilisable »). Les ratios Graham extraits de Yahoo Finance étaient affichés sans horodatage — risque de décision sur une donnée périmée. Ajouter un champ de traçabilité (date UTC de récupération + source) à l'extraction tier1, le propager schema → type TS → UI/PDF, et l'afficher à côté des ratios. Suite de la revue expert FinTech (file « traçabilité des données »). Périmètre : `GrahamRatios` uniquement (`ValuationRatios`/`EarningsQualityRatios` = sprint 138).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — constante module `RATIOS_SOURCE = "Yahoo Finance"` (jamais un littéral dispersé) ; `extract()` pose `ratios_fetched_at=datetime.now(timezone.utc)` + `ratios_source=RATIOS_SOURCE`. Le repli de source d'`eps_growth` ne touche pas l'horodatage (posé une fois à la construction)
+- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios` gagne `ratios_fetched_at: datetime | None = None` et `ratios_source: str | None = None` (défaut `None` → rétrocompatible avec les analyses persistées avant ce sprint)
+- `frontend/src/types/index.ts` + `AnalyzeForm.tsx` — champs **snake_case** (`ratios_fetched_at`/`ratios_source`, l'interface `GrahamRatios` mirroite le payload brut de l'API, pas de camelisation) ; affichage discret « Source : Yahoo Finance · récupéré le AAAA-MM-JJ » sous les ratios après auto-fill (`data-testid="ratios-source"`, rien si `None`). Type mappé `NumericRatioKey` pour exclure les 2 champs string de l'édition numérique (typage strict, zéro `any`)
+- `app/services/pdf_report_service.py` — `_build_ratios_rows` ajoute une ligne « Source des ratios » (`_fmt_ratios_source`) quand le champ est présent, omise proprement si `None` (PDF reconstruit depuis `input_data` persisté)
+- **Décision UI** : affichage posé dans `AnalyzeForm` (où vit réellement `GrahamRatios` côté UI, via le spread `...result.graham`) plutôt que `AnalysisResult` — `AnalyzeResponse` ne porte pas les ratios d'entrée ; le PDF couvre le cas du dossier persisté
+- **Correctif de sérialisation (révélé par la revue indépendante)** : `request.ratios.model_dump()` → `model_dump(mode="json")` dans `core.py:_persist` ET `analysis_cache.py:_cache_key` (sinon `datetime` fait planter `json.dumps` sur le chemin nominal après auto-fill). La clé de cache **exclut** `ratios_fetched_at`/`ratios_source` : l'identité de cache porte sur les données financières, pas sur le moment de récupération (sinon le cache ne hit jamais)
+- Tests : tier1 (`extract()` horodate UTC + pose la source), schema (champs optionnels `None` par défaut + ISO acceptée), PDF (ligne présente/omise), cache (pas de crash datetime + clé stable malgré horodatage différent), composant `AnalyzeForm` (source+date affichées après auto-fill, absentes avant)
+
+**Version** : 10.21.0
+**Tests** : 1 602 backend collectés (1 598 passés, 3 skipped, 1 xfailed — +7) ; 420 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Revue indépendante à contexte frais (correctness high) : **1 bug HIGH détecté et corrigé avant commit** — `analysis_cache.py:_cache_key` faisait planter `json.dumps` sur le nouveau champ `datetime` (chemin nominal post-auto-fill), structurellement identique au hazard que l'auteur avait déjà corrigé dans `_persist` mais manqué dans le cache ; fix + 2 tests de régression, 2ᵉ passe verte. Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
 
 ### Sprint 133 — Disclaimer : Screener + Comparer ✅
 
@@ -131,26 +149,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 544 backend collectés (1 540 passés, 3 skipped, 1 xfailed — +11) ; 414 Vitest verts (inchangé, sprint backend pur) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — le prompt `earnings_quality` est modifié (note + exemple JSON) → **evals `earnings_quality` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (vérifié : la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe des intermédiaires est validée sur payloads construits (le bloc LLM injecte un indice/terme aberrant, la valeur Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
-
-### Sprint 130 — Données : honnêteté du label + repli multi-sources ✅
-
-**Objectif :** Le champ `eps_growth_10y` annonçait « 10 ans » mais `_compute_eps_growth` calcule en réalité la croissance sur l'horizon disponible (~4 ans) ; et `yfinance` est une source unique (SPOF). Corriger le label trompeur de bout en bout, exposer l'horizon réel, et ajouter un repli quand la source primaire ne renvoie rien. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §2, §5).
-
-**Livrables :**
-- `app/skills/tier1/yahoo_finance.py` — `_compute_eps_growth` retourne désormais `(croissance_totale, horizon_ans)` où l'horizon = `len(valeurs) - 1` (N exercices annuels couvrent N-1 années de croissance — pas N, pas 10). `extract()` câble `eps_growth_total` + `eps_growth_years`. **Repli de source** : si `income_stmt` absent/vide, repli explicite et tracé (`logger.info`) sur `info.earningsGrowth` (croissance YoY, horizon 1 an) au lieu de tomber muettement à `0.0`. `ValuationRatios` (chemin `extract_valuation`) inchangé
-- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios.eps_growth_10y` → `eps_growth_total: float` (croissance totale honnête) + nouveau `eps_growth_years: int | None` (horizon réel, `None` si inconnu) ; validateur de plausibilité (> 500 %) renommé et message corrigé
-- `app/skills/tier2/graham_analysis/prompts/system.md` — toutes les références `eps_growth_10y` → `eps_growth_total` ; **correction d'un bug d'annualisation** : la formule supposait exactement 10 ans (`g = (1+x)^0.1 - 1`) → utilise désormais l'horizon réel `g = (1 + eps_growth_total)^(1/eps_growth_years) - 1` (pas d'annualisation si horizon inconnu)
-- `app/services/pdf_report_service.py` — libellé honnête « Croissance BPA sur N ans » (`eps_growth_years`) ou « (horizon n.d.) » si inconnu, au lieu de « 10 ans »
-- `frontend/src/types/index.ts` + `AnalyzeForm.tsx` — `GrahamRatios.eps_growth_total` + `eps_growth_years?` ; libellé du champ « Croissance EPS (totale) » (au lieu de « 10a ») + indice « sur N ans » affiché après auto-fill (`data-testid="eps-growth-horizon"`)
-- `.claude/rules/variables-financieres.md` — tableau standardisé mis à jour (`eps_growth_total`/`epsGrowthTotal` + `eps_growth_years`/`epsGrowthYears`) ; note de périmètre sur les champs `eps_growth_10y` distincts d'`EsgInput`/`ValuationRatios` (hors scope)
-- Tests : unitaires `_compute_eps_growth` (tuple + horizon 2/4 points + base négative + repli `info`) ; intégration `extract()` (horizon exposé, repli déclenché, absence sans repli → `0.0`/`None`) ; schema (`eps_growth_years` optionnel + renseigné) ; PDF (`_build_ratios_rows` libellé « sur N ans »/« horizon n.d. ») ; composant `AnalyzeForm` (libellé honnête + indice « sur 4 ans » après auto-fill)
-
-**Périmètre :** `EsgInput` (`esg_simplified`) et `ValuationRatios` (`stock_valuation`) conservent un champ `eps_growth_10y` distinct (sources différentes : saisie ESG / `info.earningsGrowth` / `None`, jamais le calcul tier1 corrigé) — hors scope, documenté.
-
-**Version** : 10.17.0
-**Tests** : 1 533 backend collectés (1 529 passés, 3 skipped, 1 xfailed — +7) ; 414 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — le prompt `graham_analysis` est modifié (renommage + correction d'annualisation) → **evals `graham_analysis` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). Stack Docker non démarrée → extraction yfinance exercée sur mocks (pas d'appel réseau live). Pas de test navigateur live.
 
 ---
 

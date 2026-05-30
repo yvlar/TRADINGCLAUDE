@@ -183,6 +183,26 @@ class TestGrahamRatios:
         )
         assert ratios.eps_growth_years == 4
 
+    def test_tracabilite_absente_par_defaut_none(self):
+        """ratios_fetched_at / ratios_source absents → None (rétrocompatible analyses persistées)."""
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+        )
+        assert ratios.ratios_fetched_at is None
+        assert ratios.ratios_source is None
+
+    def test_tracabilite_renseignee_et_iso_acceptee(self):
+        """ratios_fetched_at accepte une string ISO (round-trip JSONB) et ratios_source un littéral."""
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_fetched_at="2026-05-30T12:00:00+00:00", ratios_source="Yahoo Finance",
+        )
+        assert ratios.ratios_source == "Yahoo Finance"
+        assert ratios.ratios_fetched_at is not None
+        assert ratios.ratios_fetched_at.year == 2026
+
 
 class TestGrahamAnalysisInput:
     def test_construction_valide(self, ratios_msft):

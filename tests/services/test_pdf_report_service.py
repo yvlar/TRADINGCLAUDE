@@ -80,6 +80,23 @@ class TestRatiosRowsLabel:
         labels = [label for label, _ in rows]
         assert "Croissance BPA (horizon n.d.)" in labels
 
+    def test_ligne_source_date_presente_quand_renseignee(self):
+        """ratios_fetched_at + ratios_source présents → ligne « <source> · récupéré le AAAA-MM-JJ »."""
+        r = self._ratios(
+            ratios_source="Yahoo Finance",
+            ratios_fetched_at=datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+        )
+        rows = _build_ratios_rows(r)
+        valeurs = {label: valeur for label, valeur in rows}
+        assert "Source des ratios" in valeurs
+        assert valeurs["Source des ratios"] == "Yahoo Finance · récupéré le 2026-05-30"
+
+    def test_ligne_source_omise_quand_none(self):
+        """Analyse ancienne (traçabilité None) → ligne source omise, pas de plantage ni date factice."""
+        rows = _build_ratios_rows(self._ratios())
+        labels = [label for label, _ in rows]
+        assert "Source des ratios" not in labels
+
 
 # ---------------------------------------------------------------------------
 # Tests : PdfReportService — unité

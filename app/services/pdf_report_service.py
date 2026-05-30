@@ -147,6 +147,14 @@ def _fmt_eps_growth_label(years: int | None) -> str:
     return f"Croissance BPA sur {years} ans" if years else "Croissance BPA (horizon n.d.)"
 
 
+def _fmt_ratios_source(source: str | None, fetched_at: "datetime | None") -> str:
+    """Traçabilité « <source> · récupéré le AAAA-MM-JJ » ; « source n.d. » si la source manque."""
+    src = source or "source n.d."
+    if fetched_at is not None:
+        return f"{src} · récupéré le {fetched_at.strftime('%Y-%m-%d')}"
+    return src
+
+
 def _build_verdicts_rows(la: "AnalyzeResponse") -> list[tuple[str, str, str]]:
     """Construit les lignes (skill, verdict, détail) pour chaque skill présent dans l'analyse."""
     rows: list[tuple[str, str, str]] = []
@@ -219,7 +227,7 @@ def _table_verdicts(
 
 def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
     """Tableau des ratios clés Graham pour le PDF."""
-    return [
+    rows: list[tuple[str, str]] = [
         ("Cours", _fmt_num(r.price)),
         ("BPA (TTM)", _fmt_num(r.eps_ttm)),
         ("Valeur comptable / action", _fmt_num(r.book_value)),
@@ -232,6 +240,10 @@ def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
         ),
         ("Ratio de liquidité", _fmt_num(r.current_ratio)),
     ]
+    # Traçabilité : omise proprement pour les analyses persistées avant ce champ (tout None)
+    if r.ratios_fetched_at is not None or r.ratios_source is not None:
+        rows.append(("Source des ratios", _fmt_ratios_source(r.ratios_source, r.ratios_fetched_at)))
+    return rows
 
 
 class PdfReportService:

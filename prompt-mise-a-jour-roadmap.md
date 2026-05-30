@@ -1,12 +1,12 @@
-# Sprint 134 — Traçabilité source+date des ratios dans l'UI/PDF
+# Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.20.0 — Sprint 133 complété)
+## État du projet (v10.21.0 — Sprint 134 complété)
 
-Le Sprint 133 a étendu le composant `Disclaimer` (Sprint 129) aux deux dernières surfaces actionnables hors `AnalysisResult` : les résultats du Screener et la vue Comparer affichent désormais l'avertissement réglementaire `inline`, conditionné à la présence de résultats. La file « conformité » de la revue FinTech est close ; reste la file **traçabilité des données** (source + date des ratios).
+Le Sprint 134 a ajouté la traçabilité **source + date de récupération** aux ratios Graham (`ratios_fetched_at` UTC + `ratios_source` posés par l'extraction tier1, propagés au schema → type TS → affichage `AnalyzeForm` + ligne PDF). La file « traçabilité des données » avance ; reste à **généraliser le repli de source** (un seul ratio, `eps_growth`, en bénéficie aujourd'hui).
 
 > **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
 
@@ -15,72 +15,69 @@ Le Sprint 133 a étendu le composant `Disclaimer` (Sprint 129) aux deux dernièr
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (déjà injecté comme *project instructions* — ne pas le relire avec un outil)
-2. `ROADMAP.md` — état courant v10.20.0, Sprint 133 ✅
-3. `.claude/rules/donnees-financieres.md` — cœur du sprint : exigence « source + date » (« une donnée sans date est inutilisable »), validation None/div0, suffixe `.TO`
-4. `.claude/rules/variables-financieres.md` — nommage standardisé du nouveau champ de traçabilité (snake_case Python ↔ camelCase TS)
+2. `ROADMAP.md` — état courant v10.21.0, Sprint 134 ✅
+3. `.claude/rules/donnees-financieres.md` — cœur du sprint : validation None/div0, **valeurs aberrantes à signaler**, traçabilité source (un `0.0` silencieux pour une donnée absente est exactement le piège à éliminer)
 
 ---
 
-## TÂCHE — Sprint 134 : afficher source + date de récupération des ratios
+## TÂCHE — Sprint 135 : généraliser le repli de source aux ratios critiques
 
-**Objectif** : `donnees-financieres.md` impose que toute donnée financière soit accompagnée de sa source et de sa date de récupération (« une donnée sans date est inutilisable »). Aujourd'hui les ratios extraits de Yahoo Finance sont affichés sans horodatage de récupération — risque de décision sur une donnée périmée. Ajouter un champ de traçabilité (date de récupération + source) à l'extraction tier1, le propager au schema → type TS → UI/PDF, et l'afficher à côté des ratios.
+**Objectif** : le Sprint 130 a introduit un repli de source **uniquement pour `eps_growth`** (`_resolve_eps_growth` : source primaire `income_stmt` → repli tracé sur `info.earningsGrowth`, sinon `(0.0, None)`). Les autres ratios Graham extraits de yfinance retombent **silencieusement à `0.0`** quand le champ primaire est absent (`info.get("priceToBook") or 0.0`, `info.get("bookValue") or 0.0`, `debt_equity = 0.0` si `debtToEquity` absent) — un `0.0` faux est indiscernable d'un vrai `0.0` et fausse le scoring Graham en aval. Généraliser le pattern : une donnée primaire absente doit produire `None` (donnée manquante honnête) **et être tracée**, jamais un `0.0` trompeur.
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Aucun champ de traçabilité aujourd'hui** — `grep` confirmé : ni `fetched_at`, ni `data_fetched_at`, ni `fetched_date` dans `app/skills/`. Le champ est donc **à CRÉER** de bout en bout.
-2. **Extraction tier1** — `app/skills/tier1/yahoo_finance.py:182` `async def extract(self, ticker) -> GrahamRatios` construit l'objet de ratios Graham. C'est ici que l'horodatage (`datetime.now(UTC)` au moment de l'extraction) et la source (`"Yahoo Finance"`) doivent être posés.
-3. **Schema backend** — `app/skills/tier2/graham_analysis/schemas.py:13` `class GrahamRatios(BaseModel)` — ajouter `ratios_fetched_at: datetime | None = None` (+ source, voir Spécification). `None` par défaut → rétrocompatible avec les analyses persistées avant ce sprint.
-4. **Type TS** — `frontend/src/types/index.ts:47` `interface GrahamRatios` — ajouter le champ camelCase correspondant (`ratiosFetchedAt?: string | null`).
-5. **PDF** — `app/services/pdf_report_service.py:220` `_build_ratios_rows(r: GrahamRatios)` (appelé `:315`) — y ajouter une ligne « Source / récupéré le ».
-6. **UI** — `frontend/src/components/AnalysisResult.tsx` (bloc Graham) — afficher la source + la date de récupération discrètement sous les ratios.
+1. **Pattern de repli existant (à généraliser)** — `app/skills/tier1/yahoo_finance.py:54` `_resolve_eps_growth(...)` : tente la source primaire, sinon `fallback = info.get("earningsGrowth")` (`:66`) tracé par `logger.info`, sinon `(0.0, None)`. C'est le SEUL ratio avec repli aujourd'hui.
+2. **Ratios qui retombent à `0.0` silencieusement (à corriger)** — dans `extract()` : `pb=info.get("priceToBook") or 0.0` (`yahoo_finance.py:237`), `book_value=info.get("bookValue") or 0.0` (`:243`), `debt_equity = raw_de / 100.0 if raw_de is not None else 0.0` (`:223` env.). `pe` (`:219`) a déjà un repli calculé (`price/eps_ttm`) — le conserver.
+3. **`current_ratio`** (`yahoo_finance.py:238`) : `None` est **normal** pour les banques (`is_financial`) — ne pas le « réparer », c'est un None légitime documenté (`donnees-financieres.md`).
+4. **Schema** — `app/skills/tier2/graham_analysis/schemas.py:17` `pb: float` et `:19` `debt_equity: float`, `:28` `book_value: float` sont **non-optionnels** aujourd'hui (défaut implicite via `0.0`). Les passer à `float | None` casse la rétrocompatibilité des analyses persistées : à arbitrer (voir Spécification — option recommandée : garder le type mais cesser le `or 0.0` muet en traçant le None via un champ de provenance, OU rendre optionnel avec migration douce). **STOP et demander** si l'arbitrage type-vs-rétrocompat est ambigu.
 
 ### Spécification
 
-1. **Tier1** — `extract()` pose `ratios_fetched_at = datetime.now(UTC)` et une source littérale (`RATIOS_SOURCE = "Yahoo Finance"` constante module, jamais un littéral dispersé). Le repli de source existant (`yahoo_finance.py:66-72`, `info.earningsGrowth` faute d'`income_stmt`) ne change pas l'horodatage : la date reste celle de l'extraction. Ne pas confondre la date de récupération (quand on a appelé l'API) avec une éventuelle date de la donnée elle-même (hors scope).
-2. **Schema + type TS** — champ optionnel `None`/`null` par défaut (rétrocompatibilité des analyses persistées). Respecter `variables-financieres.md` : snake_case côté Python, camelCase côté TS.
-3. **Affichage** — UI (`AnalysisResult.tsx`) + PDF (`_build_ratios_rows`) : « Source : Yahoo Finance · récupéré le AAAA-MM-JJ ». Si `None` (analyse ancienne), ne rien afficher ou « source n.d. » — pas de plantage, pas de date factice.
-4. **Zéro régression** — `tsc --noEmit` 0 erreur, ESLint 0, pas de `any`. Périmètre = `GrahamRatios` (ratios principaux affichés) ; `ValuationRatios`/`EsgInput`/`EarningsQualityRatios` sont hors scope (sprint suggéré 138).
+1. **Abstraction de repli réutilisable** — extraire une fonction pure (style `_resolve_eps_growth`) prenant (clé primaire, clés de repli, `info`, `ticker`) et retournant `(valeur | None, source_utilisée)` avec `logger.info` tracé quand le repli sert. Ne PAS disperser la logique `or 0.0`.
+2. **Cesser le `0.0` trompeur** — un ratio primaire absent → `None` (pas `0.0`). Vérifier que le scoring Graham en aval (`graham_analysis/skill.py`) traite déjà `None` proprement (critères `DONNÉES_MANQUANTES` — confirmer par lecture avant de changer le type).
+3. **Traçabilité de source par ratio (optionnel, si le temps)** — capitaliser sur `ratios_source` (Sprint 134) : si pertinent, exposer quelle source a fourni chaque ratio replié. Si hors budget, le documenter comme sprint suivant.
+4. **Zéro régression** — `pytest` + `ruff` ; `tsc`/ESLint/Vitest si le type TS `GrahamRatios` bouge ; banques (`current_ratio=None`) toujours acceptées par Graham.
 
 ### Tests obligatoires (pyramide)
-- **Unitaire** : `extract()` pose un `ratios_fetched_at` non-`None` et la source attendue (mocker `datetime`/`yfinance`) ; schema `GrahamRatios` accepte le champ et reste valide à `None`.
-- **PDF** : `_build_ratios_rows` produit la ligne source+date quand le champ est présent, et l'omet proprement quand `None`.
-- **Composant** : `AnalysisResult` affiche source+date quand présent (`data-testid` dédié), rien quand `None`.
-- Backend `pytest` + `ruff` ; frontend Vitest + tsc + ESLint.
+- **Unitaire** : la fonction de repli (primaire présent → primaire ; primaire absent + repli présent → repli tracé ; tout absent → `None`).
+- **Intégration** : `extract()` avec `priceToBook`/`bookValue`/`debtToEquity` absents → `None` (PAS `0.0`) ; banque → `current_ratio=None` inchangé.
+- **Non-régression scoring** : un ratio `None` ne fait pas planter `graham_analysis` (critère marqué `DONNÉES_MANQUANTES`).
+- Backend `pytest` + `ruff` ; frontend si type touché.
 
 ### Note d'environnement (session web)
 Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). `node_modules` frontend peut être **absent** → `cd frontend && npm install`.
 - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q` + `.venv/bin/ruff check app/ tests/`
-- Frontend : `cd frontend && npm run typecheck && npm run lint && node node_modules/vitest/vitest.mjs run`
+- Frontend (si type TS touché) : `cd frontend && npm run typecheck && npm run lint && node node_modules/vitest/vitest.mjs run`
 - ⚠️ le cwd persiste entre commandes Bash — revenir à la racine avant les commandes backend.
-- Aucun prompt de skill modifié (extraction tier1 = données brutes, pas de prompt conceptuel) → **evals non concernées**. Stack Docker non démarrée → extraction yfinance exercée sur mocks (pas d'appel réseau live). Pas de test navigateur live.
+- Extraction tier1 = données brutes, pas de prompt conceptuel → **evals non concernées** (sauf si le prompt `graham_analysis` est modifié pour le traitement des `None`, auquel cas le dire). Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth)
-**Objectif** : généraliser le pattern de repli du Sprint 130 (source primaire yfinance → repli tracé) aux autres ratios critiques sujets au SPOF.
-**Complexité** : Moyenne
-**Justification** : le Sprint 130 n'a traité que `eps_growth` ; les autres ratios restent dépendants d'une source unique.
-**Référence** : EXISTANT (vérifié cette session) — pattern de repli dans `app/skills/tier1/yahoo_finance.py:66-72` (`fallback = info.get("earningsGrowth")` + `logger.info` de traçabilité + retour `(float(fallback), 1)`). À CRÉER — abstraction du repli réutilisable + champ de traçabilité de source par ratio.
-
 ### Sprint 136 — UI : affichage des sous-composantes auditables (X1-X5 Z-Score)
-**Objectif** : surfacer dans l'UI les intermédiaires désormais persistés mais non affichés — termes X1-X5 du Z-Score (Sprint 131).
+**Objectif** : surfacer dans l'UI les intermédiaires persistés mais non affichés — termes X1-X5 du Z-Score (Sprint 131).
 **Complexité** : Faible
 **Justification** : le M-Score affiche déjà ses indices ; les X1-X5 du Z sont persistés et auditables côté backend mais invisibles dans l'UI — asymétrie d'auditabilité.
-**Référence** : EXISTANT (vérifié cette session) — backend `app/skills/tier2/earnings_quality/schemas.py:106-110` (`x1`…`x5: FiniteFloatOrNone`, peuplés par Python depuis Sprint 131) ; UI `frontend/src/components/EarningsQualitySection.tsx:97` `MScoreCard` (affiche déjà les indices), `:139` `ZScoreCard` (n'affiche pas X1-X5). À CRÉER côté TS — `frontend/src/types/index.ts:112` `ZScoreDetail` n'a que `variante`/`z_score`/`interpretation` : ajouter `x1`-`x5` (`number | null`) pour matcher le backend, puis les rendre dans `ZScoreCard`.
+**Référence** : EXISTANT (vérifié cette session) — backend `app/skills/tier2/earnings_quality/schemas.py:106-107` (`x1`/`x2`… `FiniteFloatOrNone`, peuplés par Python depuis Sprint 131) ; UI `frontend/src/components/EarningsQualitySection.tsx:97` `MScoreCard` (affiche déjà les indices), `:139` `ZScoreCard` (n'affiche pas X1-X5). À CRÉER côté TS — `frontend/src/types/index.ts:114` `ZScoreDetail` n'a que `variante`/`z_score`/`interpretation` : ajouter `x1`-`x5` (`number | null`) pour matcher le backend, puis les rendre dans `ZScoreCard`.
 
 ### Sprint 137 — Evals ciblées des prompts rendus déterministes (earnings_quality, stock_valuation)
 **Objectif** : exécuter (hors session web, avec clé Anthropic) les `evals` des skills dont le prompt a basculé en mode « interprète des chiffres calculés » (Sprints 128/131/132) pour confirmer l'absence de dégradation qualitative silencieuse.
 **Complexité** : Faible
 **Justification** : `pytest` reste vert avec Claude mocké sans rien prouver sur la qualité réelle du prompt ; les notes « calculés en amont » n'ont jamais été validées contre Claude réel (aucune clé dans le conteneur web).
-**Référence** : EXISTANT (vérifié cette session) — répertoire `tests/evals/` (`__init__.py`, `conftest.py`, `eval_runner.py` ; exclu du CI standard via `--ignore=tests/evals`) ; prompts modifiés `app/skills/tier2/stock_valuation/prompts/system.md` (note Sprint 132) et `app/skills/tier2/earnings_quality/prompts/system.md` (notes Sprints 128/131).
+**Référence** : EXISTANT (vérifié cette session) — répertoire `tests/evals/` (`__init__.py`, `conftest.py`, `eval_runner.py`, `test_earnings_evals.py`… ; exclu du CI standard via `--ignore=tests/evals`).
 
 ### Sprint 138 — Traçabilité source+date étendue aux autres extracteurs
 **Objectif** : appliquer le pattern source+date du Sprint 134 (posé sur `GrahamRatios`) aux autres ratios extraits — `ValuationRatios` et `EarningsQualityRatios`.
 **Complexité** : Faible
-**Justification** : le Sprint 134 ne couvre que `GrahamRatios` (ratios principaux affichés) ; les ratios de valorisation et de qualité comptable restent sans horodatage de récupération, même exigence `donnees-financieres.md`.
-**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier1/yahoo_finance.py:261` `extract_earnings_quality()` et `:399` `extract_valuation()`. À CRÉER — réutiliser la constante/champ posés au Sprint 134 sur ces deux chemins d'extraction + leurs schemas/types/affichages.
+**Justification** : le Sprint 134 ne couvre que `GrahamRatios` ; les ratios de valorisation et de qualité comptable restent sans horodatage de récupération, même exigence `donnees-financieres.md`.
+**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier1/yahoo_finance.py:266` `extract_earnings_quality()` et `:404` `extract_valuation()` ; constante `RATIOS_SOURCE` + champs `ratios_fetched_at`/`ratios_source` déjà posés au Sprint 134 (`yahoo_finance.py:130`, `graham_analysis/schemas.py:34-41`). À CRÉER — réutiliser la constante/champs sur ces deux chemins + leurs schemas (`stock_valuation`/`earnings_quality`)/types/affichages.
+
+### Sprint 139 — Affichage de la traçabilité sur l'analyse persistée (AnalysisResult)
+**Objectif** : rendre la source+date visible aussi sur l'analyse rendue (pas seulement le formulaire d'entrée et le PDF), en threadant `GrahamRatios` jusqu'à `AnalyzeResponse`.
+**Complexité** : Moyenne
+**Justification** : au Sprint 134, l'affichage UI a été posé dans `AnalyzeForm` (où vivent les ratios d'entrée) car `AnalyzeResponse` ne porte pas les ratios ; le dossier persisté n'expose la traçabilité que via le PDF. La rendre visible sur `AnalysisResult` demande un threading backend assumé.
+**Référence** : EXISTANT (vérifié cette session) — `app/orchestrator/core.py:237` `class AnalyzeResponse` (sans champ `ratios`) ; `frontend/src/types/index.ts:440` `AnalyzeResponse` (idem) ; `frontend/src/components/AnalysisResult.tsx:160` (bloc Graham, rend `result.graham` = `GrahamAnalysisOutput`, pas les ratios d'entrée). À CRÉER — champ `ratios` sur `AnalyzeResponse` (backend + reconstruction au reload depuis DB/cache + type TS) puis affichage sous la carte Graham.
 
 ---
 
@@ -88,14 +85,14 @@ Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setu
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.20.0), .claude/rules/donnees-financieres.md
-et .claude/rules/variables-financieres.md avant de commencer.
-Sprint actif : 134 — Traçabilité source+date des ratios. Ajouter un champ de récupération
-(ratios_fetched_at = datetime.now(UTC) + source "Yahoo Finance" en constante) dans
-app/skills/tier1/yahoo_finance.py:182 extract(), le propager au schema GrahamRatios
-(schemas.py:13, défaut None rétrocompatible) → type TS (index.ts:47, camelCase) → PDF
-(_build_ratios_rows pdf_report_service.py:220) → UI (AnalysisResult.tsx bloc Graham).
-Afficher « Source : Yahoo Finance · récupéré le AAAA-MM-JJ », rien si None. Périmètre =
-GrahamRatios uniquement (Valuation/Esg/EarningsQuality = sprint 138). Tests : unitaire
-extract()+schema, PDF (ligne présente/omise), composant (affiché/absent). evals non concernées.
+Lis CLAUDE.md, ROADMAP.md (v10.21.0) et .claude/rules/donnees-financieres.md avant de commencer.
+Sprint actif : 135 — Repli multi-sources généralisé. Extraire une fonction de repli réutilisable
+(style _resolve_eps_growth, yahoo_finance.py:54) prenant clé primaire + clés de repli + info + ticker,
+retournant (valeur | None, source) avec logger.info tracé. Remplacer les `or 0.0` muets de extract()
+(pb yahoo_finance.py:237, book_value :243, debt_equity :223) par None tracé — un 0.0 faux fausse le
+scoring Graham. Conserver current_ratio=None pour les banques (légitime) et le repli calculé de pe (:219).
+Vérifier d'abord que graham_analysis traite déjà None (DONNÉES_MANQUANTES) avant de changer un type ;
+STOP et demander si l'arbitrage type float vs float|None (rétrocompat analyses persistées) est ambigu.
+Tests : unitaire repli, intégration extract() (None pas 0.0 ; banque inchangée), non-régression scoring.
+evals non concernées (données brutes) sauf si le prompt graham_analysis bouge.
 ```

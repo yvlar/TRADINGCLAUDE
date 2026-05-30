@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -126,6 +126,9 @@ FINANCIAL_SECTORS: frozenset[str] = frozenset(
     {"Financial Services", "Banks", "Insurance", "Financial"}
 )
 
+# Source littérale des ratios extraits — jamais dispersée en littéral (cf. donnees-financieres.md)
+RATIOS_SOURCE = "Yahoo Finance"
+
 
 class YahooFinanceExtractor:
     """
@@ -242,6 +245,8 @@ class YahooFinanceExtractor:
             revenue_bn=revenue_bn,
             dividend_years=dividend_years,
             no_deficit_years=no_deficit_years,
+            ratios_fetched_at=datetime.now(timezone.utc),
+            ratios_source=RATIOS_SOURCE,
         )
 
     def _fetch_earnings_data(self, ticker: str) -> dict[str, Any]:
