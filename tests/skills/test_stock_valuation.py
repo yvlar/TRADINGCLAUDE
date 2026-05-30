@@ -24,7 +24,12 @@ from app.skills.tier2.stock_valuation.schemas import (
     ValuationMethod,
     ValuationRatios,
 )
-from app.skills.tier2.stock_valuation.skill import StockValuationSkill
+from app.skills.tier2.stock_valuation.skill import (
+    StockValuationSkill,
+    _dcf_depuis_ratios,
+    _injecter_dcf,
+    _secteur_exclut_dcf,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -124,6 +129,27 @@ def ratios_valuation_bns() -> ValuationRatios:
         pe=11.0,
         pb=1.3,
         sector="Financier",
+    )
+
+
+@pytest.fixture
+def ratios_valuation_tech() -> ValuationRatios:
+    """Entreprise non financière avec FCF + actions → ossature DCF calculable."""
+    return ValuationRatios(
+        price=150.0,
+        eps_ttm=6.0,
+        eps_growth_5y=0.10,
+        revenue_growth_5y=0.12,
+        book_value=25.0,
+        revenue_bn=60.0,
+        free_cash_flow_bn=12.0,
+        roic=0.22,
+        net_margin=0.25,
+        debt_equity=0.20,
+        pe=25.0,
+        pb=6.0,
+        shares_outstanding_m=1500.0,
+        sector="Technology",
     )
 
 
@@ -895,3 +921,174 @@ class TestOrchestratorValuation:
             "stock_valuation_triangulation",
         ]
         assert abs(response.cost_usd - (0.003 + 0.004 + 0.005 + 0.006 + 0.007)) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Tests ossature DCF déterministe (Sprint 132)
+# ---------------------------------------------------------------------------
+
+
+class TestDcfDeterministe:
+    def test_dcf_applicable_pour_non_financiere(self, ratios_valuation_tech: ValuationRatios):
+        """Secteur Technology + FCF + actions → DCF calculable (matrice 5×5)."""
+        dcf = _dcf_depuis_ratios(ratios_valuation_tech)
+        assert dcf.applicable is True
+        assert dcf.per_share is not None and dcf.per_share > 0
+        assert dcf.wacc_range is not None and len(dcf.wacc_range) == 5
+        assert dcf.values is not None and len(dcf.values) == 5
+        assert all(len(ligne) == 5 for ligne in dcf.values)
+
+    def test_dcf_inapplicable_pour_financiere(self, ratios_valuation_bns: ValuationRatios):
+        """Secteur Financier → DCF non calculé (méthode sectorielle prime)."""
+        dcf = _dcf_depuis_ratios(ratios_valuation_bns)
+        assert dcf.applicable is False
+        assert dcf.per_share is None
+
+    @pytest.mark.parametrize(
+        "sector",
+        [
+            "Financier",
+            "Services financiers",
+            "Financial Services",
+            "Banques",
+            "Bank",
+            "Assurance",
+            "Insurance",
+            "Immobilier",
+            "Real Estate",
+            "REIT",
+        ],
+    )
+    def test_secteur_exclut_dcf_labels_en_et_fr(self, sector: str):
+        """Le gate sectoriel reconnaît les libellés anglais ET français."""
+        assert _secteur_exclut_dcf(sector) is True
+
+    @pytest.mark.parametrize("sector", ["Technology", "Industrials", "Énergie", "Consommation"])
+    def test_secteur_non_financier_autorise_dcf(self, sector: str):
+        assert _secteur_exclut_dcf(sector) is False
+
+    def test_dcf_exclu_par_secteur_meme_avec_donnees_completes(self):
+        """
+        Une financière FRANÇAISE avec FCF + actions valides doit rester non applicable —
+        c'est le gate sectoriel qui exclut, pas l'absence de données (anti-tautologie).
+        """
+        ratios = ValuationRatios(
+            price=80.0,
+            free_cash_flow_bn=10.0,
+            shares_outstanding_m=1200.0,
+            eps_growth_5y=0.06,
+            book_value=61.5,
+            debt_equity=0.30,
+            sector="Services financiers",
+        )
+        dcf = _dcf_depuis_ratios(ratios)
+        assert dcf.applicable is False
+        assert dcf.per_share is None
+
+    def test_dcf_inapplicable_sans_fcf(self):
+        """Non financière mais FCF manquant → non calculable."""
+        ratios = ValuationRatios(price=100.0, shares_outstanding_m=1000.0, sector="Industrials")
+        assert _dcf_depuis_ratios(ratios).applicable is False
+
+    def test_injecter_dcf_ecrase_valeur_et_matrice(self, ratios_valuation_tech: ValuationRatios):
+        """La valeur DCF + la matrice Python écrasent un bloc LLM aberrant."""
+        dcf = _dcf_depuis_ratios(ratios_valuation_tech)
+        data = _make_valuation_output_dict(ticker="TECH")
+        # Bloc LLM fantaisiste : valeur DCF absurde + matrice toute à 1.0
+        data["methodes"][0]["valeur"] = 99999.0
+        data["matrice_sensibilite"] = {
+            "wacc_range": [1.0, 2.0],
+            "growth_range": [1.0, 2.0],
+            "values": [[1.0, 1.0], [1.0, 1.0]],
+        }
+        _injecter_dcf(data, dcf)
+
+        dcf_method = next(m for m in data["methodes"] if m["methode"] == "dcf")
+        assert dcf_method["valeur"] == dcf.per_share
+        assert dcf_method["valeur"] != 99999.0
+        assert data["matrice_sensibilite"]["values"] == dcf.values
+        assert data["matrice_sensibilite"]["wacc_range"] == dcf.wacc_range
+
+    def test_injecter_dcf_preserve_narrative(self, ratios_valuation_tech: ValuationRatios):
+        """La substitution ne touche ni les hypothèses DCF ni les autres méthodes."""
+        dcf = _dcf_depuis_ratios(ratios_valuation_tech)
+        data = _make_valuation_output_dict(ticker="TECH")
+        hypotheses_dcf = data["methodes"][0]["hypotheses"]
+        comparables_avant = dict(data["methodes"][1])
+        sectoriel_avant = dict(data["methodes"][2])
+        verdict_avant = data["verdict_detail"]
+
+        _injecter_dcf(data, dcf)
+
+        assert data["methodes"][0]["hypotheses"] == hypotheses_dcf
+        assert data["methodes"][1] == comparables_avant
+        assert data["methodes"][2] == sectoriel_avant
+        assert data["verdict_detail"] == verdict_avant
+
+    def test_injecter_dcf_non_applicable_ne_touche_rien(self, ratios_valuation_bns: ValuationRatios):
+        """DCF inapplicable (financière) → le bloc LLM est conservé intact."""
+        dcf = _dcf_depuis_ratios(ratios_valuation_bns)
+        data = _make_valuation_output_dict(ticker="BNS")
+        matrice_avant = {k: list(v) for k, v in data["matrice_sensibilite"].items()}
+        valeur_dcf_avant = data["methodes"][0]["valeur"]
+
+        _injecter_dcf(data, dcf)
+
+        assert data["methodes"][0]["valeur"] == valeur_dcf_avant
+        assert data["matrice_sensibilite"]["wacc_range"] == matrice_avant["wacc_range"]
+        assert data["matrice_sensibilite"]["values"] == matrice_avant["values"]
+
+    def test_build_user_message_expose_dcf_si_applicable(
+        self, ratios_valuation_tech: ValuationRatios
+    ):
+        skill = StockValuationSkill(client=MagicMock(), model="claude-sonnet-4-6")
+        inp = StockValuationInput(ticker="TECH", ratios=ratios_valuation_tech)
+        msg = skill._build_user_message(inp, citations=[])
+        assert "Ossature DCF déterministe" in msg
+        assert "WACC retenu" in msg
+
+    def test_build_user_message_pas_de_dcf_si_financiere(
+        self, ratios_valuation_bns: ValuationRatios
+    ):
+        skill = StockValuationSkill(client=MagicMock(), model="claude-sonnet-4-6")
+        inp = StockValuationInput(ticker="BNS", ratios=ratios_valuation_bns)
+        msg = skill._build_user_message(inp, citations=[])
+        assert "Ossature DCF déterministe" not in msg
+
+    @pytest.mark.asyncio
+    async def test_execute_dcf_python_prime_sur_llm(
+        self, ratios_valuation_tech: ValuationRatios
+    ):
+        """execute() : la valeur DCF + matrice Python remplacent un bloc LLM aberrant."""
+        aberrant = _make_valuation_output_dict(ticker="TECH")
+        aberrant["methodes"][0]["valeur"] = 99999.0
+        aberrant["matrice_sensibilite"] = {
+            "wacc_range": [1.0, 2.0],
+            "growth_range": [1.0, 2.0],
+            "values": [[1.0, 1.0], [1.0, 1.0]],
+        }
+
+        mock_response = MagicMock()
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = aberrant
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=900, output_tokens=600,
+            cache_read_input_tokens=1500, cache_creation_input_tokens=0,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = StockValuationSkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = StockValuationInput(ticker="TECH", ratios=ratios_valuation_tech)
+        output, _ = await skill.execute(inp)
+
+        dcf_attendu = _dcf_depuis_ratios(ratios_valuation_tech)
+        dcf_method = next(m for m in output.methodes if m.methode == "dcf")
+        assert dcf_method.valeur == dcf_attendu.per_share
+        assert dcf_method.valeur != pytest.approx(99999.0)
+        assert output.matrice_sensibilite.values == dcf_attendu.values
+        assert len(output.matrice_sensibilite.wacc_range) == 5
