@@ -145,15 +145,17 @@ def altman_z_score_detail(
     x5 = None if variant == "service" else _ratio(sales, total_assets)
 
     if variant == "service":
-        a, b, c, d = _Z_SERVICE
-        z = a * x1 + b * x2 + c * x3 + d * x4 if None not in (x1, x2, x3, x4) else None
+        if x1 is None or x2 is None or x3 is None or x4 is None:
+            z = None
+        else:
+            a, b, c, d = _Z_SERVICE
+            z = a * x1 + b * x2 + c * x3 + d * x4
     else:
-        a, b, c, d, e = _Z_PRIVATE if variant == "private" else _Z_ORIGINAL
-        z = (
-            a * x1 + b * x2 + c * x3 + d * x4 + e * x5
-            if None not in (x1, x2, x3, x4, x5)
-            else None
-        )
+        if x1 is None or x2 is None or x3 is None or x4 is None or x5 is None:
+            z = None
+        else:
+            a, b, c, d, e = _Z_PRIVATE if variant == "private" else _Z_ORIGINAL
+            z = a * x1 + b * x2 + c * x3 + d * x4 + e * x5
     return AltmanComponents(x1, x2, x3, x4, x5, variante, z)
 
 
@@ -254,8 +256,16 @@ def beneish_m_score_detail(
     lev_t1 = _ratio(_somme(ltd_t1, current_liabilities_t1), total_assets_t1)
     lvgi = _ratio(lev_t, lev_t1)
 
-    indices = (dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi)
-    if None in indices:
+    if (
+        dsri is None
+        or gmi is None
+        or aqi is None
+        or sgi is None
+        or depi is None
+        or sgai is None
+        or tata is None
+        or lvgi is None
+    ):
         m_score = None
     else:
         m_score = (
