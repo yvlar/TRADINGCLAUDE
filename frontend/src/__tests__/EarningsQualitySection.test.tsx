@@ -21,6 +21,11 @@ const BASE_EQ: EarningsQualityOutput = {
   },
   z_score: {
     variante: 'Altman Z-Score classique',
+    x1: 0.215,
+    x2: 0.342,
+    x3: 0.118,
+    x4: 1.874,
+    x5: 0.456,
     z_score: 3.15,
     interpretation: 'Zone sûre (> 2.99)',
   },
@@ -125,5 +130,43 @@ describe('EarningsQualitySection', () => {
     await user.click(screen.getByTestId('eq-toggle'))
 
     expect(screen.getByTestId('mscore-value')).toHaveTextContent('N/A')
+  })
+
+  it('affiche les termes X1-X5 du Z-Score une fois ouvert', async () => {
+    const user = userEvent.setup()
+    render(<EarningsQualitySection output={BASE_EQ} />)
+
+    await user.click(screen.getByTestId('eq-toggle'))
+
+    const termes = screen.getByTestId('zscore-termes')
+    expect(termes).toBeInTheDocument()
+    for (const label of ['X1', 'X2', 'X3', 'X4', 'X5']) {
+      expect(termes).toHaveTextContent(label)
+    }
+    expect(termes).toHaveTextContent('0.215')
+    expect(termes).toHaveTextContent('1.874')
+  })
+
+  it('omet la grille X1-X5 quand tous les termes sont null (banque) mais garde score et interprétation', async () => {
+    const user = userEvent.setup()
+    const output = {
+      ...BASE_EQ,
+      is_financial: true,
+      z_score: {
+        ...BASE_EQ.z_score,
+        x1: null,
+        x2: null,
+        x3: null,
+        x4: null,
+        x5: null,
+      },
+    }
+    render(<EarningsQualitySection output={output} />)
+
+    await user.click(screen.getByTestId('eq-toggle'))
+
+    expect(screen.queryByTestId('zscore-termes')).not.toBeInTheDocument()
+    expect(screen.getByTestId('zscore-value')).toHaveTextContent('3.15')
+    expect(screen.getByText('Zone sûre (> 2.99)')).toBeInTheDocument()
   })
 })

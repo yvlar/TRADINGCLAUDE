@@ -146,6 +146,14 @@ function ZScoreCard({ zscore }: { zscore: ZScoreDetail }) {
       : score >= 1.81
       ? 'text-neutral'
       : 'text-bear'
+  // Libellés complets en title — auditabilité des termes du Z-Score d'Altman
+  const termes: { label: string; titre: string; value: number | null }[] = [
+    { label: 'X1', titre: 'Fonds de roulement / Actif total', value: zscore.x1 },
+    { label: 'X2', titre: 'Bénéfices non répartis / Actif total', value: zscore.x2 },
+    { label: 'X3', titre: 'EBIT / Actif total', value: zscore.x3 },
+    { label: 'X4', titre: 'Valeur des capitaux propres / Passif total', value: zscore.x4 },
+    { label: 'X5', titre: 'Ventes / Actif total', value: zscore.x5 },
+  ].filter((t) => t.value !== null)
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -158,6 +166,16 @@ function ZScoreCard({ zscore }: { zscore: ZScoreDetail }) {
         </span>
       </div>
       <p className="text-xs text-muted-foreground italic">{zscore.interpretation}</p>
+      {termes.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5" data-testid="zscore-termes">
+          {termes.map((t) => (
+            <div key={t.label} className="flex justify-between text-xs">
+              <span className="text-muted-foreground" title={t.titre}>{t.label}</span>
+              <span className="font-mono tabular-nums">{t.value!.toFixed(3)}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

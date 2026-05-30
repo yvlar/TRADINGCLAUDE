@@ -113,6 +113,12 @@ export interface MScoreDetail {
 
 export interface ZScoreDetail {
   variante: string
+  // Termes X1-X5 calculés en Python et persistés (Sprint 131) ; null pour banques (is_financial)
+  x1: number | null
+  x2: number | null
+  x3: number | null
+  x4: number | null
+  x5: number | null
   z_score: number | null
   interpretation: string
 }

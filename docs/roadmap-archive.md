@@ -10,6 +10,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅
+
+**Objectif :** Dernier producteur de valeurs numériques critiques par le LLM, `stock_valuation_triangulation` générait entièrement l'ossature DCF (WACC, valeur actualisée, matrice de sensibilité) — même défaut de fiabilité numérique que les scores `earnings_quality` avant Sprint 128. Rapatrier cette ossature en Python et la substituer post-parse (les valeurs Python priment), en clonant le pattern `_injecter_scores` / fonctions pures. Le LLM conserve la **narrative** (comparables, sectoriel, pondération de la fourchette, verdict), pas l'arithmétique du DCF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
+
+**Livrables :**
+- `app/services/valuation_calculations.py` (nouveau) — module distinct de `financial_calculations.py` (cohésion : valorisation ≠ scores de fraude/faillite). Fonctions pures, typées, `float | None`, **jamais d'exception** : `capm_cost_of_equity` (Re = Rf + β×ERP), `wacc_cmpc` (CMPC), `poids_capital` (E/V, D/V depuis D/E), `dcf_value_per_share` (Gordon à deux temps : FCF actualisés + valeur terminale − dette nette ÷ actions), `dcf_sensitivity_matrix` (grille 5×5 WACC×g, chaque cellule = valeur DCF/action). Hypothèses par défaut (ERP 4.23 %, Rf 3.75 %, T 26.5 %, g 2.5 %) RECOPIÉES de `references/dcf.md`
+- `app/skills/tier2/stock_valuation/skill.py` — `_dcf_depuis_ratios` (WACC central via CMPC ou `ratios.wacc`, croissance phase 1 EPS/revenus plafonnée, dette nette proxy book) + `_injecter_dcf` : écrase la valeur de la méthode `dcf` + `matrice_sensibilite` du bloc LLM par les valeurs Python ; narrative préservée. Valeurs aussi exposées au LLM dans le message. Gate sectoriel `_secteur_exclut_dcf` (fragments EN+FR : `financ`/`banq`/`assur`/`immobil`/`reit`…) → financières/REIT non substituées (méthode sectorielle prime, `references/dcf.md`)
+- `app/skills/tier2/stock_valuation/prompts/system.md` — note « valeur DCF + matrice calculées en amont, reprends-les » ; financière → applique le sectoriel
+- Persistance : aucune migration — `matrice_sensibilite` + valeurs DCF sont des champs Pydantic existants, sérialisés via `valuation_output.model_dump()` (`core.py:1702`), rechargés via `model_validate` (`report.py`/`ticker_report.py`)
+- Tests : unitaires `test_valuation_calculations.py` (CAPM/CMPC vecteurs connus ; DCF main 122.73 ; None/div0 : WACC≤g, FCF/actions manquants, fcf<0 ; matrice 5×5 monotone WACC↓/g↑ ; None si FCF absent) ; intégration `test_stock_valuation.py` (DCF Python prime sur bloc LLM aberrant 99999 + matrice ; narrative préservée ; gate sectoriel EN+FR prouvé **avec données complètes** — anti-tautologie)
+
+**Limites connues :** la `fourchette` composite reste la pondération du LLM (mélange DCF + comparables + sectoriel) — seuls la valeur DCF et la matrice sont déterministes. Dette nette = proxy comptable (D/E × capitaux propres book), cash excédentaire ignoré faute de donnée. WACC central (CMPC) ne coïncide pas avec une cellule exacte de la grille fixe 7-11 % mais y est correctement encadré (vérifié par double revue indépendante).
+
+**Version** : 10.19.0
+**Tests** : 1 595 backend collectés (1 591 passés, 3 skipped, 1 xfailed — +51) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — le prompt `stock_valuation` est modifié (note « calculées en amont ») → **evals `stock_valuation` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte une valeur DCF + matrice aberrantes, les valeurs Python les écrasent). Revue indépendante à contexte frais (2 passes correctness + 1 qualité) : bug HIGH du gate sectoriel franco-centré détecté et corrigé avant commit. Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅
 
 **Objectif :** Le Sprint 128 a rendu déterministes les *scores agrégés* d'`earnings_quality` (Altman Z, Beneish M, Piotroski F, Montier C, Sloan), mais leurs *sous-composantes* restaient produites par le LLM — auditabilité incomplète (cf. « Limites connues » du Sprint 128). Calculer EN PYTHON les 8 indices du M-Score (DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI) et les termes X1-X5 du Z-Score, puis les substituer post-parse (comme les scores agrégés) pour qu'une analyse soit entièrement rejouable et explicable. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.

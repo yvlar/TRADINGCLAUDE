@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 135 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 136 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.22.0 |
+| **Version** | 10.23.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 136 — UI : affichage des sous-composantes auditables (X1-X5 Z-Score) |
-| **Dernier sprint complété** | Sprint 135 — Repli multi-sources généralisé ✅ |
+| **Sprint actif** | Sprint 137 — Evals ciblées des prompts rendus déterministes (earnings_quality, stock_valuation) |
+| **Dernier sprint complété** | Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -64,7 +64,7 @@
 - **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe)
 - **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG) ; **bloc d'avertissement réglementaire** (« recherche éducative — pas un conseil financier ») inséré dans chaque rapport (Sprint 129)
 - **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse, sous le tableau du Screener et sous la comparaison de tickers (Sprint 133), et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
-- **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121
+- **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121 ; la carte Z-Score (Earnings Quality) affiche désormais ses termes auditables X1-X5 en grille, en parité avec les 8 indices du M-Score (Sprint 136)
 
 #### Outillage & corpus
 - `.claude/rules/` — 16 règles path-scoped (CLAUDE.md allégé) ; `docs/cheatsheet.md` — commandes opérationnelles ; `.gitignore` durci
@@ -79,6 +79,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅
+
+**Objectif :** Les termes X1-X5 du Z-Score d'Altman sont calculés en Python et persistés depuis le Sprint 131, mais l'UI ne les affichait pas — alors que la carte M-Score rendait déjà ses 8 indices Beneish en grille. Asymétrie d'auditabilité côté frontend. Combler l'écart : déclarer `x1`-`x5` dans le type TS `ZScoreDetail` puis les rendre dans `ZScoreCard` en clonant le pattern de grille de `MScoreCard`. Sprint frontend pur — aucun backend, aucune migration, aucun prompt de skill.
+
+**Livrables :**
+- `frontend/src/types/index.ts` — `interface ZScoreDetail` gagne `x1`-`x5: number | null` (snake_case, miroir du payload backend `earnings_quality/schemas.py:106-110` ; zéro `any`). Aucun autre littéral `ZScoreDetail` dans le frontend (seul la fixture de test construit l'objet) → l'élargissement en champs requis ne casse aucun typecheck
+- `frontend/src/components/EarningsQualitySection.tsx` — `ZScoreCard` construit un tableau `{label, titre, value}[]` (X1 = fonds de roulement/actif total, …, X5 = ventes/actif total) filtré sur `value !== null` et le rend en grille `grid-cols-2` (`.toFixed(3)`), clone du pattern `MScoreCard`. `data-testid="zscore-termes"` + `title` par terme (libellé complet en survol) pour l'auditabilité. Si tous les termes sont `None` (banque/`is_financial`) → aucune grille, exactement comme `MScoreCard` ; score Z + variante + interprétation inchangés
+- Zéro régression : `MScoreCard`, `FScoreCard`, `CScoreCard`, `SloanCard` non touchés
+- Tests : composant (`EarningsQualitySection.test.tsx`) — X1-X5 renseignés → grille rendue avec les 5 labels + valeurs concrètes (`0.215`, `1.874`) ; X1-X5 tous `null` (banque) → aucune grille mais `zscore-value` (3.15) + interprétation toujours présents (cas dégradé)
+
+**Version** : 10.23.0
+**Tests** : 1 614 backend collectés (inchangé — sprint frontend pur, non-régression : 1 610 passés, 3 skipped, 1 xfailed) ; 422 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Réconciliation carte↔code : les 4 prémisses du chemin critique (backend `x1`-`x5` en `schemas.py:106-110`, type TS `ZScoreDetail` sans termes en `index.ts:114`, `ZScoreCard` sans grille en `EarningsQualitySection.tsx:139`, pattern `MScoreCard:106-134`) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité, 2 sous-agents distincts de la session auteur) : **aucun bug de correctness** ; seul point qualité (extraire un helper `RatioGrid` partagé M-Score/Z-Score) **écarté** — l'extraction toucherait `MScoreCard` que la spec impose de laisser intact (zéro-régression), et c'est un clone intentionnel à 2 sites avec divergences (`title`/`testid`). Stack Docker non démarrée. Pas de test navigateur live.
 
 ### Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) ✅
 
@@ -128,24 +143,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 418 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; suite `pytest` inchangée (sprint frontend pur) ; ruff `All checks passed`
 
 **Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install` exécuté. Revue indépendante à contexte frais (correctness high + qualité) : 2 notes LOW (fragilité latente de testid dupliqué hors périmètre des tests → écartée ; indentation du fragment → corrigée en remplaçant le fragment par un conditionnel séparé). Stack Docker non démarrée. Pas de test navigateur live.
-
-### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅
-
-**Objectif :** Dernier producteur de valeurs numériques critiques par le LLM, `stock_valuation_triangulation` générait entièrement l'ossature DCF (WACC, valeur actualisée, matrice de sensibilité) — même défaut de fiabilité numérique que les scores `earnings_quality` avant Sprint 128. Rapatrier cette ossature en Python et la substituer post-parse (les valeurs Python priment), en clonant le pattern `_injecter_scores` / fonctions pures. Le LLM conserve la **narrative** (comparables, sectoriel, pondération de la fourchette, verdict), pas l'arithmétique du DCF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
-
-**Livrables :**
-- `app/services/valuation_calculations.py` (nouveau) — module distinct de `financial_calculations.py` (cohésion : valorisation ≠ scores de fraude/faillite). Fonctions pures, typées, `float | None`, **jamais d'exception** : `capm_cost_of_equity` (Re = Rf + β×ERP), `wacc_cmpc` (CMPC), `poids_capital` (E/V, D/V depuis D/E), `dcf_value_per_share` (Gordon à deux temps : FCF actualisés + valeur terminale − dette nette ÷ actions), `dcf_sensitivity_matrix` (grille 5×5 WACC×g, chaque cellule = valeur DCF/action). Hypothèses par défaut (ERP 4.23 %, Rf 3.75 %, T 26.5 %, g 2.5 %) RECOPIÉES de `references/dcf.md`
-- `app/skills/tier2/stock_valuation/skill.py` — `_dcf_depuis_ratios` (WACC central via CMPC ou `ratios.wacc`, croissance phase 1 EPS/revenus plafonnée, dette nette proxy book) + `_injecter_dcf` : écrase la valeur de la méthode `dcf` + `matrice_sensibilite` du bloc LLM par les valeurs Python ; narrative préservée. Valeurs aussi exposées au LLM dans le message. Gate sectoriel `_secteur_exclut_dcf` (fragments EN+FR : `financ`/`banq`/`assur`/`immobil`/`reit`…) → financières/REIT non substituées (méthode sectorielle prime, `references/dcf.md`)
-- `app/skills/tier2/stock_valuation/prompts/system.md` — note « valeur DCF + matrice calculées en amont, reprends-les » ; financière → applique le sectoriel
-- Persistance : aucune migration — `matrice_sensibilite` + valeurs DCF sont des champs Pydantic existants, sérialisés via `valuation_output.model_dump()` (`core.py:1702`), rechargés via `model_validate` (`report.py`/`ticker_report.py`)
-- Tests : unitaires `test_valuation_calculations.py` (CAPM/CMPC vecteurs connus ; DCF main 122.73 ; None/div0 : WACC≤g, FCF/actions manquants, fcf<0 ; matrice 5×5 monotone WACC↓/g↑ ; None si FCF absent) ; intégration `test_stock_valuation.py` (DCF Python prime sur bloc LLM aberrant 99999 + matrice ; narrative préservée ; gate sectoriel EN+FR prouvé **avec données complètes** — anti-tautologie)
-
-**Limites connues :** la `fourchette` composite reste la pondération du LLM (mélange DCF + comparables + sectoriel) — seuls la valeur DCF et la matrice sont déterministes. Dette nette = proxy comptable (D/E × capitaux propres book), cash excédentaire ignoré faute de donnée. WACC central (CMPC) ne coïncide pas avec une cellule exacte de la grille fixe 7-11 % mais y est correctement encadré (vérifié par double revue indépendante).
-
-**Version** : 10.19.0
-**Tests** : 1 595 backend collectés (1 591 passés, 3 skipped, 1 xfailed — +51) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
-
-**Note d'environnement :** session web — le prompt `stock_valuation` est modifié (note « calculées en amont ») → **evals `stock_valuation` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte une valeur DCF + matrice aberrantes, les valeurs Python les écrasent). Revue indépendante à contexte frais (2 passes correctness + 1 qualité) : bug HIGH du gate sectoriel franco-centré détecté et corrigé avant commit. Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
 
 ---
 
