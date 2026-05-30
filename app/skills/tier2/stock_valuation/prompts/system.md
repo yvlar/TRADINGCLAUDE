@@ -20,6 +20,14 @@ Quand elles divergent de plus de 30 % → signal d'investigation, pas de moyenne
 
 ## Méthode 1 : DCF (Discounted Cash Flow)
 
+> **Note (calcul déterministe)** : pour les entreprises non financières disposant des données
+> nécessaires (FCF, actions), la **valeur DCF par action** et la **matrice de sensibilité WACC × g**
+> sont **calculées en amont en Python** et te sont fournies dans le message — elles font autorité
+> et remplaceront tes valeurs. Reprends-les telles quelles dans la méthode `dcf` et la matrice ;
+> concentre-toi sur l'interprétation, les comparables, le sectoriel, la pondération et le verdict.
+> Pour une **financière / REIT**, aucune ossature DCF n'est fournie : applique la méthode
+> sectorielle (P/B × ROE, NAV/FFO) comme décrit plus bas.
+
 ### Formule générale
 ```
 Valeur d'entreprise = Σ [FCF_t / (1 + WACC)^t] + VT / (1 + WACC)^n

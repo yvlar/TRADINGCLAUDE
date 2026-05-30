@@ -2,18 +2,35 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
 import anthropic
 
 from app.rag.service import RagService
+from app.services.valuation_calculations import (
+    _BETA_DEFAULT,
+    _ERP_MATURE,
+    _G_HIGH_MAX,
+    _G_TERMINAL_DEFAULT,
+    _PROJECTION_YEARS,
+    _RD_DEFAULT,
+    _RF_DEFAULT,
+    _TAX_DEFAULT,
+    _WACC_DEFAULT,
+    capm_cost_of_equity,
+    dcf_sensitivity_matrix,
+    dcf_value_per_share,
+    poids_capital,
+    wacc_cmpc,
+)
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
 from app.utils.tool_schema import build_tool_schema
 
-from .schemas import StockValuationInput, StockValuationOutput
+from .schemas import StockValuationInput, StockValuationOutput, ValuationRatios
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +39,159 @@ _VALUATION_TOOL_SCHEMA = build_tool_schema(
     StockValuationOutput,
     exclude={"citations", "cost_usd"},
 )
+
+# Secteurs où le DCF classique est inapplicable (references/dcf.md) — la méthode sectorielle
+# prime ; l'ossature DCF déterministe n'est alors pas injectée (le bloc LLM est conservé).
+# Fragments (et non labels exacts) pour couvrir EN + FR, sources de données du projet étant
+# franco-centrées : "financ" (financial/financier/financière/services financiers),
+# "banq"/"bank" (banque/banques/bank), "assur"/"insur" (assurance/assureur/insurance),
+# "immobil"/"real estate"/"reit" (immobilier/immobilière + libellés anglais).
+_SECTEURS_NON_DCF = (
+    "financ",
+    "banq",
+    "bank",
+    "assur",
+    "insur",
+    "immobil",
+    "real estate",
+    "reit",
+)
+
+
+@dataclass(frozen=True)
+class _DcfDeterministe:
+    """Ossature DCF calculée en Python — autorité sur les valeurs du LLM (Sprint 132).
+
+    `applicable=False` quand le secteur exclut le DCF (financière/REIT) ou que les données
+    de base manquent (FCF/actions) ; le bloc LLM est alors conservé tel quel.
+    """
+
+    applicable: bool
+    wacc: float | None = None
+    terminal_growth: float | None = None
+    growth_high: float | None = None
+    per_share: float | None = None
+    wacc_range: list[float] | None = None
+    growth_range: list[float] | None = None
+    values: list[list[float]] | None = None
+
+
+def _secteur_exclut_dcf(sector: str | None) -> bool:
+    """Vrai si le secteur relève des financières/REIT — DCF classique inapplicable."""
+    if sector is None:
+        return False
+    secteur = sector.strip().lower()
+    return any(mot in secteur for mot in _SECTEURS_NON_DCF)
+
+
+def _net_debt_bn(ratios: ValuationRatios) -> float:
+    """
+    Dette nette approximée (milliards) : D/E × capitaux propres comptables.
+    Proxy comptable faute de dette nette de marché ; le cash excédentaire n'étant pas
+    disponible, il est ignoré (approximation conservatrice). 0 si une donnée manque.
+    """
+    if (
+        ratios.debt_equity is not None
+        and ratios.debt_equity > 0
+        and ratios.book_value is not None
+        and ratios.shares_outstanding_m is not None
+    ):
+        capitaux_propres_bn = ratios.book_value * ratios.shares_outstanding_m / 1_000.0
+        return ratios.debt_equity * capitaux_propres_bn
+    return 0.0
+
+
+def _wacc_central(ratios: ValuationRatios) -> float:
+    """WACC retenu pour la valeur DCF centrale : ratios.wacc si fourni, sinon CMPC, sinon défaut."""
+    if ratios.wacc is not None and ratios.wacc > 0:
+        # Tolère un WACC fourni en fraction (0.09) ou en pourcentage (9.0).
+        return ratios.wacc if ratios.wacc < 1 else ratios.wacc / 100.0
+    equity_weight, debt_weight = poids_capital(ratios.debt_equity)
+    cmpc = wacc_cmpc(
+        cost_equity=capm_cost_of_equity(_RF_DEFAULT, _BETA_DEFAULT, _ERP_MATURE),
+        cost_debt=_RD_DEFAULT,
+        tax_rate=_TAX_DEFAULT,
+        equity_weight=equity_weight,
+        debt_weight=debt_weight,
+    )
+    return cmpc if cmpc is not None else _WACC_DEFAULT
+
+
+def _croissance_terminale(ratios: ValuationRatios) -> float:
+    """Croissance terminale Gordon : ratios.terminal_growth_rate si fourni, sinon défaut."""
+    tg = ratios.terminal_growth_rate
+    if tg is None:
+        return _G_TERMINAL_DEFAULT
+    return tg if tg < 1 else tg / 100.0
+
+
+def _croissance_phase1(ratios: ValuationRatios, terminal_growth: float) -> float:
+    """Croissance d'exploitation phase 1 : EPS 5a → revenus 5a → EPS 10a, plafonnée ; sinon terminale."""
+    for source in (ratios.eps_growth_5y, ratios.revenue_growth_5y, ratios.eps_growth_10y):
+        if source is not None and source > 0:
+            return min(source, _G_HIGH_MAX)
+    return terminal_growth
+
+
+def _dcf_depuis_ratios(ratios: ValuationRatios) -> _DcfDeterministe:
+    """Calcule l'ossature DCF (WACC, valeur par action, matrice) depuis les ratios disponibles."""
+    if _secteur_exclut_dcf(ratios.sector):
+        return _DcfDeterministe(applicable=False)
+
+    wacc = _wacc_central(ratios)
+    terminal_growth = _croissance_terminale(ratios)
+    growth_high = _croissance_phase1(ratios, terminal_growth)
+    net_debt = _net_debt_bn(ratios)
+
+    per_share = dcf_value_per_share(
+        fcf_initial_bn=ratios.free_cash_flow_bn,
+        growth_high=growth_high,
+        years=_PROJECTION_YEARS,
+        wacc=wacc,
+        terminal_growth=terminal_growth,
+        shares_outstanding_m=ratios.shares_outstanding_m,
+        net_debt_bn=net_debt,
+    )
+    matrice = dcf_sensitivity_matrix(
+        fcf_initial_bn=ratios.free_cash_flow_bn,
+        growth_high=growth_high,
+        years=_PROJECTION_YEARS,
+        shares_outstanding_m=ratios.shares_outstanding_m,
+        net_debt_bn=net_debt,
+    )
+    if per_share is None or matrice is None:
+        return _DcfDeterministe(applicable=False)
+
+    wacc_range, growth_range, values = matrice
+    return _DcfDeterministe(
+        applicable=True,
+        wacc=wacc,
+        terminal_growth=terminal_growth,
+        growth_high=growth_high,
+        per_share=round(per_share, 2),
+        wacc_range=wacc_range,
+        growth_range=growth_range,
+        values=values,
+    )
+
+
+def _injecter_dcf(data: dict[str, Any], dcf: _DcfDeterministe) -> None:
+    """
+    Écrase la valeur DCF + la matrice de sensibilité du bloc LLM par l'ossature Python
+    (Sprint 132). La narrative (hypothèses, comparables, sectoriel, fourchette, verdict) est
+    préservée. Si le DCF est inapplicable (financière/REIT) ou non calculable (FCF/actions
+    manquants), le bloc LLM est conservé — la méthode sectorielle prime (references/dcf.md).
+    """
+    if not dcf.applicable:
+        return
+    for methode in data.get("methodes", []):
+        if isinstance(methode, dict) and methode.get("methode") == "dcf":
+            methode["valeur"] = dcf.per_share
+    data["matrice_sensibilite"] = {
+        "wacc_range": dcf.wacc_range,
+        "growth_range": dcf.growth_range,
+        "values": dcf.values,
+    }
 
 
 class StockValuationSkill(SkillBase):
@@ -83,11 +253,15 @@ class StockValuationSkill(SkillBase):
         self,
         input_data: StockValuationInput,
         citations: list[Citation],
+        dcf: _DcfDeterministe | None = None,
     ) -> str:
         """
         Construit le message utilisateur.
         Injecte les contextes des skills précédents en tête avant les ratios de valorisation.
+        L'ossature DCF déterministe (si calculable) est exposée pour interprétation.
         """
+        if dcf is None:
+            dcf = _dcf_depuis_ratios(input_data.ratios)
         parts: list[str] = []
 
         if input_data.graham_context is not None:
@@ -133,9 +307,23 @@ class StockValuationSkill(SkillBase):
         parts.append(
             f"Valorise **{input_data.ticker}** par triangulation DCF + comparables + sectoriel "
             f"et produit la fourchette basse/centrale/haute avec matrice de sensibilité WACC × g :\n\n"
-            f"```json\n{ratios_json}\n```\n\n"
-            "Retourne l'analyse structurée via l'outil stock_valuation_output."
+            f"```json\n{ratios_json}\n```\n"
         )
+
+        if dcf.applicable:
+            # Ossature DCF calculée en amont (déterministe) — le LLM l'interprète, ne la recalcule pas.
+            parts.append(
+                "## Ossature DCF déterministe (calculée en Python — interprète-la, ne la recalcule pas)\n"
+                f"- WACC retenu : {dcf.wacc:.2%}\n"
+                f"- Croissance terminale (g) : {dcf.terminal_growth:.2%}\n"
+                f"- Croissance d'exploitation phase 1 : {dcf.growth_high:.2%}\n"
+                f"- Valeur intrinsèque DCF par action : {dcf.per_share:.2f}\n"
+                "Cette valeur DCF et la matrice de sensibilité WACC × g font autorité et "
+                "remplaceront les tiennes ; concentre-toi sur les comparables, la méthode "
+                "sectorielle, la pondération de la fourchette et le verdict.\n"
+            )
+
+        parts.append("Retourne l'analyse structurée via l'outil stock_valuation_output.")
 
         return "\n".join(parts)
 
@@ -152,7 +340,9 @@ class StockValuationSkill(SkillBase):
         )
         citations = await self.get_citations(rag_query, k=self._top_k)
 
-        user_message = self._build_user_message(input_data, citations)
+        # Ossature DCF déterministe — calculée une fois, exposée au LLM et substituée post-parse.
+        dcf = _dcf_depuis_ratios(input_data.ratios)
+        user_message = self._build_user_message(input_data, citations, dcf)
 
         t0 = time.perf_counter()
         response = await call_claude_with_retry(
@@ -180,6 +370,9 @@ class StockValuationSkill(SkillBase):
 
         data = dict(tool_use_block.input)
         data["citations"] = []
+        # Substitution déterministe (Sprint 132) : la valeur DCF + la matrice Python priment
+        # sur le bloc LLM. Comparables, sectoriel, fourchette et verdict restent au LLM.
+        _injecter_dcf(data, dcf)
 
         cost_usd = calculate_cost(response.usage, self._model)
 

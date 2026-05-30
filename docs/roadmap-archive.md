@@ -10,6 +10,26 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅
+
+**Objectif :** Rapatrier en Python les scores financiers jusqu'ici produits par le LLM (donc ni numériquement fiables ni auditables). Le LLM **interprète** désormais des chiffres calculés au lieu de les produire. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend + touche frontend mineure.
+
+**Livrables :**
+- `app/services/financial_calculations.py` (nouveau) — fonctions pures, typées, sans I/O : `altman_z_score` (variantes original/private/service ; `is_financial` → `None`), `beneish_m_score` (8 indices), `piotroski_f_score` (9 critères, 0-9), `montier_c_score` (6 signaux, 0-6), `sloan_accrual_ratio`, `graham_number` (√(22.5 × BPA × BVPS)). Coefficients RECOPIÉS depuis `.claude/skills/earnings-quality-fraud-detection/references/`. Retour `float | None` (ou `int | None`) — jamais d'exception sur donnée manquante / div0 (cf. `donnees-financieres.md`)
+- `app/skills/tier2/earnings_quality/skill.py` — helper `_scores_depuis_ratios` (mappe `EarningsQualityRatios` → les 5 scores) + `_injecter_scores` : substitution **post-parse** des scores numériques (M/Z/F/C/Sloan) par les valeurs Python, qui priment sur le bloc LLM. Scores aussi injectés dans le message utilisateur pour interprétation. Gate sectoriel via `is_financial` (LLM) → M/Z/F `None` pour une financière. Garde-fous Sprint 127 (NaN/inf + bornes plausibilité) conservés en 2ᵉ ligne, mais **bornes élargies** (Z 50→200, M 20→30) : un Altman Z déterministe à composante market-value peut légitimement dépasser 50 pour une société peu endettée — borner trop serré supprimait silencieusement earnings_quality (skill optionnel) des sociétés les plus saines (corrigé suite revue indépendante)
+- `app/skills/tier2/graham_analysis/{schemas,skill}.py` — nouveau champ `graham_number` (`FiniteFloatOrNone`, exclu du tool schema, calculé en Python), BPA reconstitué via `price/pe` si `eps_ttm` absent
+- `app/skills/tier2/earnings_quality/schemas.py` + `app/skills/tier1/yahoo_finance.py` — champs `net_income_t1` / `cfo_t1` (exercice T-1) ajoutés pour fiabiliser F-Score (critère 3) et C-Score (signal 1)
+- Prompts `earnings_quality` + `graham_analysis` — note « scores calculés en amont, interprète-les, ne les recalcule pas »
+- `frontend/src/types/index.ts` + `AnalysisResult.tsx` — champ `graham_number` typé + affichage « Nombre de Graham »
+- Tests : unitaire `tests/services/test_financial_calculations.py` (28 — vecteurs calculés à la main + None/div0 + banque) ; intégration `tests/skills/test_earnings_quality.py` (score Python prime sur bloc LLM, financière annule M/Z, message contient les scores) + `tests/skills/test_graham_tool_use.py` (graham_number calculé, None si BPA négatif, exclusion du tool schema) ; composant `AnalysisResultGrahamNumber.test.tsx`
+
+**Limites connues :** les sous-composantes des `*Detail` (dsri, gmi… du M ; X1-X5 du Z) restent issues du LLM — seul le score agrégé est déterministe. Leur persistance est l'objet du Sprint 131 suggéré.
+
+**Version** : 10.15.0
+**Tests** : 1 522 backend collectés (1 518 passés, 3 skipped, 1 xfailed — +36) ; 408 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — **aucune clé Anthropic dans le conteneur → les `evals` ciblées (`earnings_quality` + `graham_analysis`, prompts modifiés) n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte un score aberrant, le score Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅
 
 **Objectif :** (1) rendre les analyses reproductibles en fixant `temperature=0` sur tous les appels Claude ; (2) ajouter des garde-fous Pydantic de plausibilité post-LLM sur les scores clés d'`earnings_quality`, pour qu'un chiffre aberrant produit par le modèle soit rejeté avant persistance. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §3, §1). Sprint backend pur — aucune migration DB, aucun frontend.

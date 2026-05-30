@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 131 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 132 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.18.0 |
+| **Version** | 10.19.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) |
-| **Dernier sprint complété** | Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅ |
+| **Sprint actif** | Sprint 133 — Disclaimer : couverture des surfaces restantes (Screener, Comparer) |
+| **Dernier sprint complété** | Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -19,7 +19,7 @@
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128) ; **sous-composantes auditables** (8 indices Beneish DSRI/GMI/… + termes X1-X5 Altman) également calculées en Python et persistées dans l'output — analyse entièrement rejouable (Sprint 131)
+- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128) ; **sous-composantes auditables** (8 indices Beneish DSRI/GMI/… + termes X1-X5 Altman) également calculées en Python et persistées dans l'output — analyse entièrement rejouable (Sprint 131) ; **ossature DCF déterministe** (`stock_valuation`) — WACC (CMPC), valeur intrinsèque DCF par action et matrice de sensibilité WACC×g calculées en Python (`app/services/valuation_calculations.py`) et substituées au bloc LLM ; le modèle conserve comparables, sectoriel et verdict ; financières/REIT exclues du DCF (méthode sectorielle prime) (Sprint 132)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 126)
@@ -80,6 +80,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅
+
+**Objectif :** Dernier producteur de valeurs numériques critiques par le LLM, `stock_valuation_triangulation` générait entièrement l'ossature DCF (WACC, valeur actualisée, matrice de sensibilité) — même défaut de fiabilité numérique que les scores `earnings_quality` avant Sprint 128. Rapatrier cette ossature en Python et la substituer post-parse (les valeurs Python priment), en clonant le pattern `_injecter_scores` / fonctions pures. Le LLM conserve la **narrative** (comparables, sectoriel, pondération de la fourchette, verdict), pas l'arithmétique du DCF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
+
+**Livrables :**
+- `app/services/valuation_calculations.py` (nouveau) — module distinct de `financial_calculations.py` (cohésion : valorisation ≠ scores de fraude/faillite). Fonctions pures, typées, `float | None`, **jamais d'exception** : `capm_cost_of_equity` (Re = Rf + β×ERP), `wacc_cmpc` (CMPC), `poids_capital` (E/V, D/V depuis D/E), `dcf_value_per_share` (Gordon à deux temps : FCF actualisés + valeur terminale − dette nette ÷ actions), `dcf_sensitivity_matrix` (grille 5×5 WACC×g, chaque cellule = valeur DCF/action). Hypothèses par défaut (ERP 4.23 %, Rf 3.75 %, T 26.5 %, g 2.5 %) RECOPIÉES de `references/dcf.md`
+- `app/skills/tier2/stock_valuation/skill.py` — `_dcf_depuis_ratios` (WACC central via CMPC ou `ratios.wacc`, croissance phase 1 EPS/revenus plafonnée, dette nette proxy book) + `_injecter_dcf` : écrase la valeur de la méthode `dcf` + `matrice_sensibilite` du bloc LLM par les valeurs Python ; narrative préservée. Valeurs aussi exposées au LLM dans le message. Gate sectoriel `_secteur_exclut_dcf` (fragments EN+FR : `financ`/`banq`/`assur`/`immobil`/`reit`…) → financières/REIT non substituées (méthode sectorielle prime, `references/dcf.md`)
+- `app/skills/tier2/stock_valuation/prompts/system.md` — note « valeur DCF + matrice calculées en amont, reprends-les » ; financière → applique le sectoriel
+- Persistance : aucune migration — `matrice_sensibilite` + valeurs DCF sont des champs Pydantic existants, sérialisés via `valuation_output.model_dump()` (`core.py:1702`), rechargés via `model_validate` (`report.py`/`ticker_report.py`)
+- Tests : unitaires `test_valuation_calculations.py` (CAPM/CMPC vecteurs connus ; DCF main 122.73 ; None/div0 : WACC≤g, FCF/actions manquants, fcf<0 ; matrice 5×5 monotone WACC↓/g↑ ; None si FCF absent) ; intégration `test_stock_valuation.py` (DCF Python prime sur bloc LLM aberrant 99999 + matrice ; narrative préservée ; gate sectoriel EN+FR prouvé **avec données complètes** — anti-tautologie)
+
+**Limites connues :** la `fourchette` composite reste la pondération du LLM (mélange DCF + comparables + sectoriel) — seuls la valeur DCF et la matrice sont déterministes. Dette nette = proxy comptable (D/E × capitaux propres book), cash excédentaire ignoré faute de donnée. WACC central (CMPC) ne coïncide pas avec une cellule exacte de la grille fixe 7-11 % mais y est correctement encadré (vérifié par double revue indépendante).
+
+**Version** : 10.19.0
+**Tests** : 1 595 backend collectés (1 591 passés, 3 skipped, 1 xfailed — +51) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — le prompt `stock_valuation` est modifié (note « calculées en amont ») → **evals `stock_valuation` concernées, mais aucune clé Anthropic dans le conteneur → non lançables** (la suite `pytest` reste verte avec Claude mocké sans rien prouver sur la qualité réelle du prompt). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte une valeur DCF + matrice aberrantes, les valeurs Python les écrasent). Revue indépendante à contexte frais (2 passes correctness + 1 qualité) : bug HIGH du gate sectoriel franco-centré détecté et corrigé avant commit. Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
+
 ### Sprint 131 — Auditabilité : persistance des sous-composantes déterministes ✅
 
 **Objectif :** Le Sprint 128 a rendu déterministes les *scores agrégés* d'`earnings_quality` (Altman Z, Beneish M, Piotroski F, Montier C, Sloan), mais leurs *sous-composantes* restaient produites par le LLM — auditabilité incomplète (cf. « Limites connues » du Sprint 128). Calculer EN PYTHON les 8 indices du M-Score (DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI) et les termes X1-X5 du Z-Score, puis les substituer post-parse (comme les scores agrégés) pour qu'une analyse soit entièrement rejouable et explicable. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.
@@ -134,26 +152,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 526 backend collectés (1 522 passés, 3 skipped, 1 xfailed — +4) ; 412 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Stack Docker non démarrée → les rapports PDF sont exercés sur mocks (capture du `story` ReportLab, pas de rendu navigateur). Le `node_modules` frontend était partiel à l'amorçage → `npm install` exécuté. Pas de test navigateur live.
-
-### Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅
-
-**Objectif :** Rapatrier en Python les scores financiers jusqu'ici produits par le LLM (donc ni numériquement fiables ni auditables). Le LLM **interprète** désormais des chiffres calculés au lieu de les produire. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend + touche frontend mineure.
-
-**Livrables :**
-- `app/services/financial_calculations.py` (nouveau) — fonctions pures, typées, sans I/O : `altman_z_score` (variantes original/private/service ; `is_financial` → `None`), `beneish_m_score` (8 indices), `piotroski_f_score` (9 critères, 0-9), `montier_c_score` (6 signaux, 0-6), `sloan_accrual_ratio`, `graham_number` (√(22.5 × BPA × BVPS)). Coefficients RECOPIÉS depuis `.claude/skills/earnings-quality-fraud-detection/references/`. Retour `float | None` (ou `int | None`) — jamais d'exception sur donnée manquante / div0 (cf. `donnees-financieres.md`)
-- `app/skills/tier2/earnings_quality/skill.py` — helper `_scores_depuis_ratios` (mappe `EarningsQualityRatios` → les 5 scores) + `_injecter_scores` : substitution **post-parse** des scores numériques (M/Z/F/C/Sloan) par les valeurs Python, qui priment sur le bloc LLM. Scores aussi injectés dans le message utilisateur pour interprétation. Gate sectoriel via `is_financial` (LLM) → M/Z/F `None` pour une financière. Garde-fous Sprint 127 (NaN/inf + bornes plausibilité) conservés en 2ᵉ ligne, mais **bornes élargies** (Z 50→200, M 20→30) : un Altman Z déterministe à composante market-value peut légitimement dépasser 50 pour une société peu endettée — borner trop serré supprimait silencieusement earnings_quality (skill optionnel) des sociétés les plus saines (corrigé suite revue indépendante)
-- `app/skills/tier2/graham_analysis/{schemas,skill}.py` — nouveau champ `graham_number` (`FiniteFloatOrNone`, exclu du tool schema, calculé en Python), BPA reconstitué via `price/pe` si `eps_ttm` absent
-- `app/skills/tier2/earnings_quality/schemas.py` + `app/skills/tier1/yahoo_finance.py` — champs `net_income_t1` / `cfo_t1` (exercice T-1) ajoutés pour fiabiliser F-Score (critère 3) et C-Score (signal 1)
-- Prompts `earnings_quality` + `graham_analysis` — note « scores calculés en amont, interprète-les, ne les recalcule pas »
-- `frontend/src/types/index.ts` + `AnalysisResult.tsx` — champ `graham_number` typé + affichage « Nombre de Graham »
-- Tests : unitaire `tests/services/test_financial_calculations.py` (28 — vecteurs calculés à la main + None/div0 + banque) ; intégration `tests/skills/test_earnings_quality.py` (score Python prime sur bloc LLM, financière annule M/Z, message contient les scores) + `tests/skills/test_graham_tool_use.py` (graham_number calculé, None si BPA négatif, exclusion du tool schema) ; composant `AnalysisResultGrahamNumber.test.tsx`
-
-**Limites connues :** les sous-composantes des `*Detail` (dsri, gmi… du M ; X1-X5 du Z) restent issues du LLM — seul le score agrégé est déterministe. Leur persistance est l'objet du Sprint 131 suggéré.
-
-**Version** : 10.15.0
-**Tests** : 1 522 backend collectés (1 518 passés, 3 skipped, 1 xfailed — +36) ; 408 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — **aucune clé Anthropic dans le conteneur → les `evals` ciblées (`earnings_quality` + `graham_analysis`, prompts modifiés) n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). La substitution déterministe est validée sur payloads construits (le bloc LLM injecte un score aberrant, le score Python l'écrase). Stack Docker non démarrée → tests sur mocks. Pas de test navigateur live.
 
 ---
 
