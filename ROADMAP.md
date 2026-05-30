@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 127 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 129 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.15.0 |
+| **Version** | 10.16.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 129 — Conformité : disclaimers & avertissement de risque |
-| **Dernier sprint complété** | Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅ |
+| **Sprint actif** | Sprint 130 — Données : honnêteté du label + repli multi-sources |
+| **Dernier sprint complété** | Sprint 129 — Conformité : disclaimers & avertissement de risque ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -62,7 +62,8 @@
 - **Recherche** `/recherche` — recherche sémantique RAG en langage naturel
 - **Admin** — gestion des clés API (créer/lister/révoquer)
 - **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe)
-- **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG)
+- **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG) ; **bloc d'avertissement réglementaire** (« recherche éducative — pas un conseil financier ») inséré dans chaque rapport (Sprint 129)
+- **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
 - **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121
 
 #### Outillage & corpus
@@ -78,6 +79,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 129 — Conformité : disclaimers & avertissement de risque ✅
+
+**Objectif :** Le système émet des verdicts d'achat/vente explicites mais sans aucun disclaimer — exposition réglementaire (AMF/SEC/MiFID). Afficher un avertissement clair « recherche éducative — pas un conseil financier » à chaque endroit où un verdict actionnable est présenté : résultats d'analyse, pied de page global, et rapports PDF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill ni orchestrateur modifié.
+
+**Livrables :**
+- `app/services/disclaimer.py` (nouveau) — source de vérité unique du texte backend : `DISCLAIMER_TITLE`/`DISCLAIMER_TEXT` + helper `build_disclaimer_flowables()` (Spacer + HRFlowable + Paragraph discret) réutilisé tel quel par les 3 services PDF
+- `app/services/pdf_report_service.py` + `screener_pdf_service.py` + `watchlist_pdf_service.py` — `story.extend(build_disclaimer_flowables())` inséré avant le pied de page. `monthly_report_service.py` **non modifié** : il compose les PDF watchlist + screener qui portent désormais le disclaimer (pas de duplication)
+- `frontend/src/constants/disclaimer.ts` (nouveau) — source de vérité unique du texte frontend (`DISCLAIMER_HEADING`/`DISCLAIMER_TEXT`, aligné mot pour mot sur le backend)
+- `frontend/src/components/Disclaimer.tsx` (nouveau) — composant réutilisable, variantes `inline` (bandeau encadré) et `footer` (ligne discrète), `data-testid="disclaimer"`, `role="note"` ; affiché dans `AnalysisResult.tsx` (bas du bloc résultats) et dans le pied de page global de `App.tsx`
+- Tests : composant `frontend/src/__tests__/Disclaimer.test.tsx` (inline + footer + défaut + présence dans `AnalysisResult`) ; backend `tests/services/test_disclaimer.py` (helper ; story du rapport ticker / screener / watchlist contient le texte via capture de `SimpleDocTemplate.build`)
+
+**Version** : 10.16.0
+**Tests** : 1 526 backend collectés (1 522 passés, 3 skipped, 1 xfailed — +4) ; 412 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Stack Docker non démarrée → les rapports PDF sont exercés sur mocks (capture du `story` ReportLab, pas de rendu navigateur). Le `node_modules` frontend était partiel à l'amorçage → `npm install` exécuté. Pas de test navigateur live.
 
 ### Sprint 128 — Calculs financiers déterministes en Python (le pivot) ✅
 
@@ -113,24 +130,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 486 backend collectés (1 482 passés, 3 skipped, 1 xfailed — +8) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
 
 **Note d'environnement :** session web — `temperature=0` change le comportement de tous les skills ; la suite `pytest` (Claude mocké) reste verte sans rien prouver sur la qualité réelle. **Aucune clé Anthropic disponible dans le conteneur → les `evals` ciblées n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). Le rejet NaN/inf et les bornes de plausibilité sont validés sur payloads construits (pas live). Pas de test navigateur live.
-
-### Sprint 125 — Durcissement sécurité auth & fail-safe (P0) ✅
-
-**Objectif :** Éliminer quatre faiblesses de sécurité de la couche auth/middleware relevées par la revue expert FinTech (`docs/revue-expert-fintech.md` §5), sans changer le comportement fonctionnel pour un déploiement correctement configuré. Sprint backend pur — aucune migration DB, aucun changement de prompt de skill (evals non concernées).
-
-**Livrables :**
-- `app/utils/jwt_secret.py` — `resolve_jwt_secret()` : **fail-fast** par défaut. Si `JWT_SECRET_KEY` absent, lève `RuntimeError` sauf si `APP_ENV ∈ {dev, development, test, testing}` (repli secret de dev toléré). `APP_ENV` absent = traité comme production (refus). Chaîne vide traitée comme absente. Câblé dans `auth_token_service.py` ET `password_reset_service.py` (qui partageaient le même secret de repli codé en dur — trou fermé partout)
-- `app/services/auth_token_service.py` — `is_jti_blacklisted` **fail-closed** : appel Redis enveloppé dans `try/except` → panne Redis = token considéré révoqué (`True`). Les deux appelants (`middleware/auth.py:99`, `endpoints/auth.py:105`) rejettent en 401. Contraire au rate-limiting fail-open, par choix de sécurité
-- `app/utils/error_sanitization.py` — `log_internal_error()` (log serveur-side + `correlation_id`) + `sanitized_http_500()` (HTTPException 500 au body générique). Appliqué au global exception handler (`main.py`), au `/analyze`, et à **tous les endpoints à chemin 500** (report, screen, screener_report, monthly_report, ticker_report, compare, extract, annotations, export) + au flux SSE `analyze_stream.py` — `str(exc)` ne sort plus jamais dans un body HTTP/SSE (anti-énumération d'utilisateurs)
-- `app/api/main.py` — CORS durci : `allow_methods` explicite (`GET/POST/PUT/DELETE/OPTIONS`) ; origines lues depuis `CORS_ORIGINS` (CSV) avec repli localhost en dev
-- `.env.example` — `APP_ENV=dev` + `CORS_ORIGINS` documentés
-- `tests/conftest.py` — `os.environ.setdefault("APP_ENV", "test")` pour que le lifespan réel exercé en test tolère le repli secret
-- Tests : unitaire `tests/services/test_jwt_secret.py` (8) + `test_auth_token_service.py` (fail-fast init + fail-closed blacklist, 5) ; intégration `tests/api/test_exception_sanitization.py` (global handler + `/analyze` + `/screen` n'exposent pas `str(exc)`, 3) — aucune régression des tests auth existants
-
-**Version** : 10.13.0
-**Tests** : 1 478 backend collectés (1 474 passés, 3 skipped, 1 xfailed — +16) ; 406 Vitest verts (inchangé, sprint backend pur) ; ruff `All checks passed`
-
-**Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : le fail-closed Redis et le fail-fast au boot lifespan sont validés sur mocks (`AsyncMock` levant une exception, `monkeypatch` sur `APP_ENV`/`JWT_SECRET_KEY`), pas live. CORS vérifié observablement (parsing CSV + méthodes explicites via introspection du middleware). Pas de test navigateur live. Sprint sans changement de prompt → evals non concernées.
 
 ### Sprint 126 — Annotations enrichies : tags + filtres ✅
 
