@@ -10,6 +10,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 123 — Code-splitting des routes + lazy-load recharts ✅
+
+**Objectif :** Accélérer le Time-To-Interactive de la première vue en isolant chaque page et la librairie recharts (lourde) du bundle d'entrée. Avant ce sprint, toutes les pages étaient importées statiquement dans le routeur — le navigateur téléchargeait tout le code (recharts compris) avant le premier rendu.
+
+**Livrables :**
+- `frontend/src/App.tsx` — conversion des 14 imports de pages statiques en `React.lazy(() => import('./pages/...'))` (Analyse, Screener, Historique, Dashboard, Watchlist, Comparer, ESG, Recherche, Alertes, Admin + 4 pages auth) ; `<Routes>` enveloppé dans un unique `<Suspense fallback={<RouteFallback />}>` placé sous le shell (header, palette, nav restent eager)
+- `frontend/src/components/RouteFallback.tsx` — squelette de chargement de chunk réutilisant la primitive `ui/skeleton` ; respecte `max-w-shell` + tokens de design ; `role="status"` / `aria-busy` / texte `sr-only` pour l'accessibilité
+- `frontend/src/__tests__/RouteFallback.test.tsx` — 2 tests Vitest (rend sans erreur + conteneur status `aria-busy` ; respect de `max-w-shell`)
+- `frontend/src/__tests__/LazyRouting.test.tsx` — 1 test Vitest déterministe (promesse de chunk contrôlée) : le fallback skeleton apparaît, puis la page lazy le remplace après résolution
+- **Découpage vérifié via `vite build`** : un chunk séparé par page (`AnalyzePage`, `DashboardPage`, `ScreenerPage`, … les 14) ; recharts isolé dans des chunks dédiés (`colors`, `YAxis`) chargés uniquement par les pages graphiques (Dashboard/ESG/Watchlist/Comparer) — le bundle d'entrée ne référence que le nom de fichier du chunk, aucun code recharts (0 marqueur interne)
+
+**Version** : 10.10.0
+**Tests** : 1 432 backend verts (3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 396 Vitest verts (+3 Sprint 123) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0), Vitest composant (+3), la vérification du `vite build` (chunks séparés + recharts hors entrée), et la suite backend complète (1 432 verts, ruff clean).
+
 ### Sprint 121 — Refonte UI Fisher + Damodaran + Marks + Pabrai + Fiscalité ✅
 
 **Objectif :** Clôturer la refonte UI démarrée aux Sprints 118-120 sur les cinq derniers skills encore affichés en JSON brut générique (`SkillSection`) — créer des composants React structurés typés depuis les schemas Pydantic backend, puis retirer le composant générique devenu inutile.

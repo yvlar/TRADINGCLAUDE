@@ -3,6 +3,12 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 from app.skills.base import Citation
+from app.utils.numeric_validation import FiniteFloatOrNone, valider_borne_plausible
+
+# Bornes de plausibilité larges — au-delà, la valeur est invraisemblable et trahit une sortie LLM erronée.
+# Altman Z réel ~[-5, 15] ; Beneish M réel ~[-5, 2] (cf. .claude/skills/earnings-quality-fraud-detection/references/).
+_Z_SCORE_BORNE = 50.0
+_M_SCORE_BORNE = 20.0
 
 
 class EarningsQualityRatios(BaseModel):
@@ -70,22 +76,32 @@ class EarningsQualityInput(BaseModel):
 
 
 class MScoreDetail(BaseModel):
-    dsri: float | None
-    gmi: float | None
-    aqi: float | None
-    sgi: float | None
-    depi: float | None
-    sgai: float | None
-    tata: float | None
-    lvgi: float | None
-    m_score: float | None
+    dsri: FiniteFloatOrNone
+    gmi: FiniteFloatOrNone
+    aqi: FiniteFloatOrNone
+    sgi: FiniteFloatOrNone
+    depi: FiniteFloatOrNone
+    sgai: FiniteFloatOrNone
+    tata: FiniteFloatOrNone
+    lvgi: FiniteFloatOrNone
+    m_score: FiniteFloatOrNone
     interpretation: str
+
+    @model_validator(mode="after")
+    def valider_plausibilite(self) -> "MScoreDetail":
+        valider_borne_plausible(self.m_score, _M_SCORE_BORNE, "m_score")
+        return self
 
 
 class ZScoreDetail(BaseModel):
     variante: str
-    z_score: float | None
+    z_score: FiniteFloatOrNone
     interpretation: str
+
+    @model_validator(mode="after")
+    def valider_plausibilite(self) -> "ZScoreDetail":
+        valider_borne_plausible(self.z_score, _Z_SCORE_BORNE, "z_score")
+        return self
 
 
 class FScoreCriterion(BaseModel):
@@ -113,7 +129,7 @@ class CScoreDetail(BaseModel):
 
 
 class SloanDetail(BaseModel):
-    accrual_ratio: float | None
+    accrual_ratio: FiniteFloatOrNone
     interpretation: str
 
 

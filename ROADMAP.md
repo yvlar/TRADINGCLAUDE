@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-29 — Sprint 125 complété**
+**Dernière mise à jour : 2026-05-30 — Sprint 127 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.13.0 |
+| **Version** | 10.14.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 127 — Déterminisme LLM + validation numérique des bornes |
-| **Dernier sprint complété** | Sprint 125 — Durcissement sécurité auth & fail-safe (P0) ✅ |
+| **Sprint actif** | Sprint 128 — Calculs financiers déterministes en Python (le pivot) |
+| **Dernier sprint complété** | Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅ |
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -79,6 +79,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 127 — Déterminisme LLM + validation numérique des bornes ✅
+
+**Objectif :** (1) rendre les analyses reproductibles en fixant `temperature=0` sur tous les appels Claude ; (2) ajouter des garde-fous Pydantic de plausibilité post-LLM sur les scores clés d'`earnings_quality`, pour qu'un chiffre aberrant produit par le modèle soit rejeté avant persistance. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §3, §1). Sprint backend pur — aucune migration DB, aucun frontend.
+
+**Livrables :**
+- `app/utils/retry.py` — `kwargs.setdefault("temperature", 0)` ajouté dans `call_claude_with_retry` (point d'insertion central unique, couvre les 16 skills qui passent tous par ce helper — `grep` confirmant l'unique `messages.create` du backend). **Surchargeable** : un skill peut fournir explicitement `temperature` sans être écrasé
+- `app/utils/numeric_validation.py` (nouveau) — type réutilisable `FiniteFloatOrNone = Annotated[float | None, AfterValidator(...)]` qui rejette NaN/inf (Pydantic par défaut accepte les floats non finis). Réflexe généralisable à tout score/ratio LLM exposé
+- `app/skills/tier2/earnings_quality/schemas.py` — `FiniteFloatOrNone` appliqué aux 11 champs `float | None` de `MScoreDetail`/`ZScoreDetail`/`SloanDetail` (rejet NaN/inf uniforme) ; deux `@model_validator(mode="after")` (style `stock_valuation/schemas.py:98`) bornent la plausibilité : `z_score` hors `[-50, 50]` et `m_score` hors `[-20, 20]` rejetés (bornes larges documentées depuis les `references/` — Altman Z réel ~[-5, 15], Beneish M réel ~[-5, 2])
+- Tests : unitaire `tests/services/test_retry.py` (temperature=0 par défaut + non-écrasement d'un temperature explicite, +2) ; unitaire `tests/skills/test_earnings_quality.py` (inf/nan → `ValidationError`, hors-bornes → `ValidationError`, scores plausibles acceptés, +6) — aucune régression des fixtures golden existantes
+
+**Version** : 10.14.0
+**Tests** : 1 486 backend collectés (1 482 passés, 3 skipped, 1 xfailed — +8) ; Vitest inchangé (sprint backend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — `temperature=0` change le comportement de tous les skills ; la suite `pytest` (Claude mocké) reste verte sans rien prouver sur la qualité réelle. **Aucune clé Anthropic disponible dans le conteneur → les `evals` ciblées n'ont pas pu être lancées** (vérifié : `ANTHROPIC_API_KEY` absente). Le rejet NaN/inf et les bornes de plausibilité sont validés sur payloads construits (pas live). Pas de test navigateur live.
+
 ### Sprint 125 — Durcissement sécurité auth & fail-safe (P0) ✅
 
 **Objectif :** Éliminer quatre faiblesses de sécurité de la couche auth/middleware relevées par la revue expert FinTech (`docs/revue-expert-fintech.md` §5), sans changer le comportement fonctionnel pour un déploiement correctement configuré. Sprint backend pur — aucune migration DB, aucun changement de prompt de skill (evals non concernées).
@@ -134,22 +149,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 448 backend collectés (1 444 passés, 3 skipped, 1 xfailed — +6 Sprint 124) ; 400 Vitest verts (+4 Sprint 124) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — stack Docker (Postgres/Redis/Qdrant) non démarrée : la migration SQL n'est pas exécutée live (syntaxe validée + tests d'intégration sur pool stateful mocké). Pas de test navigateur live. Sprint sans changement de prompt de skill → evals non concernées.
-
-### Sprint 123 — Code-splitting des routes + lazy-load recharts ✅
-
-**Objectif :** Accélérer le Time-To-Interactive de la première vue en isolant chaque page et la librairie recharts (lourde) du bundle d'entrée. Avant ce sprint, toutes les pages étaient importées statiquement dans le routeur — le navigateur téléchargeait tout le code (recharts compris) avant le premier rendu.
-
-**Livrables :**
-- `frontend/src/App.tsx` — conversion des 14 imports de pages statiques en `React.lazy(() => import('./pages/...'))` (Analyse, Screener, Historique, Dashboard, Watchlist, Comparer, ESG, Recherche, Alertes, Admin + 4 pages auth) ; `<Routes>` enveloppé dans un unique `<Suspense fallback={<RouteFallback />}>` placé sous le shell (header, palette, nav restent eager)
-- `frontend/src/components/RouteFallback.tsx` — squelette de chargement de chunk réutilisant la primitive `ui/skeleton` ; respecte `max-w-shell` + tokens de design ; `role="status"` / `aria-busy` / texte `sr-only` pour l'accessibilité
-- `frontend/src/__tests__/RouteFallback.test.tsx` — 2 tests Vitest (rend sans erreur + conteneur status `aria-busy` ; respect de `max-w-shell`)
-- `frontend/src/__tests__/LazyRouting.test.tsx` — 1 test Vitest déterministe (promesse de chunk contrôlée) : le fallback skeleton apparaît, puis la page lazy le remplace après résolution
-- **Découpage vérifié via `vite build`** : un chunk séparé par page (`AnalyzePage`, `DashboardPage`, `ScreenerPage`, … les 14) ; recharts isolé dans des chunks dédiés (`colors`, `YAxis`) chargés uniquement par les pages graphiques (Dashboard/ESG/Watchlist/Comparer) — le bundle d'entrée ne référence que le nom de fichier du chunk, aucun code recharts (0 marqueur interne)
-
-**Version** : 10.10.0
-**Tests** : 1 432 backend verts (3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 396 Vitest verts (+3 Sprint 123) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — tests UI navigateur non exécutés (stack Docker Postgres/Redis/Qdrant non démarrée dans le conteneur éphémère). Couverture assurée par tsc `--noEmit` (0 erreur), ESLint (0), Vitest composant (+3), la vérification du `vite build` (chunks séparés + recharts hors entrée), et la suite backend complète (1 432 verts, ruff clean).
 
 ---
 

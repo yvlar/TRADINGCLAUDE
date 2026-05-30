@@ -29,6 +29,9 @@ async def call_claude_with_retry(
     Les erreurs autres que 529 propagent immédiatement sans retry.
     Les erreurs de timeout ne sont pas retriées (budget temps épuisé).
     """
+    # reproductibilité des analyses : température nulle par défaut, surchargeable par un skill
+    kwargs.setdefault("temperature", 0)
+
     for attempt in range(max_retries + 1):
         try:
             return await client.messages.create(timeout=timeout_s, **kwargs)
