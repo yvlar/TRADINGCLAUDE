@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import asdict, dataclass
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import anthropic
+from pydantic import ValidationError
 
 from app.rag.service import RagService
 from app.services.financial_calculations import (
@@ -169,6 +171,48 @@ def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None
         data.setdefault("c_score", {})["c_score"] = scores.c_score
 
 
+def _str_vers_liste(valeur: str) -> list[str]:
+    """Convertit une chaîne (idéalement une liste JSON) en list[str] de façon défensive.
+
+    Haiku émet parfois `drapeaux_rouges` comme chaîne JSON ; on récupère le cas propre,
+    sinon on isole le premier fragment lisible (le reste, corrompu, sera régénéré au retry).
+    """
+    texte = valeur.strip()
+    if not texte:
+        return []
+    try:
+        parsed = json.loads(texte)
+    except (json.JSONDecodeError, ValueError):
+        for ligne in texte.splitlines():
+            fragment = ligne.strip().strip(' []",').strip()
+            if fragment:
+                return [fragment]
+        return []
+    if isinstance(parsed, list):
+        return [str(x).strip() for x in parsed if str(x).strip()]
+    texte_parsed = str(parsed).strip()
+    return [texte_parsed] if texte_parsed else []
+
+
+def _coerce_payload_llm(data: dict[str, Any]) -> None:
+    """Normalise les formes malformées récurrentes de Haiku avant validation Pydantic.
+
+    `drapeaux_rouges` / `recommandation_prochaine_etape` sont parfois émis en chaîne plutôt
+    qu'en liste (cas COIN) — on les recoerce pour éviter un ValidationError évitable. Un champ
+    structurellement absent (ex : `verdict` avalé par une sortie tronquée) n'est pas inventé :
+    il déclenche le retry côté execute().
+    """
+    dr = data.get("drapeaux_rouges")
+    if isinstance(dr, str):
+        data["drapeaux_rouges"] = _str_vers_liste(dr)
+    elif dr is None:
+        data["drapeaux_rouges"] = []
+
+    reco = data.get("recommandation_prochaine_etape")
+    if isinstance(reco, str):
+        data["recommandation_prochaine_etape"] = _str_vers_liste(reco)
+
+
 class EarningsQualitySkill(SkillBase):
     """
     Skill Tier 2 : détection de manipulations comptables et risque de faillite.
@@ -295,39 +339,73 @@ class EarningsQualitySkill(SkillBase):
 
         user_message = self._build_user_message(input_data, citations)
 
-        t0 = time.perf_counter()
-        response = await call_claude_with_retry(
-            self._client,
-            timeout_s=self._config.timeout_s,
-            max_retries=self._config.max_retries,
-            model=self._model,
-            system=self.get_system_prompt(),
-            messages=[{"role": "user", "content": user_message}],
-            max_tokens=4096,
-            tools=[{"name": "earnings_quality_output", "input_schema": _EARNINGS_TOOL_SCHEMA}],
-            tool_choice={"type": "tool", "name": "earnings_quality_output"},
-        )
-        latency_ms = int((time.perf_counter() - t0) * 1000)
+        # Une réponse Haiku malformée (drapeaux_rouges en chaîne, verdict avalé par une sortie
+        # tronquée) ne doit pas faire échouer toute l'analyse : la coercion déterministe rattrape
+        # le cas récupérable, sinon on régénère une fois. Les deux appels sont facturés.
+        cout_cumule = 0.0
+        derniere_erreur: ValidationError | None = None
+        output: EarningsQualityOutput | None = None
 
-        tool_use_block = next(
-            (b for b in response.content if b.type == "tool_use"),
-            None,
-        )
-        if tool_use_block is None:
-            raise ValueError(
-                f"Aucun bloc tool_use dans la réponse Claude "
-                f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+        for tentative in range(2):
+            t0 = time.perf_counter()
+            response = await call_claude_with_retry(
+                self._client,
+                timeout_s=self._config.timeout_s,
+                max_retries=self._config.max_retries,
+                model=self._model,
+                system=self.get_system_prompt(),
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=4096,
+                tools=[
+                    {"name": "earnings_quality_output", "input_schema": _EARNINGS_TOOL_SCHEMA}
+                ],
+                tool_choice={"type": "tool", "name": "earnings_quality_output"},
             )
+            latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        data = dict(tool_use_block.input)
-        data["citations"] = []
-        # Substitution déterministe (Sprint 128) : les scores Python priment sur le bloc LLM.
-        # Le gate sectoriel utilise le drapeau is_financial classé par le LLM (M/Z/F → None pour
-        # une financière, conformément aux références qui excluent banques/assureurs/REIT).
-        is_financial = bool(data.get("is_financial", False))
-        _injecter_scores(data, _scores_depuis_ratios(input_data.ratios, is_financial))
+            tool_use_block = next(
+                (b for b in response.content if b.type == "tool_use"),
+                None,
+            )
+            if tool_use_block is None:
+                raise ValueError(
+                    f"Aucun bloc tool_use dans la réponse Claude "
+                    f"(stop_reason={response.stop_reason}, blocks={len(response.content)})"
+                )
 
-        cost_usd = calculate_cost(response.usage, self._model)
+            cout_cumule += calculate_cost(response.usage, self._model)
+
+            data = dict(tool_use_block.input)
+            data["citations"] = []
+            _coerce_payload_llm(data)
+            # Substitution déterministe (Sprint 128) : les scores Python priment sur le bloc LLM.
+            # Le gate sectoriel utilise le drapeau is_financial classé par le LLM (M/Z/F → None
+            # pour une financière, conformément aux références excluant banques/assureurs/REIT).
+            is_financial = bool(data.get("is_financial", False))
+            _injecter_scores(data, _scores_depuis_ratios(input_data.ratios, is_financial))
+
+            try:
+                output = EarningsQualityOutput.model_validate(data)
+                break
+            except ValidationError as exc:
+                derniere_erreur = exc
+                logger.warning(
+                    "sortie earnings invalide — nouvelle tentative",
+                    extra={
+                        "skill_id": self.skill_id,
+                        "ticker": input_data.ticker,
+                        "tentative": tentative + 1,
+                        "erreur": str(exc)[:300],
+                    },
+                )
+
+        if output is None:
+            raise ValueError(
+                f"Sortie earnings_quality invalide après 2 tentatives "
+                f"(ticker={input_data.ticker})"
+            ) from derniere_erreur
+
+        cost_usd = cout_cumule
 
         tokens_input = response.usage.input_tokens
         tokens_output = response.usage.output_tokens
@@ -361,7 +439,6 @@ class EarningsQualitySkill(SkillBase):
             model=self._model,
         )
 
-        output = EarningsQualityOutput.model_validate(data)
         output.citations = citations
         output.cost_usd = cost_usd
 
