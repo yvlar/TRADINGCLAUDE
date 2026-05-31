@@ -198,6 +198,25 @@ describe('AnalyzeForm', () => {
     expect(screen.getByText(/chargé \(Yahoo Finance\)/i)).toBeInTheDocument()
   })
 
+  it('affiche la source et la date de récupération des ratios earnings (Sprint 138)', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce({
+      graham: MOCK_GRAHAM_RATIOS,
+      earnings_quality: {
+        ...MOCK_EARNINGS_QUALITY,
+        ratios_source: 'Yahoo Finance',
+        ratios_fetched_at: '2026-05-30T12:00:00Z',
+      },
+    })
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      const src = screen.getByTestId('earnings-source')
+      expect(src).toHaveTextContent('Yahoo Finance')
+      expect(src).toHaveTextContent('2026-05-30')
+    })
+  })
+
   it('earnings_ratios inclus dans le payload quand checkbox cochée', async () => {
     vi.mocked(getExtract).mockResolvedValueOnce(MOCK_EXTRACT_WITH_EARNINGS)
     const onSubmit = vi.fn()

@@ -219,6 +219,23 @@ class TestValuationSchemas:
         assert r.price is None
         assert r.sector is None
 
+    def test_tracabilite_absente_par_defaut_none(self):
+        """ratios_fetched_at / ratios_source absents → None (rétrocompatible, Sprint 138)."""
+        r = ValuationRatios(price=80.0)
+        assert r.ratios_fetched_at is None
+        assert r.ratios_source is None
+
+    def test_tracabilite_renseignee_et_iso_acceptee(self):
+        """ratios_fetched_at accepte une string ISO et ratios_source un littéral (Sprint 138)."""
+        r = ValuationRatios(
+            price=80.0,
+            ratios_fetched_at="2026-05-30T12:00:00+00:00",
+            ratios_source="Yahoo Finance",
+        )
+        assert r.ratios_source == "Yahoo Finance"
+        assert r.ratios_fetched_at is not None
+        assert r.ratios_fetched_at.year == 2026
+
     def test_valuation_output_valide_se_construit(self, valuation_output_bns: StockValuationOutput):
         assert valuation_output_bns.ticker == "BNS"
         assert valuation_output_bns.verdict == "SOUS_EVALUE"

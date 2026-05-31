@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-30 — Sprint 136 complété**
+**Dernière mise à jour : 2026-05-31 — Sprint 138 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,12 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.23.0 |
+| **Version** | 10.24.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 137 — Evals ciblées des prompts rendus déterministes (earnings_quality, stock_valuation) |
-| **Dernier sprint complété** | Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅ |
+| **Sprint actif** | Sprint 139 — Affichage de la traçabilité sur l'analyse persistée (AnalysisResult) |
+| **Dernier sprint complété** | Sprint 138 — Traçabilité source+date étendue (ValuationRatios + EarningsQualityRatios) ✅ |
+
+> **Sprint 137 différé** — Les evals ciblées (Claude réel) d'`earnings_quality`/`stock_valuation` exigent `ANTHROPIC_API_KEY`, absente du conteneur de session web → à exécuter en local. Le Sprint 138 (web-compatible, mockable) a été exécuté à sa place.
 
 > **Re-priorisation 2026-05-29** — La revue expert FinTech (`docs/revue-expert-fintech.md`) a identifié des correctifs P0 de sécurité, livrés au **Sprint 125** (complété). La suite de la file issue de la revue (déterminisme LLM, calculs déterministes, disclaimers, données multi-sources) est dans les sprints suggérés de `prompt-mise-a-jour-roadmap.md`.
 
@@ -51,7 +53,7 @@
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
-- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134 ; ratio absent de la source = `None` honnête, jamais `0.0` trompeur — Sprint 135), streaming SSE skill par skill, badge « score depuis cache <24h »
+- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134, étendues aux ratios Qualité bénéfices auto-remplis — Sprint 138 ; ratio absent de la source = `None` honnête, jamais `0.0` trompeur — Sprint 135), streaming SSE skill par skill, badge « score depuis cache <24h »
 - **Screener** — batch 2-20 tickers, tri + filtres composite **persistés côté serveur** (continuité multi-appareils, fallback localStorage hors-ligne — Sprint 124) + colonne fraîcheur (badge frais/périmé >24h) + export CSV filtré
 - **History** — historique par ticker, recherche full-text `q` cross-ticker (index GIN pg_trgm), filtre par plage de dates, suppression par analyse
 - **Watchlist** — positions surveillées, analyses manuelles, seuils ESG + prix éditables inline, score composite historique, export Excel
@@ -79,6 +81,23 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 138 — Traçabilité source+date étendue (ValuationRatios + EarningsQualityRatios) ✅
+
+**Objectif :** Le Sprint 134 n'avait posé la traçabilité source+date (`donnees-financieres.md` : « une donnée sans date est inutilisable ») que sur `GrahamRatios`. Les ratios de valorisation (`ValuationRatios`) et de qualité comptable (`EarningsQualityRatios`) extraits de Yahoo Finance restaient sans horodatage de récupération. Étendre le pattern à ces deux schemas + leurs extracteurs tier1, et l'exposer côté frontend (type + affichage earnings). Suite de la file revue expert FinTech.
+
+**Livrables :**
+- `app/skills/tier2/stock_valuation/schemas.py` + `app/skills/tier2/earnings_quality/schemas.py` — `ValuationRatios` et `EarningsQualityRatios` gagnent `ratios_fetched_at: datetime | None = None` et `ratios_source: str | None = None` (défaut `None` → rétrocompatible avec les analyses persistées avant ce champ ; miroir exact des champs posés sur `GrahamRatios` au Sprint 134)
+- `app/skills/tier1/yahoo_finance.py` — `extract_valuation()` et `extract_earnings_quality()` posent `ratios_fetched_at=datetime.now(timezone.utc)` + `ratios_source=RATIOS_SOURCE` (constante module réutilisée, jamais un littéral dispersé)
+- `frontend/src/types/index.ts` — `interface EarningsQualityRatios` gagne `ratios_fetched_at?`/`ratios_source?` (optionnels, miroir du payload `/extract`). `ValuationRatios` n'a pas d'interface TS (non exposé au frontend) → aucun changement TS de ce côté
+- `frontend/src/components/AnalyzeForm.tsx` — le badge « ✓ chargé (Yahoo Finance) » des ratios earnings affiche désormais la date quand présente (« ✓ chargé (Yahoo Finance · AAAA-MM-JJ) ») via `earningsSourceLabel` ; reste « (Yahoo Finance) » sans horodatage (`data-testid="earnings-source"`)
+- **Décision de sérialisation (confirmée par la revue)** : contrairement au Sprint 134, aucun risque de crash `json.dumps`-sur-`datetime` — ni `_persist`/`_cache_key` (qui ne touchent que `GrahamRatios`) ni les skills (`model_dump_json`, datetime-safe) ne sérialisent ces deux types via un `json.dumps(model_dump())` brut
+- Tests : extracteurs (`extract_valuation`/`extract_earnings_quality` horodatent UTC + posent la source), schemas (champs `None` par défaut + ISO acceptée, rétrocompat), composant `AnalyzeForm` (source+date earnings affichées après auto-fill)
+
+**Version** : 10.24.0
+**Tests** : 1 635 backend collectés (1 631 passés, 3 skipped, 1 xfailed — +6) ; 425 Vitest verts (+1) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend installé à l'amorçage (`npm install`). Réconciliation carte↔code : prémisses du chemin critique (`RATIOS_SOURCE` `yahoo_finance.py:164`, `extract_earnings_quality` `:303`, `extract_valuation` `:441`, champs Sprint 134 `graham_analysis/schemas.py:34-41`) vérifiées par `grep`/lecture avant implémentation. **Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur) : 1 bug HIGH détecté et corrigé** — l'ajout des champs `ratios_fetched_at?`/`ratios_source?` à l'interface TS `EarningsQualityRatios` (`types/index.ts`) n'avait pas été persisté (édition perdue, masquée par Vitest qui transpile sans typecheck → `tsc` rouge en CI) ; champs ré-ajoutés. Même incident corrigé sur `docs/roadmap-archive.md` (bloc Sprint 133 réinséré). Sérialisation vérifiée : **aucun `json.dumps(model_dump())` brut** sur `ValuationRatios`/`EarningsQualityRatios` (`model_dump_json` datetime-safe dans les skills ; `_cache_key`/`_persist` ne touchent que `GrahamRatios` via `mode="json"`) → contrairement au Sprint 134, pas de hazard `datetime`. 2 limites connues : `extract_valuation` sans appelant câblé aujourd'hui ; earnings/valuation non encore propagés au PDF / à l'analyse persistée (reportés Sprints 139/142). Qualité : extraction d'un mixin partagé des 2 champs **écartée** — parité intentionnelle (comme Graham). Stack Docker non démarrée. Pas de test navigateur live.
 
 ### Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅
 
@@ -128,21 +147,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 602 backend collectés (1 598 passés, 3 skipped, 1 xfailed — +7) ; 420 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Revue indépendante à contexte frais (correctness high) : **1 bug HIGH détecté et corrigé avant commit** — `analysis_cache.py:_cache_key` faisait planter `json.dumps` sur le nouveau champ `datetime` (chemin nominal post-auto-fill), structurellement identique au hazard que l'auteur avait déjà corrigé dans `_persist` mais manqué dans le cache ; fix + 2 tests de régression, 2ᵉ passe verte. Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
-
-### Sprint 133 — Disclaimer : Screener + Comparer ✅
-
-**Objectif :** Le Sprint 129 a introduit le composant `Disclaimer` mais ne l'a câblé que sous `AnalysisResult` et au pied de page global. Deux surfaces présentant des verdicts actionnables hors `AnalysisResult` restaient sans avertissement réglementaire : les résultats du Screener et la vue Comparer. Étendre le `Disclaimer variant="inline"` à ces deux surfaces, conditionné à la présence de résultats. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill, aucun backend, aucune migration.
-
-**Livrables :**
-- `frontend/src/pages/ScreenerPage.tsx` — `<Disclaimer variant="inline" />` rendu sous `ScreenerTable`, dans le bloc `{result && (...)}` (jamais visible sur la page vide). Texte réutilisé depuis la constante centralisée, aucun littéral
-- `frontend/src/pages/ComparePage.tsx` — `<Disclaimer variant="inline" />` rendu en conditionnel séparé `{result && <Disclaimer />}` sous le tableau de comparaison (présent dès qu'une comparaison ≥ 2 tickers existe, absent à vide)
-- Zéro régression : le pied de page global (`App.tsx`, `variant="footer"`) et `AnalysisResult.tsx` (déjà couverts au Sprint 129) ne sont pas touchés ; texte centralisé inchangé (`frontend/src/constants/disclaimer.ts`)
-- Tests : composant `ScreenerPage.test.tsx` (disclaimer présent après résultat, absent sur page vide) et `ComparePage.test.tsx` (présent sous comparaison ≥ 2 tickers, absent avant toute comparaison)
-
-**Version** : 10.20.0
-**Tests** : 418 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; suite `pytest` inchangée (sprint frontend pur) ; ruff `All checks passed`
-
-**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install` exécuté. Revue indépendante à contexte frais (correctness high + qualité) : 2 notes LOW (fragilité latente de testid dupliqué hors périmètre des tests → écartée ; indentation du fragment → corrigée en remplaçant le fragment par un conditionnel séparé). Stack Docker non démarrée. Pas de test navigateur live.
 
 ---
 

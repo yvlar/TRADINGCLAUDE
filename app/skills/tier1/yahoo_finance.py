@@ -426,6 +426,8 @@ class YahooFinanceExtractor:
             ppe_net_t1=_val(bal_ppe_net, 1),
             ppe_gross_t1=_val(bal_ppe_gross, 1),
             ltd_t1=_val(bal_ltd, 1),
+            ratios_fetched_at=datetime.now(timezone.utc),
+            ratios_source=RATIOS_SOURCE,
         )
 
     async def get_price(self, ticker: str) -> float | None:
@@ -487,4 +489,6 @@ class YahooFinanceExtractor:
             dividend_yield=info.get("dividendYield"),
             shares_outstanding_m=shares_m,
             sector=info.get("sector"),
+            ratios_fetched_at=datetime.now(timezone.utc),
+            ratios_source=RATIOS_SOURCE,
         )

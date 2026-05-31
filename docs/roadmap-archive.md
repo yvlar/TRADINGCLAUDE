@@ -10,6 +10,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 133 — Disclaimer : Screener + Comparer ✅
+
+**Objectif :** Le Sprint 129 a introduit le composant `Disclaimer` mais ne l'a câblé que sous `AnalysisResult` et au pied de page global. Deux surfaces présentant des verdicts actionnables hors `AnalysisResult` restaient sans avertissement réglementaire : les résultats du Screener et la vue Comparer. Étendre le `Disclaimer variant="inline"` à ces deux surfaces, conditionné à la présence de résultats. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill, aucun backend, aucune migration.
+
+**Livrables :**
+- `frontend/src/pages/ScreenerPage.tsx` — `<Disclaimer variant="inline" />` rendu sous `ScreenerTable`, dans le bloc `{result && (...)}` (jamais visible sur la page vide). Texte réutilisé depuis la constante centralisée, aucun littéral
+- `frontend/src/pages/ComparePage.tsx` — `<Disclaimer variant="inline" />` rendu en conditionnel séparé `{result && <Disclaimer />}` sous le tableau de comparaison (présent dès qu'une comparaison ≥ 2 tickers existe, absent à vide)
+- Zéro régression : le pied de page global (`App.tsx`, `variant="footer"`) et `AnalysisResult.tsx` (déjà couverts au Sprint 129) ne sont pas touchés ; texte centralisé inchangé (`frontend/src/constants/disclaimer.ts`)
+- Tests : composant `ScreenerPage.test.tsx` (disclaimer présent après résultat, absent sur page vide) et `ComparePage.test.tsx` (présent sous comparaison ≥ 2 tickers, absent avant toute comparaison)
+
+**Version** : 10.20.0
+**Tests** : 418 Vitest verts (+4) ; tsc 0 erreur ; ESLint 0 ; suite `pytest` inchangée (sprint frontend pur) ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install` exécuté. Revue indépendante à contexte frais (correctness high + qualité) : 2 notes LOW (fragilité latente de testid dupliqué hors périmètre des tests → écartée ; indentation du fragment → corrigée en remplaçant le fragment par un conditionnel séparé). Stack Docker non démarrée. Pas de test navigateur live.
+
 ### Sprint 132 — Calculs déterministes : ossature DCF (stock_valuation) ✅
 
 **Objectif :** Dernier producteur de valeurs numériques critiques par le LLM, `stock_valuation_triangulation` générait entièrement l'ossature DCF (WACC, valeur actualisée, matrice de sensibilité) — même défaut de fiabilité numérique que les scores `earnings_quality` avant Sprint 128. Rapatrier cette ossature en Python et la substituer post-parse (les valeurs Python priment), en clonant le pattern `_injecter_scores` / fonctions pures. Le LLM conserve la **narrative** (comparables, sectoriel, pondération de la fourchette, verdict), pas l'arithmétique du DCF. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §1). Sprint backend pur.

@@ -374,6 +374,19 @@ class TestYahooFinanceExtractEarningsQuality:
             result = await extractor.extract_earnings_quality("BNS")
         assert result is None
 
+    @pytest.mark.asyncio
+    async def test_earnings_quality_pose_source_et_date(self):
+        """extract_earnings_quality horodate les ratios (UTC) et pose la source (Sprint 138)."""
+        extractor = YahooFinanceExtractor()
+        avant = datetime.now(timezone.utc)
+        with patch.object(extractor, "_fetch_earnings_data", return_value=_MOCK_EARNINGS_DATA):
+            result = await extractor.extract_earnings_quality("BNS")
+        assert result is not None
+        assert result.ratios_source == RATIOS_SOURCE
+        assert result.ratios_fetched_at is not None
+        assert result.ratios_fetched_at.tzinfo is not None
+        assert result.ratios_fetched_at >= avant
+
 
 # ─── Tests unitaires — extract_valuation() ─────────────────────────────────────
 
@@ -415,6 +428,18 @@ class TestYahooFinanceExtractValuation:
         with patch.object(extractor, "_fetch_info", return_value=_INFO_BNS_FINANCIER):
             result = await extractor.extract_valuation("BNS")
         assert result.revenue_bn == pytest.approx(38.0)
+
+    @pytest.mark.asyncio
+    async def test_valuation_pose_source_et_date(self):
+        """extract_valuation horodate les ratios (UTC) et pose la source (Sprint 138)."""
+        extractor = YahooFinanceExtractor()
+        avant = datetime.now(timezone.utc)
+        with patch.object(extractor, "_fetch_info", return_value=_INFO_BNS_FINANCIER):
+            result = await extractor.extract_valuation("BNS")
+        assert result.ratios_source == RATIOS_SOURCE
+        assert result.ratios_fetched_at is not None
+        assert result.ratios_fetched_at.tzinfo is not None
+        assert result.ratios_fetched_at >= avant
 
 
 # ─── Tests d'intégration — endpoints /extract et /analyze-auto ─────────────────
