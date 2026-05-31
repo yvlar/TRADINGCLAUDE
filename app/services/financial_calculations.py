@@ -59,6 +59,51 @@ def _part_non_courante(
 # Étiquettes de variante exposées dans l'output persisté (auditabilité Sprint 131).
 _Z_VARIANTE_LABELS = {"original": "Z_original", "private": "Z_prime", "service": "Z_double_prime"}
 
+# Seuils (bas, haut) par variante Altman — recopiés de altman-z-score.md (cf. system.md).
+# z > haut → zone_sure | bas ≤ z ≤ haut → zone_grise | z < bas → zone_detresse.
+_Z_SEUILS = {
+    "original": (1.81, 2.99),
+    "private": (1.23, 2.90),
+    "service": (1.10, 2.60),
+}
+
+
+def _altman_interpretation(
+    z_score: float | None, variant: str, is_financial: bool
+) -> str:
+    """Libellé canonique du Z-Score — déterministe (Sprint courant).
+
+    `non_applicable` prime : Altman exclut banques/assureurs/REIT. `DONNEES_MANQUANTES`
+    (ASCII) si le score n'a pu être calculé (donnée d'entrée absente).
+    """
+    if is_financial:
+        return "non_applicable"
+    if z_score is None:
+        return "DONNEES_MANQUANTES"
+    bas, haut = _Z_SEUILS.get(variant, _Z_SEUILS["original"])
+    if z_score > haut:
+        return "zone_sure"
+    if z_score >= bas:
+        return "zone_grise"
+    return "zone_detresse"
+
+
+def _beneish_interpretation(m_score: float | None, is_financial: bool) -> str:
+    """Libellé canonique du M-Score — déterministe (Sprint courant).
+
+    Seuils Beneish : M ≤ −2.22 → non_manipulateur | −2.22 < M ≤ −1.78 → zone_grise |
+    M > −1.78 → manipulateur. `non_applicable` pour les financières (hors échantillon).
+    """
+    if is_financial:
+        return "non_applicable"
+    if m_score is None:
+        return "DONNEES_MANQUANTES"
+    if m_score <= -2.22:
+        return "non_manipulateur"
+    if m_score <= -1.78:
+        return "zone_grise"
+    return "manipulateur"
+
 
 @dataclass(frozen=True)
 class BeneishComponents:
@@ -77,6 +122,7 @@ class BeneishComponents:
     tata: float | None
     lvgi: float | None
     m_score: float | None
+    interpretation: str = "DONNEES_MANQUANTES"
 
 
 @dataclass(frozen=True)
@@ -93,6 +139,7 @@ class AltmanComponents:
     x5: float | None
     variante: str
     z_score: float | None
+    interpretation: str = "DONNEES_MANQUANTES"
 
 
 def graham_number(eps: float | None, bvps: float | None) -> float | None:
@@ -128,7 +175,10 @@ def altman_z_score_detail(
     """
     variante = _Z_VARIANTE_LABELS.get(variant, variant)
     if is_financial or total_assets is None or total_assets == 0:
-        return AltmanComponents(None, None, None, None, None, variante, None)
+        return AltmanComponents(
+            None, None, None, None, None, variante, None,
+            _altman_interpretation(None, variant, is_financial),
+        )
 
     working_capital = (
         current_assets - current_liabilities
@@ -156,7 +206,10 @@ def altman_z_score_detail(
         else:
             a, b, c, d, e = _Z_PRIVATE if variant == "private" else _Z_ORIGINAL
             z = a * x1 + b * x2 + c * x3 + d * x4 + e * x5
-    return AltmanComponents(x1, x2, x3, x4, x5, variante, z)
+    return AltmanComponents(
+        x1, x2, x3, x4, x5, variante, z,
+        _altman_interpretation(z, variant, is_financial),
+    )
 
 
 def altman_z_score(
@@ -222,7 +275,10 @@ def beneish_m_score_detail(
     Sprint 131). AQI : « titres » (securities) supposés nuls (champ absent du contrat).
     """
     if is_financial:
-        return BeneishComponents(None, None, None, None, None, None, None, None, None)
+        return BeneishComponents(
+            None, None, None, None, None, None, None, None, None,
+            _beneish_interpretation(None, is_financial),
+        )
 
     # DSRI = (Recv_t / Sales_t) / (Recv_{t-1} / Sales_{t-1})
     dsri = _ratio(_ratio(receivables_t, sales_t), _ratio(receivables_t1, sales_t1))
@@ -279,7 +335,10 @@ def beneish_m_score_detail(
             + _M_TATA * tata
             + _M_LVGI * lvgi
         )
-    return BeneishComponents(dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi, m_score)
+    return BeneishComponents(
+        dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi, m_score,
+        _beneish_interpretation(m_score, is_financial),
+    )
 
 
 def beneish_m_score(

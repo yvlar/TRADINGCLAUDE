@@ -42,10 +42,14 @@ async def eval_client() -> AsyncClient:
             app,  # import tardif pour éviter side-effects si EVAL_API_URL fourni
         )
 
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test",
-            headers=headers,
-            timeout=120.0,
-        ) as client:
-            yield client
+        # ASGITransport ne déclenche PAS les events lifespan → app.state.orchestrator
+        # ne serait jamais peuplé (AttributeError sur /analyze). On exécute donc le
+        # lifespan manuellement (startup : pool PostgreSQL, Qdrant, orchestrateur).
+        async with app.router.lifespan_context(app):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+                headers=headers,
+                timeout=120.0,
+            ) as client:
+                yield client

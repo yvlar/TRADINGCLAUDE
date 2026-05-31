@@ -16,7 +16,7 @@ _CASES = load_earnings_golden()
 
 _VERDICTS_VALIDES = {"AUCUN_SIGNAL", "ATTENTION", "WATCHLIST", "REJETER"}
 _Z_INTERPS_VALIDES = {
-    "zone_sure", "zone_grise", "zone_danger", "non_applicable", "DONNEES_MANQUANTES"
+    "zone_sure", "zone_grise", "zone_detresse", "non_applicable", "DONNEES_MANQUANTES"
 }
 _M_INTERPS_VALIDES = {
     "non_manipulateur", "zone_grise", "manipulateur", "non_applicable", "DONNEES_MANQUANTES"

@@ -30,16 +30,20 @@
         "depreciation_t1": 13900000000,
         "ppe_net_t": 103000000000,
         "ppe_net_t1": 95000000000,
-        "receivables_t1": 48688000000,
-        "total_assets_t1": 484275000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL"
+      ],
       "f_score_min": 6,
-      "z_score_interpretation_allowed": ["zone_sure", "non_applicable"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 1
     }
   },
@@ -74,15 +78,21 @@
         "depreciation_t1": 11104000000,
         "ppe_net_t": 43715000000,
         "ppe_net_t1": 42117000000,
-        "total_assets_t1": 346747000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
       "f_score_min": 5,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise", "non_applicable"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 2
     }
   },
@@ -117,15 +127,21 @@
         "depreciation_t1": 3900000000,
         "ppe_net_t": 18500000000,
         "ppe_net_t1": 17900000000,
-        "total_assets_t1": 187378000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
       "f_score_min": 5,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 2
     }
   },
@@ -160,15 +176,20 @@
         "depreciation_t1": 2900000000,
         "ppe_net_t": 23800000000,
         "ppe_net_t1": 22900000000,
-        "total_assets_t1": 117208000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL"
+      ],
       "f_score_min": 5,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 1
     }
   },
@@ -203,15 +224,20 @@
         "depreciation_t1": 1200000000,
         "ppe_net_t": 9000000000,
         "ppe_net_t1": 8700000000,
-        "total_assets_t1": 92763000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL"
+      ],
       "f_score_min": 5,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 1
     }
   },
@@ -238,14 +264,22 @@
         "total_liabilities_t": 1320000000000,
         "book_equity_t": 80000000000,
         "ltd_t": 95000000000,
-        "total_assets_t1": 1360000000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
-      "z_score_interpretation_allowed": ["non_applicable", "zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
+      "z_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
       "drapeaux_rouges_max": 3,
       "note": "Institution financiere -- Z-Score inapplicable, M-Score partiellement inapplicable"
     }
@@ -273,14 +307,22 @@
         "total_liabilities_t": 1780000000000,
         "book_equity_t": 120000000000,
         "ltd_t": 140000000000,
-        "total_assets_t1": 1800000000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
-      "z_score_interpretation_allowed": ["non_applicable", "zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
+      "z_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
       "drapeaux_rouges_max": 3,
       "note": "Institution financiere -- Z-Score inapplicable"
     }
@@ -308,14 +350,22 @@
         "total_liabilities_t": 3600000000000,
         "book_equity_t": 275000000000,
         "ltd_t": 280000000000,
-        "total_assets_t1": 3665000000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
-      "z_score_interpretation_allowed": ["non_applicable", "zone_sure"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
+      "z_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES",
+        "non_applicable"
+      ],
       "drapeaux_rouges_max": 3,
       "note": "Institution financiere -- Z-Score inapplicable"
     }
@@ -351,15 +401,21 @@
         "depreciation_t1": 3747000000,
         "ppe_net_t": 29725000000,
         "ppe_net_t1": 23169000000,
-        "total_assets_t1": 82338000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
       "f_score_min": 4,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 3
     }
   },
@@ -394,15 +450,22 @@
         "depreciation_t1": 38000000000,
         "ppe_net_t": 160000000000,
         "ppe_net_t1": 113000000000,
-        "total_assets_t1": 321195000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION", "WATCHLIST"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION",
+        "WATCHLIST"
+      ],
       "f_score_min": 3,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "zone_grise", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 4
     }
   },
@@ -437,15 +500,22 @@
         "depreciation_t1": 700000000,
         "ppe_net_t": 1200000000,
         "ppe_net_t1": 1000000000,
-        "total_assets_t1": 26000000000,
         "shares_issued_net": true
       }
     },
     "expected": {
-      "verdict_allowed": ["ATTENTION", "WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "ATTENTION",
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_min": 1,
-      "z_score_interpretation_allowed": ["zone_grise", "zone_danger", "zone_sure"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "zone_grise", "manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_min": 1
     }
   },
@@ -480,14 +550,19 @@
         "depreciation_t1": 250000000,
         "ppe_net_t": 400000000,
         "ppe_net_t1": 380000000,
-        "total_assets_t1": 4900000000,
         "shares_issued_net": true
       }
     },
     "expected": {
-      "verdict_allowed": ["ATTENTION", "WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "ATTENTION",
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_min": 1,
-      "z_score_interpretation_allowed": ["zone_grise", "zone_danger", "zone_sure"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 1
     }
   },
@@ -522,15 +597,22 @@
         "depreciation_t1": 1200000000,
         "ppe_net_t": 1400000000,
         "ppe_net_t1": 1400000000,
-        "total_assets_t1": 33813000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION", "WATCHLIST"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION",
+        "WATCHLIST"
+      ],
       "f_score_min": 2,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 3
     }
   },
@@ -565,14 +647,19 @@
         "depreciation_t1": 97000000,
         "ppe_net_t": 150000000,
         "ppe_net_t1": 197000000,
-        "total_assets_t1": 2472000000,
         "shares_issued_net": true
       }
     },
     "expected": {
-      "verdict_allowed": ["ATTENTION", "WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "ATTENTION",
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_min": 1,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise", "zone_danger"],
+      "z_score_interpretation_allowed": [
+        "zone_sure"
+      ],
       "drapeaux_rouges_min": 1
     }
   },
@@ -607,14 +694,18 @@
         "depreciation_t1": 400000000,
         "ppe_net_t": 750000000,
         "ppe_net_t1": 990000000,
-        "total_assets_t1": 5765000000,
         "shares_issued_net": true
       }
     },
     "expected": {
-      "verdict_allowed": ["WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_max": 4,
-      "z_score_interpretation_allowed": ["zone_danger", "zone_grise"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 2
     }
   },
@@ -649,14 +740,18 @@
         "depreciation_t1": 460000000,
         "ppe_net_t": 1800000000,
         "ppe_net_t1": 2100000000,
-        "total_assets_t1": 8750000000,
         "shares_issued_net": true
       }
     },
     "expected": {
-      "verdict_allowed": ["WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_max": 3,
-      "z_score_interpretation_allowed": ["zone_danger"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 2
     }
   },
@@ -691,14 +786,18 @@
         "depreciation_t1": 7200000000,
         "ppe_net_t": 19000000000,
         "ppe_net_t1": 20000000000,
-        "total_assets_t1": 377000000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_max": 4,
-      "z_score_interpretation_allowed": ["zone_danger", "zone_grise"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 2
     }
   },
@@ -733,14 +832,18 @@
         "depreciation_t1": 2100000000,
         "ppe_net_t": 11000000000,
         "ppe_net_t1": 11700000000,
-        "total_assets_t1": 133625000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_max": 3,
-      "z_score_interpretation_allowed": ["zone_danger", "zone_grise"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 2
     }
   },
@@ -775,14 +878,18 @@
         "depreciation_t1": 250000000,
         "ppe_net_t": 500000000,
         "ppe_net_t1": 700000000,
-        "total_assets_t1": 19700000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["WATCHLIST", "REJETER"],
+      "verdict_allowed": [
+        "WATCHLIST",
+        "REJETER"
+      ],
       "f_score_max": 3,
-      "z_score_interpretation_allowed": ["zone_grise", "zone_danger", "zone_sure"],
+      "z_score_interpretation_allowed": [
+        "zone_detresse"
+      ],
       "drapeaux_rouges_min": 2
     }
   },
@@ -817,15 +924,21 @@
         "depreciation_t1": 1300000000,
         "ppe_net_t": 8900000000,
         "ppe_net_t1": 9200000000,
-        "total_assets_t1": 14900000000,
         "shares_issued_net": false
       }
     },
     "expected": {
-      "verdict_allowed": ["AUCUN_SIGNAL", "ATTENTION"],
+      "verdict_allowed": [
+        "AUCUN_SIGNAL",
+        "ATTENTION"
+      ],
       "f_score_min": 4,
-      "z_score_interpretation_allowed": ["zone_sure", "zone_grise"],
-      "m_score_interpretation_allowed": ["non_manipulateur", "DONNEES_MANQUANTES"],
+      "z_score_interpretation_allowed": [
+        "zone_grise"
+      ],
+      "m_score_interpretation_allowed": [
+        "DONNEES_MANQUANTES"
+      ],
       "drapeaux_rouges_max": 2
     }
   }
