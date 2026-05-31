@@ -10,6 +10,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅
+
+**Objectif :** Les termes X1-X5 du Z-Score d'Altman sont calculés en Python et persistés depuis le Sprint 131, mais l'UI ne les affichait pas — alors que la carte M-Score rendait déjà ses 8 indices Beneish en grille. Asymétrie d'auditabilité côté frontend. Combler l'écart : déclarer `x1`-`x5` dans le type TS `ZScoreDetail` puis les rendre dans `ZScoreCard` en clonant le pattern de grille de `MScoreCard`. Sprint frontend pur — aucun backend, aucune migration, aucun prompt de skill.
+
+**Livrables :**
+- `frontend/src/types/index.ts` — `interface ZScoreDetail` gagne `x1`-`x5: number | null` (snake_case, miroir du payload backend `earnings_quality/schemas.py:106-110` ; zéro `any`). Aucun autre littéral `ZScoreDetail` dans le frontend (seul la fixture de test construit l'objet) → l'élargissement en champs requis ne casse aucun typecheck
+- `frontend/src/components/EarningsQualitySection.tsx` — `ZScoreCard` construit un tableau `{label, titre, value}[]` (X1 = fonds de roulement/actif total, …, X5 = ventes/actif total) filtré sur `value !== null` et le rend en grille `grid-cols-2` (`.toFixed(3)`), clone du pattern `MScoreCard`. `data-testid="zscore-termes"` + `title` par terme (libellé complet en survol) pour l'auditabilité. Si tous les termes sont `None` (banque/`is_financial`) → aucune grille, exactement comme `MScoreCard` ; score Z + variante + interprétation inchangés
+- Zéro régression : `MScoreCard`, `FScoreCard`, `CScoreCard`, `SloanCard` non touchés
+- Tests : composant (`EarningsQualitySection.test.tsx`) — X1-X5 renseignés → grille rendue avec les 5 labels + valeurs concrètes (`0.215`, `1.874`) ; X1-X5 tous `null` (banque) → aucune grille mais `zscore-value` (3.15) + interprétation toujours présents (cas dégradé)
+
+**Version** : 10.23.0
+**Tests** : 1 614 backend collectés (inchangé — sprint frontend pur, non-régression : 1 610 passés, 3 skipped, 1 xfailed) ; 422 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Réconciliation carte↔code : les 4 prémisses du chemin critique (backend `x1`-`x5` en `schemas.py:106-110`, type TS `ZScoreDetail` sans termes en `index.ts:114`, `ZScoreCard` sans grille en `EarningsQualitySection.tsx:139`, pattern `MScoreCard:106-134`) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité, 2 sous-agents distincts de la session auteur) : **aucun bug de correctness** ; seul point qualité (extraire un helper `RatioGrid` partagé M-Score/Z-Score) **écarté** — l'extraction toucherait `MScoreCard` que la spec impose de laisser intact (zéro-régression), et c'est un clone intentionnel à 2 sites avec divergences (`title`/`testid`). Stack Docker non démarrée. Pas de test navigateur live.
+
 ### Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) ✅
 
 **Objectif :** Le Sprint 130 n'avait introduit un repli de source que pour `eps_growth`. Les autres ratios Graham extraits de yfinance retombaient **silencieusement à `0.0`** quand le champ primaire était absent (`info.get("priceToBook") or 0.0`, `bookValue or 0.0`, `debt_equity = 0.0` si `debtToEquity` absent) — un `0.0` faux est indiscernable d'un vrai `0.0` et fausse le scoring Graham en aval (`donnees-financieres.md` : « un `0.0` silencieux pour une donnée absente est le piège à éliminer »). Généraliser le pattern : une donnée primaire absente produit `None` (donnée manquante honnête) et est traçable, jamais un `0.0` trompeur. Suite de la revue expert FinTech. Sprint backend pur (le type TS `GrahamRatios` était déjà nullable côté frontend).
