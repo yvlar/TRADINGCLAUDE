@@ -35,6 +35,9 @@ export interface EarningsQualityRatios {
   ppe_gross_t1?: number | null
   ltd_t1?: number | null
   shares_issued_net?: boolean | null
+  // Traçabilité source+date (Sprint 138) — miroir du payload backend, parité avec GrahamRatios
+  ratios_fetched_at?: string | null
+  ratios_source?: string | null
 }
 
 // ---- Réponse extraction automatique ----
