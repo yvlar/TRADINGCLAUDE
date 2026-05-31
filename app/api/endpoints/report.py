@@ -9,7 +9,12 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
+from app.orchestrator.core import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    Orchestrator,
+    _graham_ratios_trace,
+)
 from app.services.report import ReportService
 from app.utils.error_sanitization import sanitized_http_500
 
@@ -83,7 +88,7 @@ async def get_report(request: Request, analysis_id: str) -> Response:
     try:
         row = await db_pool.fetchrow(
             """
-            SELECT id, ticker, workflow_name, skills_used, result, cost_usd, created_at
+            SELECT id, ticker, workflow_name, skills_used, input_data, result, cost_usd, created_at
             FROM analysis_history
             WHERE id = $1::uuid
             """,
@@ -113,6 +118,29 @@ async def get_report(request: Request, analysis_id: str) -> Response:
         ) from exc
 
     return _pdf_response(pdf_bytes, row["ticker"])
+
+
+def _reconstruct_ratios_trace(row) -> tuple[str | None, str | None]:
+    """Reconstruit la traçabilité (date ISO, source) des ratios Graham depuis input_data persisté."""
+    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+
+    try:
+        raw = row["input_data"]
+    except (KeyError, IndexError):
+        return None, None
+    if raw is None:
+        return None, None
+    try:
+        data: dict = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except (ValueError, TypeError):
+        return None, None
+    if not data:
+        return None, None
+    try:
+        ratios = GrahamRatios.model_validate(data)
+    except Exception:
+        return None, None
+    return _graham_ratios_trace(ratios)
 
 
 def _reconstruct_response(row) -> AnalyzeResponse:
@@ -159,12 +187,16 @@ def _reconstruct_response(row) -> AnalyzeResponse:
         raise ValueError("Clé 'graham' absente dans result — analyse corrompue")
     graham = GrahamAnalysisOutput.model_validate(graham_data)
 
+    ratios_fetched_at, ratios_source = _reconstruct_ratios_trace(row)
+
     return AnalyzeResponse(
         analysis_id=str(row["id"]),
         ticker=row["ticker"],
         workflow=row["workflow_name"],
         skills_applied=skills_used,
         graham=graham,
+        ratios_fetched_at=ratios_fetched_at,
+        ratios_source=ratios_source,
         earnings_quality=_try_parse(EarningsQualityOutput, "earnings_quality"),
         dorsey=_try_parse(DorseyMoatOutput, "dorsey_moat"),
         buffett=_try_parse(BuffettQualityOutput, "buffett_quality"),

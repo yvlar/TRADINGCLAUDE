@@ -208,6 +208,12 @@ export function AnalysisResult({
             {g.verdict_detail && (
               <p className="text-sm text-muted-foreground border-t border-border pt-3">{g.verdict_detail}</p>
             )}
+            {result.ratios_fetched_at && (
+              <p className="text-xs text-muted-foreground border-t border-border pt-3" data-testid="result-ratios-source">
+                Source : {result.ratios_source ?? 'source n.d.'} · récupéré le{' '}
+                {result.ratios_fetched_at.slice(0, 10)}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

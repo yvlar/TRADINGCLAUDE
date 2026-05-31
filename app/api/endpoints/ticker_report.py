@@ -194,7 +194,10 @@ def _extract_ratios(row) -> "GrahamRatios | None":
     raw = row["input_data"]
     if raw is None:
         return None
-    data: dict = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    try:
+        data: dict = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except (ValueError, TypeError):
+        return None
     if not data:
         return None
     try:
@@ -248,7 +251,7 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
     Un skill dont le JSON ne valide pas est ignoré (pas d'échec global). Retourne None
     uniquement si le result est illisible.
     """
-    from app.orchestrator.core import AnalyzeResponse
+    from app.orchestrator.core import AnalyzeResponse, _graham_ratios_trace
 
     result_str = row["result"]
     try:
@@ -283,6 +286,8 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
         created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
     )
 
+    ratios_fetched_at, ratios_source = _graham_ratios_trace(_extract_ratios(row))
+
     return AnalyzeResponse(
         analysis_id=str(row["id"]),
         ticker=row["ticker"],
@@ -290,5 +295,7 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
         skills_applied=skills_used,
         cost_usd=float(row["cost_usd"]),
         created_at=created_at_str,
+        ratios_fetched_at=ratios_fetched_at,
+        ratios_source=ratios_source,
         **parsed_fields,
     )

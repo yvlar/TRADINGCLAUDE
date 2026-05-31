@@ -10,6 +10,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 134 — Traçabilité source+date des ratios ✅
+
+**Objectif :** `donnees-financieres.md` impose que toute donnée financière porte sa source et sa date de récupération (« une donnée sans date est inutilisable »). Les ratios Graham extraits de Yahoo Finance étaient affichés sans horodatage — risque de décision sur une donnée périmée. Ajouter un champ de traçabilité (date UTC de récupération + source) à l'extraction tier1, le propager schema → type TS → UI/PDF, et l'afficher à côté des ratios. Suite de la revue expert FinTech (file « traçabilité des données »). Périmètre : `GrahamRatios` uniquement (`ValuationRatios`/`EarningsQualityRatios` = sprint 138).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — constante module `RATIOS_SOURCE = "Yahoo Finance"` (jamais un littéral dispersé) ; `extract()` pose `ratios_fetched_at=datetime.now(timezone.utc)` + `ratios_source=RATIOS_SOURCE`. Le repli de source d'`eps_growth` ne touche pas l'horodatage (posé une fois à la construction)
+- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios` gagne `ratios_fetched_at: datetime | None = None` et `ratios_source: str | None = None` (défaut `None` → rétrocompatible avec les analyses persistées avant ce sprint)
+- `frontend/src/types/index.ts` + `AnalyzeForm.tsx` — champs **snake_case** (`ratios_fetched_at`/`ratios_source`, l'interface `GrahamRatios` mirroite le payload brut de l'API, pas de camelisation) ; affichage discret « Source : Yahoo Finance · récupéré le AAAA-MM-JJ » sous les ratios après auto-fill (`data-testid="ratios-source"`, rien si `None`). Type mappé `NumericRatioKey` pour exclure les 2 champs string de l'édition numérique (typage strict, zéro `any`)
+- `app/services/pdf_report_service.py` — `_build_ratios_rows` ajoute une ligne « Source des ratios » (`_fmt_ratios_source`) quand le champ est présent, omise proprement si `None` (PDF reconstruit depuis `input_data` persisté)
+- **Décision UI** : affichage posé dans `AnalyzeForm` (où vit réellement `GrahamRatios` côté UI, via le spread `...result.graham`) plutôt que `AnalysisResult` — `AnalyzeResponse` ne porte pas les ratios d'entrée ; le PDF couvre le cas du dossier persisté
+- **Correctif de sérialisation (révélé par la revue indépendante)** : `request.ratios.model_dump()` → `model_dump(mode="json")` dans `core.py:_persist` ET `analysis_cache.py:_cache_key` (sinon `datetime` fait planter `json.dumps` sur le chemin nominal après auto-fill). La clé de cache **exclut** `ratios_fetched_at`/`ratios_source` : l'identité de cache porte sur les données financières, pas sur le moment de récupération (sinon le cache ne hit jamais)
+- Tests : tier1 (`extract()` horodate UTC + pose la source), schema (champs optionnels `None` par défaut + ISO acceptée), PDF (ligne présente/omise), cache (pas de crash datetime + clé stable malgré horodatage différent), composant `AnalyzeForm` (source+date affichées après auto-fill, absentes avant)
+
+**Version** : 10.21.0
+**Tests** : 1 602 backend collectés (1 598 passés, 3 skipped, 1 xfailed — +7) ; 420 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Revue indépendante à contexte frais (correctness high) : **1 bug HIGH détecté et corrigé avant commit** — `analysis_cache.py:_cache_key` faisait planter `json.dumps` sur le nouveau champ `datetime` (chemin nominal post-auto-fill), structurellement identique au hazard que l'auteur avait déjà corrigé dans `_persist` mais manqué dans le cache ; fix + 2 tests de régression, 2ᵉ passe verte. Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
+
 ### Sprint 133 — Disclaimer : Screener + Comparer ✅
 
 **Objectif :** Le Sprint 129 a introduit le composant `Disclaimer` mais ne l'a câblé que sous `AnalysisResult` et au pied de page global. Deux surfaces présentant des verdicts actionnables hors `AnalysisResult` restaient sans avertissement réglementaire : les résultats du Screener et la vue Comparer. Étendre le `Disclaimer variant="inline"` à ces deux surfaces, conditionné à la présence de résultats. Suite de la revue expert FinTech (`docs/revue-expert-fintech.md` §6). Sprint d'affichage pur — aucun prompt de skill, aucun backend, aucune migration.

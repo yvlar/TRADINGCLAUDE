@@ -472,6 +472,8 @@ export interface AnalyzeResponse {
   inter_skill_conflicts: string[]
   composite_score: CompositeScore | null
   depuis_cache_composite?: boolean
+  ratios_fetched_at?: string | null
+  ratios_source?: string | null
 }
 
 // ---- AnalyzeRequest ----

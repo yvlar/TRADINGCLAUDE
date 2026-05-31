@@ -1052,3 +1052,68 @@ class TestInterSkillConflicts:
         from app.orchestrator.core import _detect_inter_skill_conflicts
         conflicts = _detect_inter_skill_conflicts(None, None, None, None)
         assert conflicts == []
+
+
+# ---------------------------------------------------------------------------
+# Sprint 139 — traçabilité source+date sur AnalyzeResponse
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeResponseTracabilite:
+    def test_tracabilite_absente_par_defaut_none(self):
+        """ratios_fetched_at / ratios_source absents → None (rétrocompat analyses anciennes)."""
+        from app.orchestrator.core import AnalyzeResponse
+        resp = AnalyzeResponse(
+            analysis_id="test-id",
+            ticker="TEST",
+            workflow="value_graham",
+            skills_applied=[],
+            cost_usd=0.0,
+            created_at="2026-01-01T00:00:00",
+        )
+        assert resp.ratios_fetched_at is None
+        assert resp.ratios_source is None
+
+    def test_tracabilite_renseignee(self):
+        from app.orchestrator.core import AnalyzeResponse
+        resp = AnalyzeResponse(
+            analysis_id="test-id",
+            ticker="TEST",
+            workflow="value_graham",
+            skills_applied=[],
+            cost_usd=0.0,
+            created_at="2026-01-01T00:00:00",
+            ratios_fetched_at="2026-05-30T12:00:00+00:00",
+            ratios_source="Yahoo Finance",
+        )
+        assert resp.ratios_fetched_at == "2026-05-30T12:00:00+00:00"
+        assert resp.ratios_source == "Yahoo Finance"
+
+
+class TestGrahamRatiosTraceHelper:
+    def test_ratios_none_retourne_none_none(self):
+        from app.orchestrator.core import _graham_ratios_trace
+        assert _graham_ratios_trace(None) == (None, None)
+
+    def test_extrait_date_iso_et_source(self):
+        from datetime import datetime, timezone
+
+        from app.orchestrator.core import _graham_ratios_trace
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_fetched_at=datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        fetched, source = _graham_ratios_trace(ratios)
+        assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
+        assert source == "Yahoo Finance"
+
+    def test_sans_horodatage_retourne_none_pour_date(self):
+        from app.orchestrator.core import _graham_ratios_trace
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+        )
+        fetched, source = _graham_ratios_trace(ratios)
+        assert fetched is None
+        assert source is None

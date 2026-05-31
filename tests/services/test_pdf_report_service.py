@@ -294,7 +294,7 @@ def _make_analysis_row(
         "ticker": ticker,
         "workflow_name": "value_graham",
         "skills_used": json.dumps(list(result.keys())),
-        "input_data": json.dumps(ratios.model_dump() if ratios is not None else {}),
+        "input_data": json.dumps(ratios.model_dump(mode="json") if ratios is not None else {}),
         "result": json.dumps(result),
         "cost_usd": 0.0042,
         "created_at": datetime(2026, 5, 20, 12, 0, 0, tzinfo=timezone.utc),
@@ -345,6 +345,38 @@ class TestReconstructAnalyzeResponse:
             "created_at": datetime(2026, 5, 20, tzinfo=timezone.utc),
         }
         assert _reconstruct_analyze_response(row) is None
+
+    def test_tracabilite_reconstruite_depuis_input_data(self, graham_output_msft, ratios_msft):
+        """Une analyse rechargée reconstruit la source+date des ratios depuis input_data."""
+        ratios = ratios_msft.model_copy(
+            update={
+                "ratios_fetched_at": datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+                "ratios_source": "Yahoo Finance",
+            }
+        )
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios)
+        result = _reconstruct_analyze_response(row)
+        assert result is not None
+        assert result.ratios_source == "Yahoo Finance"
+        assert result.ratios_fetched_at is not None
+        assert result.ratios_fetched_at.startswith("2026-05-20")
+
+    def test_tracabilite_none_sans_horodatage(self, graham_output_msft, ratios_msft):
+        """Analyse ancienne sans horodatage → champs None, pas de crash."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios_msft)
+        result = _reconstruct_analyze_response(row)
+        assert result is not None
+        assert result.ratios_fetched_at is None
+        assert result.ratios_source is None
+
+    def test_input_data_corrompu_ne_fait_pas_crasher(self, graham_output_msft):
+        """input_data illisible → traçabilité None sans propager d'exception."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT")
+        row["input_data"] = "{ ceci n'est pas du JSON"
+        result = _reconstruct_analyze_response(row)
+        assert result is not None
+        assert result.ratios_fetched_at is None
+        assert result.ratios_source is None
 
 
 # ---------------------------------------------------------------------------
