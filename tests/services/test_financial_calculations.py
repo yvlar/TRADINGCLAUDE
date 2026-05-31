@@ -272,3 +272,38 @@ class TestSloanAccrualRatio:
         assert sloan_accrual_ratio(
             net_income_t=100, cfo_t=60, total_assets_t=0, total_assets_t1=0
         ) is None
+
+
+class TestInterpretationsDeterministes:
+    """Libellés interpretation calculés en Python (Sprint courant) — plus de dérive LLM."""
+
+    def test_altman_zones_par_seuil_original(self):
+        from app.services.financial_calculations import _altman_interpretation
+        assert _altman_interpretation(3.0, "original", False) == "zone_sure"
+        assert _altman_interpretation(2.99, "original", False) == "zone_grise"
+        assert _altman_interpretation(1.81, "original", False) == "zone_grise"
+        assert _altman_interpretation(1.80, "original", False) == "zone_detresse"
+
+    def test_altman_financiere_non_applicable_prime_sur_score(self):
+        from app.services.financial_calculations import _altman_interpretation
+        assert _altman_interpretation(10.0, "original", True) == "non_applicable"
+        assert _altman_interpretation(None, "original", False) == "DONNEES_MANQUANTES"
+
+    def test_beneish_zones_par_seuil(self):
+        from app.services.financial_calculations import _beneish_interpretation
+        assert _beneish_interpretation(-2.22, False) == "non_manipulateur"
+        assert _beneish_interpretation(-1.78, False) == "zone_grise"
+        assert _beneish_interpretation(-1.77, False) == "manipulateur"
+        assert _beneish_interpretation(None, False) == "DONNEES_MANQUANTES"
+        assert _beneish_interpretation(-5.0, True) == "non_applicable"
+
+    def test_detail_expose_interpretation(self):
+        # Z = 3.575 (vecteur sain) → zone_sure ; M stable = -2.48 → non_manipulateur.
+        z = altman_z_score_detail(
+            current_assets=100, current_liabilities=50, retained_earnings=40,
+            ebit=30, total_assets=200, total_liabilities=150, sales=260,
+            market_value_equity=300,
+        )
+        assert z.interpretation == "zone_sure"
+        m = beneish_m_score_detail(**_BENEISH_STABLE)
+        assert m.interpretation == "non_manipulateur"

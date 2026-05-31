@@ -158,7 +158,8 @@ def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None
     """
     # Les champs des dataclasses (8 indices + m_score ; x1-x5 + variante + z_score) sont
     # nommés exactement comme ceux de MScoreDetail/ZScoreDetail → asdict() les substitue en
-    # bloc sans toucher à `interpretation` (texte du LLM, absent des dataclasses).
+    # bloc. `interpretation` est désormais lui aussi déterministe (dérivé du score Python +
+    # is_financial) et écrase le libellé du LLM — élimine la dérive de vocabulaire (golden).
     data.setdefault("m_score", {}).update(asdict(scores.m))
     data.setdefault("z_score", {}).update(asdict(scores.z))
     data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio

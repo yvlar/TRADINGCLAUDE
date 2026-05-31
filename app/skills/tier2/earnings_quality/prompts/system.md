@@ -34,13 +34,13 @@ M = -4.84 + 0.92×DSRI + 0.528×GMI + 0.404×AQI + 0.892×SGI
 
 | M-Score | Interprétation |
 |---------|----------------|
-| ≤ −2.22 | faible_risque |
+| ≤ −2.22 | non_manipulateur |
 | −2.22 < M ≤ −1.78 | zone_grise |
-| > −1.78 | risque_eleve |
+| > −1.78 | manipulateur |
 
 ### Inapplicabilité
 
-Beneish a exclu les institutions financières (banques, assureurs, REITs). Si `is_financial=true`, retourner interprétation "DONNÉES_MANQUANTES" pour le M-Score.
+Beneish a exclu les institutions financières (banques, assureurs, REITs). Si `is_financial=true`, retourner interprétation "non_applicable" pour le M-Score.
 
 ---
 
@@ -83,7 +83,7 @@ Seuils : Z'' > 2.60 → zone_sure | 1.10–2.60 → zone_grise | < 1.10 → zone
 - Industriel coté → Z original (nécessite market_cap_t)
 - Industriel privé → Z' (nécessite book_equity_t)
 - Service/tech/retail → Z''
-- Banque/assureur/REIT → inapplicable (retourner "DONNÉES_MANQUANTES")
+- Banque/assureur/REIT → inapplicable (retourner "non_applicable")
 
 ---
 
@@ -172,7 +172,7 @@ Note : TATA (variable 7 du M-Score) est exactement ce ratio. Le critère 4 du F-
 
 ### Matrice de décision
 
-Compter le nombre de cadres défaillants parmi : M-Score (risque_eleve), Z-Score (zone_detresse), F-Score (value_trap, qualite_moyenne = 0–6), C-Score (signaux_multiples), Sloan (qualite_degradee).
+Compter le nombre de cadres défaillants parmi : M-Score (manipulateur), Z-Score (zone_detresse), F-Score (value_trap, qualite_moyenne = 0–6), C-Score (signaux_multiples), Sloan (qualite_degradee).
 
 | Cadres défaillants | Verdict |
 |--------------------|---------|
@@ -277,6 +277,6 @@ Règles strictes :
 - `f_score.criteria` doit contenir **exactement 9 objets** dans l'ordre : ROA > 0, CFO > 0, ROA en hausse, CFO > bénéfice net, Désendettement, Current ratio en hausse, Pas d'émission d'actions, Marge brute en hausse, Asset turnover en hausse.
 - `c_score.signaux` doit contenir **exactement 6 objets** dans l'ordre : Divergence NI-CFO, DSO en hausse, DIO en hausse, Autres actifs courants, Dépréciation réduite, Croissance actifs > 10 %.
 - `verdict` doit être exactement l'une de ces valeurs : `AUCUN_SIGNAL`, `ATTENTION`, `WATCHLIST`, `REJETER`.
-- `interpretation` des scores : utiliser les valeurs exactes définies dans chaque cadre (ex : `faible_risque`, `zone_grise`, `risque_eleve`, `zone_sure`, `zone_detresse`, `forte_qualite`, `bonne_qualite`, `qualite_moyenne`, `value_trap`, `propre`, `signaux_mineurs`, `signaux_multiples`, `qualite_elevee`, `neutre`, `qualite_degradee`, `DONNÉES_MANQUANTES`).
+- `interpretation` des scores : utiliser les valeurs exactes définies dans chaque cadre (ex : `non_manipulateur`, `zone_grise`, `manipulateur`, `zone_sure`, `zone_detresse`, `non_applicable`, `forte_qualite`, `bonne_qualite`, `qualite_moyenne`, `value_trap`, `propre`, `signaux_mineurs`, `signaux_multiples`, `qualite_elevee`, `neutre`, `qualite_degradee`, `DONNEES_MANQUANTES`). Pour M-Score et Z-Score, ces libellés sont recalculés de façon déterministe côté serveur — émets ta meilleure estimation, elle sera écrasée.
 - `cost_usd` est toujours `0.0` — l'orchestrateur l'injecte après l'appel.
 - Si une variable requise pour un score est `null`, calculer les autres variables disponibles et retourner `null` pour les variables manquantes, `null` pour le score agrégé, et `"DONNÉES_MANQUANTES"` comme interprétation.
