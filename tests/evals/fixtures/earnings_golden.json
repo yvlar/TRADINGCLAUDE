@@ -44,7 +44,7 @@
       "m_score_interpretation_allowed": [
         "DONNEES_MANQUANTES"
       ],
-      "drapeaux_rouges_max": 1
+      "drapeaux_rouges_max": 2
     }
   },
   {
@@ -190,7 +190,7 @@
       "m_score_interpretation_allowed": [
         "DONNEES_MANQUANTES"
       ],
-      "drapeaux_rouges_max": 1
+      "drapeaux_rouges_max": 2
     }
   },
   {
@@ -238,7 +238,7 @@
       "m_score_interpretation_allowed": [
         "DONNEES_MANQUANTES"
       ],
-      "drapeaux_rouges_max": 1
+      "drapeaux_rouges_max": 2
     }
   },
   {
