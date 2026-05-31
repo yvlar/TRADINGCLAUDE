@@ -169,6 +169,60 @@ describe('AnalyzeForm', () => {
     expect(screen.queryByTestId('ratios-source')).not.toBeInTheDocument()
   })
 
+  // ─── Tests Sprint 141 — provenance par ratio (signal-only) ──────────────────
+
+  it('affiche un badge de provenance pour un ratio en repli après Auto-fill', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce({
+      graham: {
+        ...MOCK_GRAHAM_RATIOS,
+        ratios_provenance: { pb: 'priceToBookRatio', debt_equity: 'debtToEquity' },
+      },
+      earnings_quality: null,
+    })
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      const prov = screen.getByTestId('ratios-provenance')
+      // pb a une clé de repli (≠ priceToBook) → badge affiché avec la clé effective
+      expect(prov).toHaveTextContent('P/B')
+      expect(prov).toHaveTextContent('priceToBookRatio')
+      // debt_equity sur sa clé primaire → pas de badge (signal-only)
+      expect(prov).not.toHaveTextContent('Dette/Capitaux')
+    })
+  })
+
+  it('n’affiche aucun badge si la provenance ne contient que des clés primaires', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce({
+      graham: {
+        ...MOCK_GRAHAM_RATIOS,
+        ratios_provenance: { pb: 'priceToBook', debt_equity: 'debtToEquity', book_value: 'bookValue' },
+      },
+      earnings_quality: null,
+    })
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('11')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('ratios-provenance')).not.toBeInTheDocument()
+  })
+
+  it('n’affiche aucun badge de provenance si ratios_provenance est null', async () => {
+    vi.mocked(getExtract).mockResolvedValueOnce({
+      graham: { ...MOCK_GRAHAM_RATIOS, ratios_provenance: null },
+      earnings_quality: null,
+    })
+    render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.type(screen.getByPlaceholderText('BNS'), 'BNS')
+    await userEvent.click(screen.getByTestId('autofill-button'))
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('11')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('ratios-provenance')).not.toBeInTheDocument()
+  })
+
   it("affiche un message d'erreur si ticker introuvable (404)", async () => {
     vi.mocked(getExtract).mockRejectedValueOnce(new ApiError(404, 'Not Found'))
     render(<AnalyzeForm onSubmit={vi.fn()} />)

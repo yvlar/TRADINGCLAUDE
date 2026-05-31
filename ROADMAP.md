@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-31 — Sprint 140 complété**
+**Dernière mise à jour : 2026-05-31 — Sprint 141 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.26.0 |
+| **Version** | 10.27.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 141 — Propagation frontend de la provenance par ratio (type TS + tooltip) |
-| **Dernier sprint complété** | Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅ |
+| **Sprint actif** | Sprint 142 — Calculs déterministes : signaux détaillés F-Score / C-Score |
+| **Dernier sprint complété** | Sprint 141 — Propagation frontend de la provenance par ratio ✅ |
 
 > **Sprint 137 exécuté (2026-05-31, evals Claude réelles)** — clé API temporaire fournie en session. `stock_valuation` (Sonnet, golden 5 cas) : **15 passed / 5 skipped / 0 failed** (8m50s) — la **substitution DCF déterministe (Sprint 132) survit à l'aller-retour tool-use réel** (valeur DCF + matrice = ossature Python), gate sectoriel financières/REIT correct. `earnings_quality` (Haiku, golden 20 cas) : **81 passed / 10 failed / 10 skipped** (33m45s) — **tous les scores déterministes M/Z/F/C/Sloan passent** (Sprints 128/131) et la concordance verdict globale ≥ 80 % tient ; les 10 échecs portent **uniquement sur des champs narratifs libres du LLM**, pas sur les calculs (voir « Drift earnings_quality » ci-dessous). Aucun lien avec le Sprint 140 (extraction tier1 uniquement).
 
@@ -55,7 +55,7 @@
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
-- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134, étendues aux ratios Qualité bénéfices auto-remplis — Sprint 138 ; ratio absent de la source = `None` honnête, jamais `0.0` trompeur — Sprint 135), streaming SSE skill par skill, badge « score depuis cache <24h » ; **source + date des ratios Graham aussi affichées sous la carte Graham de l'analyse rendue/rechargée** (`AnalyzeResponse.ratios_fetched_at`/`ratios_source`, threadées jusqu'à la réponse et reconstruites depuis l'historique — Sprint 139)
+- **Analyze** — saisie ticker + ratios, auto-fill Yahoo Finance (avec source + date de récupération affichées sous les ratios — Sprint 134, étendues aux ratios Qualité bénéfices auto-remplis — Sprint 138 ; ratio absent de la source = `None` honnête, jamais `0.0` trompeur — Sprint 135), streaming SSE skill par skill, badge « score depuis cache <24h » ; **source + date des ratios Graham aussi affichées sous la carte Graham de l'analyse rendue/rechargée** (`AnalyzeResponse.ratios_fetched_at`/`ratios_source`, threadées jusqu'à la réponse et reconstruites depuis l'historique — Sprint 139) ; **provenance par ratio en signal-only** sous la carte Graham après auto-fill — badge discret « P/B via `clé` (repli) » uniquement quand la clé yfinance effective diffère de la clé primaire attendue (`ratios_provenance`, Sprint 141)
 - **Screener** — batch 2-20 tickers, tri + filtres composite **persistés côté serveur** (continuité multi-appareils, fallback localStorage hors-ligne — Sprint 124) + colonne fraîcheur (badge frais/périmé >24h) + export CSV filtré
 - **History** — historique par ticker, recherche full-text `q` cross-ticker (index GIN pg_trgm), filtre par plage de dates, suppression par analyse
 - **Watchlist** — positions surveillées, analyses manuelles, seuils ESG + prix éditables inline, score composite historique, export Excel
@@ -83,6 +83,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 141 — Propagation frontend de la provenance par ratio ✅
+
+**Objectif :** Le Sprint 140 a exposé côté backend la provenance par ratio (`GrahamRatios.ratios_provenance: dict[str, str] | None`, nom de ratio → clé yfinance effective) ; le champ transite dans le payload `/extract` mais n'était **ni typé ni affiché** côté frontend. Rendre cette provenance visible et vérifiable — sans bruit : ne signaler qu'un **repli réel** (clé effective ≠ clé primaire attendue). Suite de la file revue expert FinTech. **Sprint frontend pur** (aucun backend, aucune migration, aucun prompt de skill).
+
+**Livrables :**
+- `frontend/src/types/index.ts` — `interface GrahamRatios` gagne `ratios_provenance?: Record<string, string> | null` (snake_case, miroir exact du payload `dict[str, str] | None` ; zéro `any`, cohérent avec `ratios_source`/`ratios_fetched_at` voisins)
+- `frontend/src/components/AnalyzeForm.tsx` — affichage **signal-only** sous la carte Graham après auto-fill : helper pur `ratiosEnRepli(provenance)` qui ne retient que les ratios dont la clé effective diffère de la clé primaire attendue (`RATIO_PRIMARY_KEYS` : `pb`→`priceToBook`, `debt_equity`→`debtToEquity`, `book_value`→`bookValue`), badge discret « P/B via `clé` (repli) » avec `title` explicatif. Provenance `null`/absente ou clés toutes primaires → **rien affiché** (aucun bruit). `data-testid="ratios-provenance"`
+- **Décision de périmètre** : limité aux 3 ratios Graham instrumentés au Sprint 140, affichage sur `AnalyzeForm` (qui consomme le payload `/extract` portant `ratios_provenance`). `AnalysisResult` reconstruit depuis l'analyse/historique **n'a pas** la provenance tant qu'elle n'est pas threadée dans `AnalyzeResponse` (backend) → reporté pour préserver le caractère « frontend pur » de ce sprint (extension possible comme au Sprint 139)
+- Tests : composant `AnalyzeForm` — provenance avec une clé de repli (`pb`→`priceToBookRatio`) → badge affiché avec la clé effective, et un ratio resté sur sa clé primaire (`debt_equity`) **non** affiché (preuve du filtre par entrée) ; provenance toute-primaire → aucun badge ; provenance `null` → aucun badge
+
+**Version** : 10.27.0
+**Tests** : 1 655 backend collectés (1 651 passés, 3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 428 Vitest verts (+3) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Canal d'exécution vérifié (la sortie des commandes rend bien — contrairement au flush sporadique du Sprint 140). Réconciliation carte↔code : les prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`GrahamRatios.ratios_provenance` `graham_analysis/schemas.py:42` ; clés primaires `_resolve_ratio` `yahoo_finance.py:259-264` ; interface TS `GrahamRatios` `types/index.ts:50` ; `handleAutoFill` spread `result.graham` dans `ratios` `AnalyzeForm.tsx:60` ; patterns d'affichage à cloner `AnalyzeForm.tsx:172-177` / `AnalysisResult.tsx:211-216`). Phase A : `pytest`/`ruff` complets reconstatés verts (le Sprint 140 web n'avait pu confirmer que partiellement). Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur, nourri des critères d'acceptation) : **aucun bug HIGH/MED** ; 3 findings LOW — (1) double appel `ratiosEnRepli` **corrigé** (hoisté en `const repliRatios`) ; (2) dépendance au contrat backend (provenance = clé yfinance réelle) **vérifiée** (`yahoo_finance.py:269-273` n'émet jamais d'entrée à clé `None`) ; (3) badge potentiellement périmé si un 2ᵉ auto-fill omettait le champ **écarté** (le backend émet toujours `ratios_provenance`, et le comportement est identique aux champs `ratios_source`/`ratios_fetched_at` voisins). Stack Docker non démarrée. Pas de test navigateur live.
 
 ### Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅
 
@@ -133,21 +148,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 635 backend collectés (1 631 passés, 3 skipped, 1 xfailed — +6) ; 425 Vitest verts (+1) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend installé à l'amorçage (`npm install`). Réconciliation carte↔code : prémisses du chemin critique (`RATIOS_SOURCE` `yahoo_finance.py:164`, `extract_earnings_quality` `:303`, `extract_valuation` `:441`, champs Sprint 134 `graham_analysis/schemas.py:34-41`) vérifiées par `grep`/lecture avant implémentation. **Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur) : 1 bug HIGH détecté et corrigé** — l'ajout des champs `ratios_fetched_at?`/`ratios_source?` à l'interface TS `EarningsQualityRatios` (`types/index.ts`) n'avait pas été persisté (édition perdue, masquée par Vitest qui transpile sans typecheck → `tsc` rouge en CI) ; champs ré-ajoutés. Même incident corrigé sur `docs/roadmap-archive.md` (bloc Sprint 133 réinséré). Sérialisation vérifiée : **aucun `json.dumps(model_dump())` brut** sur `ValuationRatios`/`EarningsQualityRatios` (`model_dump_json` datetime-safe dans les skills ; `_cache_key`/`_persist` ne touchent que `GrahamRatios` via `mode="json"`) → contrairement au Sprint 134, pas de hazard `datetime`. 2 limites connues : `extract_valuation` sans appelant câblé aujourd'hui ; earnings/valuation non encore propagés au PDF / à l'analyse persistée (reportés Sprints 139/142). Qualité : extraction d'un mixin partagé des 2 champs **écartée** — parité intentionnelle (comme Graham). Stack Docker non démarrée. Pas de test navigateur live.
-
-### Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅
-
-**Objectif :** Les termes X1-X5 du Z-Score d'Altman sont calculés en Python et persistés depuis le Sprint 131, mais l'UI ne les affichait pas — alors que la carte M-Score rendait déjà ses 8 indices Beneish en grille. Asymétrie d'auditabilité côté frontend. Combler l'écart : déclarer `x1`-`x5` dans le type TS `ZScoreDetail` puis les rendre dans `ZScoreCard` en clonant le pattern de grille de `MScoreCard`. Sprint frontend pur — aucun backend, aucune migration, aucun prompt de skill.
-
-**Livrables :**
-- `frontend/src/types/index.ts` — `interface ZScoreDetail` gagne `x1`-`x5: number | null` (snake_case, miroir du payload backend `earnings_quality/schemas.py:106-110` ; zéro `any`). Aucun autre littéral `ZScoreDetail` dans le frontend (seul la fixture de test construit l'objet) → l'élargissement en champs requis ne casse aucun typecheck
-- `frontend/src/components/EarningsQualitySection.tsx` — `ZScoreCard` construit un tableau `{label, titre, value}[]` (X1 = fonds de roulement/actif total, …, X5 = ventes/actif total) filtré sur `value !== null` et le rend en grille `grid-cols-2` (`.toFixed(3)`), clone du pattern `MScoreCard`. `data-testid="zscore-termes"` + `title` par terme (libellé complet en survol) pour l'auditabilité. Si tous les termes sont `None` (banque/`is_financial`) → aucune grille, exactement comme `MScoreCard` ; score Z + variante + interprétation inchangés
-- Zéro régression : `MScoreCard`, `FScoreCard`, `CScoreCard`, `SloanCard` non touchés
-- Tests : composant (`EarningsQualitySection.test.tsx`) — X1-X5 renseignés → grille rendue avec les 5 labels + valeurs concrètes (`0.215`, `1.874`) ; X1-X5 tous `null` (banque) → aucune grille mais `zscore-value` (3.15) + interprétation toujours présents (cas dégradé)
-
-**Version** : 10.23.0
-**Tests** : 1 614 backend collectés (inchangé — sprint frontend pur, non-régression : 1 610 passés, 3 skipped, 1 xfailed) ; 422 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Réconciliation carte↔code : les 4 prémisses du chemin critique (backend `x1`-`x5` en `schemas.py:106-110`, type TS `ZScoreDetail` sans termes en `index.ts:114`, `ZScoreCard` sans grille en `EarningsQualitySection.tsx:139`, pattern `MScoreCard:106-134`) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité, 2 sous-agents distincts de la session auteur) : **aucun bug de correctness** ; seul point qualité (extraire un helper `RatioGrid` partagé M-Score/Z-Score) **écarté** — l'extraction toucherait `MScoreCard` que la spec impose de laisser intact (zéro-régression), et c'est un clone intentionnel à 2 sites avec divergences (`title`/`testid`). Stack Docker non démarrée. Pas de test navigateur live.
 
 ---
 

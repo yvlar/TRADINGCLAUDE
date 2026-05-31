@@ -62,6 +62,7 @@ export interface GrahamRatios {
   no_deficit_years?: number | null
   ratios_fetched_at?: string | null
   ratios_source?: string | null
+  ratios_provenance?: Record<string, string> | null
 }
 
 // ---- Critères Graham ----
