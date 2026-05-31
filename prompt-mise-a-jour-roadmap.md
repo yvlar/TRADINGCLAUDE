@@ -53,11 +53,14 @@ Le Sprint 140 a exposé côté **backend** la provenance par ratio : `GrahamRati
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 137 (différé) — Exécuter et documenter les evals déterministes (earnings_quality, stock_valuation)
-**Objectif** : lancer les `evals` ciblées (Claude réel) confirmant que les prompts rendus déterministes (Sprints 128/131/132) n'ont pas dérivé qualitativement, et consigner drift/coût/verdicts.
-**Complexité** : Faible (exécution + doc) — **MAIS bloqué en web**.
-**Justification** : `pytest` mocké ne prouve rien sur la qualité réelle du prompt. À exécuter en local.
-**Référence** : EXISTANT (vérifié) — harnais `tests/evals/` avec `test_earnings_evals.py` ET `test_valuation_evals.py`. **Contrainte** : exige `ANTHROPIC_API_KEY`, absente du conteneur web.
+### Sprint 137 ✅ exécuté (2026-05-31) — evals déterministes lancées
+Les evals Claude réelles ont tourné (clé temporaire en session) : `valuation` 15/15 (DCF déterministe confirmé), `earnings` 81 passed / 10 failed (scores déterministes ✅, drift sur champs LLM libres). Détail dans `ROADMAP.md`. Reste : le **drift earnings ci-dessous**.
+
+### Sprint 141bis — Calibrer le drift `earnings_quality` (drapeaux_rouges + verdict)
+**Objectif** : résoudre les 10 échecs d'evals `earnings` révélés au Sprint 137 — 8 × `drapeaux_rouges_cardinalite` (le modèle dépasse le `max` du golden) + 2 × `verdict_dans_valeurs_attendues` (005 KO, 020 MRO).
+**Complexité** : Moyenne (point de jugement métier + re-run evals payant)
+**Justification** : contrat sous-spécifié — le prompt n'impose aucune borne de cardinalité sur `drapeaux_rouges` alors que le golden en attend une. Deux pistes à trancher AVANT de coder : (a) **resserrer le prompt** (« liste au plus N drapeaux les plus matériels, par sévérité décroissante ») — touche un prompt de skill, exige re-run evals ; OU (b) **élargir/corriger les bornes du golden** si elles sont irréalistes (ex. MRO post-COVID, énergie cyclique : max=2 est-il défendable ?). Commencer par auditer les 8 cas : les drapeaux émis par le modèle sont-ils faux/redondants (→ prompt) ou légitimes mais sur-comptés par un golden trop strict (→ golden) ?
+**Référence** : EXISTANT (vérifié cette session) — golden `tests/evals/fixtures/earnings_golden.json` (champ `drapeaux_rouges_max` par cas, valeurs 1-4) ; prompt `app/skills/tier2/earnings_quality/prompts/system.md` (schéma de sortie `"drapeaux_rouges": []` ligne ~267, AUCUNE consigne de cardinalité) ; schéma `app/skills/tier2/earnings_quality/schemas.py:85,169` (`drapeaux_rouges: list[str]` nu). Tests : `tests/evals/test_earnings_evals.py::test_earnings_drapeaux_rouges_cardinalite` + `::test_earnings_verdict_dans_valeurs_attendues`. **Contrainte** : re-run evals exige `ANTHROPIC_API_KEY` (~100 appels Haiku, ~33 min).
 
 ### Sprint 142 — Calculs déterministes : signaux détaillés F-Score / C-Score
 **Objectif** : rendre déterministes (calcul Python + substitution post-parse) les signaux détaillés du F-Score (`criteria[].passe`) et du C-Score (`signaux[].present`), aujourd'hui encore interprétés par le LLM.
