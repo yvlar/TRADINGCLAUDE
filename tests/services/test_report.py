@@ -266,3 +266,67 @@ def test_pdf_alerte_active_marquee():
     assert _composite_alerte(10.0, 15.0) == "OUI"   # score < threshold → alerte
     assert _composite_alerte(20.0, 15.0) == "NON"   # score >= threshold → pas d'alerte
     assert _composite_alerte(None, 15.0) == "—"      # score absent → neutre
+
+
+# ---------------------------------------------------------------------------
+# Sprint 139 — reconstruction de la traçabilité depuis l'historique
+# ---------------------------------------------------------------------------
+
+
+def _make_history_row(graham_output, *, input_data: dict | None) -> dict:
+    """Ligne analysis_history simulée (dict indexable comme asyncpg.Record)."""
+    import json
+    from datetime import datetime, timezone
+
+    return {
+        "id": uuid.UUID("cccccccc-0000-0000-0000-000000000003"),
+        "ticker": "MSFT",
+        "workflow_name": "value_graham",
+        "skills_used": json.dumps(["graham"]),
+        "input_data": json.dumps(input_data) if input_data is not None else None,
+        "result": json.dumps({"graham": graham_output.model_dump()}),
+        "cost_usd": 0.0021,
+        "created_at": datetime(2026, 5, 20, 10, 0, 0, tzinfo=timezone.utc),
+    }
+
+
+def test_reconstruct_response_reconstruit_tracabilite(graham_output_msft):
+    """input_data avec source+date → AnalyzeResponse rechargée porte la traçabilité."""
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_history_row(
+        graham_output_msft,
+        input_data={
+            "eps_growth_total": 0.27,
+            "price": 245.0,
+            "ratios_fetched_at": "2026-05-20T09:00:00+00:00",
+            "ratios_source": "Yahoo Finance",
+        },
+    )
+    resp = _reconstruct_response(row)
+    assert resp.ratios_source == "Yahoo Finance"
+    assert resp.ratios_fetched_at is not None
+    assert resp.ratios_fetched_at.startswith("2026-05-20")
+
+
+def test_reconstruct_response_sans_horodatage_donne_none(graham_output_msft):
+    """input_data sans horodatage (analyse ancienne) → champs None, pas de crash."""
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_history_row(
+        graham_output_msft,
+        input_data={"eps_growth_total": 0.27, "price": 245.0},
+    )
+    resp = _reconstruct_response(row)
+    assert resp.ratios_fetched_at is None
+    assert resp.ratios_source is None
+
+
+def test_reconstruct_response_input_data_absent_donne_none(graham_output_msft):
+    """input_data NULL (très ancienne analyse) → champs None, pas de crash."""
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_history_row(graham_output_msft, input_data=None)
+    resp = _reconstruct_response(row)
+    assert resp.ratios_fetched_at is None
+    assert resp.ratios_source is None

@@ -271,6 +271,22 @@ class AnalyzeResponse(BaseModel):
         default=False,
         description="True si composite_score retourné depuis composite_score_history (< 24h) sans appel Claude.",
     )
+    ratios_fetched_at: str | None = Field(
+        default=None,
+        description="Date ISO de récupération des ratios Graham d'entrée (traçabilité). None si analyse ancienne ou ratios saisis manuellement.",
+    )
+    ratios_source: str | None = Field(
+        default=None,
+        description="Source des ratios Graham d'entrée (ex. « Yahoo Finance »). None si inconnue.",
+    )
+
+
+def _graham_ratios_trace(ratios: GrahamRatios | None) -> tuple[str | None, str | None]:
+    """Extrait (date ISO de récupération, source) des ratios Graham pour la traçabilité de la réponse."""
+    if ratios is None:
+        return None, None
+    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
+    return fetched, ratios.ratios_source
 
 
 class HistoryEntry(BaseModel):
@@ -502,6 +518,7 @@ class Orchestrator:
                     "Cache composite hit pour %s — score=%.1f label=%s (depuis_cache_composite=True)",
                     request.ticker, recent.score, recent.label,
                 )
+                _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
                 return AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -517,6 +534,8 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
+                    ratios_fetched_at=_ratios_fetched_at,
+                    ratios_source=_ratios_source,
                 )
 
         # Résolution du workflow → ensemble des skills autorisés
@@ -1023,6 +1042,7 @@ class Orchestrator:
             except Exception:
                 logger.warning("Échec enregistrement composite_score_history pour %s", request.ticker, exc_info=True)
 
+        _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1048,6 +1068,8 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
+            ratios_fetched_at=_ratios_fetched_at,
+            ratios_source=_ratios_source,
         )
 
         # --- Étape finale : mise en cache pour les prochains appels ---
@@ -1100,6 +1122,7 @@ class Orchestrator:
                     "Cache composite hit (stream) pour %s — score=%.1f label=%s",
                     request.ticker, recent.score, recent.label,
                 )
+                _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
                 cached_response = AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -1115,6 +1138,8 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
+                    ratios_fetched_at=_ratios_fetched_at,
+                    ratios_source=_ratios_source,
                 )
                 yield {"event": "cached", "data": cached_response.model_dump()}
                 return
@@ -1598,6 +1623,7 @@ class Orchestrator:
             except Exception:
                 logger.warning("Échec enregistrement composite_score_history (stream) pour %s", request.ticker, exc_info=True)
 
+        _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1623,6 +1649,8 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
+            ratios_fetched_at=_ratios_fetched_at,
+            ratios_source=_ratios_source,
         )
 
         if cache is not None:
