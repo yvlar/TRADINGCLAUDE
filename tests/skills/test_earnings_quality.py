@@ -1,11 +1,14 @@
 """Tests du skill earnings_quality — schemas, skill, context enrichment."""
 from __future__ import annotations
 
+import dataclasses
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
+
+from app.services.financial_calculations import MontierComponents, PiotroskiComponents
 
 
 def _earnings_tool_use_response(output: "EarningsQualityOutput", **usage_overrides) -> MagicMock:
@@ -36,6 +39,8 @@ from app.skills.tier2.earnings_quality.schemas import (
 from app.skills.tier2.earnings_quality.skill import (
     EarningsQualitySkill,
     _coerce_payload_llm,
+    _injecter_scores,
+    _scores_depuis_ratios,
     _str_vers_liste,
 )
 
@@ -579,6 +584,114 @@ class TestCoercePayloadLlm:
         data = {"recommandation_prochaine_etape": "analyser le cash-flow"}
         _coerce_payload_llm(data)
         assert data["recommandation_prochaine_etape"] == ["analyser le cash-flow"]
+
+
+class TestInjecterScoresDetail:
+    """Substitution déterministe des listes criteria/signaux (Sprint 142)."""
+
+    def _data_llm(self, earnings_output: EarningsQualityOutput) -> dict:
+        # Bloc LLM avec des critères/signaux délibérément faux (tous accordés) pour prouver
+        # que la substitution Python les écrase.
+        data = earnings_output.model_dump(exclude={"confidence_score"})
+        for crit in data["f_score"]["criteria"]:
+            crit["passe"] = True
+            crit["detail"] = "valeur inventée par le LLM"
+        for sig in data["c_score"]["signaux"]:
+            sig["present"] = True
+            sig["detail"] = "valeur inventée par le LLM"
+        return data
+
+    def test_ecrase_criteria_et_signaux_avec_invariant(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        data = self._data_llm(earnings_output_msft)
+        scores = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        _injecter_scores(data, scores)
+
+        # Les listes substituées reflètent exactement le calcul Python (nom/passe/detail).
+        assert data["f_score"]["criteria"] == [
+            {"nom": c.nom, "passe": c.valeur, "detail": c.detail} for c in scores.f.criteres
+        ]
+        assert data["c_score"]["signaux"] == [
+            {"nom": s.nom, "present": s.valeur, "detail": s.detail} for s in scores.c.signaux
+        ]
+        # Invariant : la somme des booléens substitués égale le score agrégé substitué.
+        assert sum(c["passe"] for c in data["f_score"]["criteria"]) == data["f_score"]["f_score"]
+        assert sum(s["present"] for s in data["c_score"]["signaux"]) == data["c_score"]["c_score"]
+
+    def test_financiere_conserve_les_criteres_f_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        # Financière → F non calculable (Piotroski exclut les financières) : pas de False
+        # trompeur, on conserve la liste LLM. Le C-Score (Montier) n'a pas de gate sectoriel.
+        data = self._data_llm(earnings_output_msft)
+        criteria_llm = [dict(c) for c in data["f_score"]["criteria"]]
+
+        scores = _scores_depuis_ratios(ratios_earnings_msft, is_financial=True)
+        assert scores.f.f_score is None and scores.f.criteres == []
+        _injecter_scores(data, scores)
+
+        assert data["f_score"]["criteria"] == criteria_llm
+
+    def test_listes_vides_conservent_le_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        # Calcul Python non abouti des deux côtés (listes vides / scores None) → les deux
+        # blocs LLM sont conservés intacts plutôt que remplacés par des listes vides.
+        data = self._data_llm(earnings_output_msft)
+        criteria_llm = [dict(c) for c in data["f_score"]["criteria"]]
+        signaux_llm = [dict(s) for s in data["c_score"]["signaux"]]
+
+        scores = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        scores = dataclasses.replace(
+            scores,
+            f=PiotroskiComponents([], None),
+            c=MontierComponents([], None),
+        )
+        _injecter_scores(data, scores)
+
+        assert data["f_score"]["criteria"] == criteria_llm
+        assert data["c_score"]["signaux"] == signaux_llm
+
+    @pytest.mark.asyncio
+    async def test_execute_substitue_les_criteres_du_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Bout en bout : la sortie validée porte les booléens Python, pas ceux du LLM."""
+        data = self._data_llm(earnings_output_msft)
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        output, _ = await skill.execute(
+            EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        )
+
+        attendu = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        assert [c.passe for c in output.f_score.criteria] == [
+            c.valeur for c in attendu.f.criteres
+        ]
+        assert sum(c.passe for c in output.f_score.criteria) == output.f_score.f_score
+        assert sum(s.present for s in output.c_score.signaux) == output.c_score.c_score
 
 
 class TestEarningsCoinRobustesse:

@@ -14,7 +14,9 @@ from app.services.financial_calculations import (
     beneish_m_score_detail,
     graham_number,
     montier_c_score,
+    montier_c_score_detail,
     piotroski_f_score,
+    piotroski_f_score_detail,
     sloan_accrual_ratio,
 )
 
@@ -251,6 +253,85 @@ class TestMontierCScore:
 
     def test_base_actifs_manquante_none(self):
         assert montier_c_score(**self._stable(total_assets_t1=None)) is None
+
+
+class TestPiotroskiFScoreDetail:
+    def _vecteur(self, **overrides):
+        base = dict(
+            net_income_t=100, total_assets_t=1000, total_assets_t1=900, net_income_t1=80,
+            cfo_t=120, ltd_t=150, ltd_t1=200,
+            current_assets_t=500, current_liabilities_t=250,
+            current_assets_t1=400, current_liabilities_t1=250,
+            sales_t=1000, sales_t1=900, cogs_t=600, cogs_t1=560,
+            shares_issued_net=False,
+        )
+        base.update(overrides)
+        return base
+
+    def test_neuf_criteres_et_invariant_somme(self):
+        d = piotroski_f_score_detail(**self._vecteur())
+        assert len(d.criteres) == 9
+        assert d.f_score == 8
+        # Invariant central : la somme des booléens égale le score agrégé.
+        assert sum(1 for c in d.criteres if c.valeur) == d.f_score
+        # Cohérence avec le wrapper agrégé.
+        assert piotroski_f_score(**self._vecteur()) == d.f_score
+
+    def test_critere_comparatif_manquant_non_accorde_avec_detail(self):
+        # net_income_t1 absent → critère « ROA en hausse » non accordé (False), détail explicite.
+        d = piotroski_f_score_detail(**self._vecteur(net_income_t1=None))
+        assert d.f_score == 7
+        roa_hausse = next(c for c in d.criteres if c.nom == "ROA en hausse")
+        assert roa_hausse.valeur is False
+        assert "manquante" in roa_hausse.detail
+
+    def test_banque_criteres_vides_et_score_none(self):
+        d = piotroski_f_score_detail(**self._vecteur(is_financial=True))
+        assert d.criteres == []
+        assert d.f_score is None
+
+    def test_donnee_base_manquante_criteres_vides(self):
+        d = piotroski_f_score_detail(**self._vecteur(net_income_t=None))
+        assert d.criteres == []
+        assert d.f_score is None
+
+
+class TestMontierCScoreDetail:
+    def _stable(self, **overrides):
+        base = dict(
+            net_income_t=80, cfo_t=80, net_income_t1=80, cfo_t1=80,
+            receivables_t=50, receivables_t1=50, sales_t=1000, sales_t1=1000,
+            inventory_t=100, inventory_t1=100, cogs_t=600, cogs_t1=600,
+            depreciation_t=50, depreciation_t1=50, ppe_gross_t=400, ppe_gross_t1=400,
+            total_assets_t=1000, total_assets_t1=1000,
+        )
+        base.update(overrides)
+        return base
+
+    def test_six_signaux_et_invariant_somme(self):
+        d = montier_c_score_detail(**self._stable(total_assets_t=1200))
+        assert len(d.signaux) == 6
+        assert d.c_score == 1  # croissance des actifs +20 % > 10 %
+        assert sum(1 for s in d.signaux if s.valeur) == d.c_score
+        assert montier_c_score(**self._stable(total_assets_t=1200)) == d.c_score
+
+    def test_signal_quatre_jamais_coche(self):
+        d = montier_c_score_detail(**self._stable())
+        signal4 = next(s for s in d.signaux if s.nom.startswith("Autres actifs courants"))
+        assert signal4.valeur is False
+        assert "non calculable" in signal4.detail
+
+    def test_base_actifs_manquante_signaux_vides(self):
+        d = montier_c_score_detail(**self._stable(total_assets_t1=None))
+        assert d.signaux == []
+        assert d.c_score is None
+
+    def test_signal_donnee_manquante_non_coche_avec_detail(self):
+        # receivables_t1 absent → indice DSO indéterminé → signal non coché, détail explicite.
+        d = montier_c_score_detail(**self._stable(receivables_t1=None))
+        dso = next(s for s in d.signaux if s.nom.startswith("Jours de créances"))
+        assert dso.valeur is False
+        assert "indéterminé" in dso.detail
 
 
 class TestSloanAccrualRatio:
