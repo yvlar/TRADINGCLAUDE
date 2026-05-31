@@ -172,7 +172,7 @@ Note : TATA (variable 7 du M-Score) est exactement ce ratio. Le critère 4 du F-
 
 ### Matrice de décision
 
-Compter le nombre de cadres défaillants parmi : M-Score (manipulateur), Z-Score (zone_detresse), F-Score (value_trap, qualite_moyenne = 0–6), C-Score (signaux_multiples), Sloan (qualite_degradee).
+Compter le nombre de cadres défaillants parmi : M-Score (manipulateur), Z-Score (zone_detresse), F-Score (value_trap = 0–3 **uniquement**), C-Score (signaux_multiples), Sloan (qualite_degradee). Un F-Score `qualite_moyenne` (4–6) est **neutre** — souvent déprimé par des données t‑1 manquantes (critères non évaluables comptés 0 par prudence) — et ne compte **jamais** comme cadre défaillant : le nuancer au besoin dans `verdict_detail`, pas dans le décompte.
 
 | Cadres défaillants | Verdict |
 |--------------------|---------|
