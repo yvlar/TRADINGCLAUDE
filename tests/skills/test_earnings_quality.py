@@ -33,7 +33,11 @@ from app.skills.tier2.earnings_quality.schemas import (
     EarningsQualityRatios,
     GrahamContext,
 )
-from app.skills.tier2.earnings_quality.skill import EarningsQualitySkill
+from app.skills.tier2.earnings_quality.skill import (
+    EarningsQualitySkill,
+    _coerce_payload_llm,
+    _str_vers_liste,
+)
 
 
 class TestEarningsQualitySchemas:
@@ -498,3 +502,132 @@ class TestEarningsQualitySkill:
         output, usage = await skill.execute(inp)
 
         assert output.cost_usd == usage.cost_usd
+
+
+def _mock_tool_use_from_input(payload: dict, **usage_overrides) -> MagicMock:
+    """Réponse Anthropic simulée à partir d'un payload tool_use brut (potentiellement malformé)."""
+    mock_block = MagicMock()
+    mock_block.type = "tool_use"
+    mock_block.input = payload
+    mock_response = MagicMock()
+    mock_response.content = [mock_block]
+    mock_response.stop_reason = "tool_use"
+    defaults = dict(
+        input_tokens=800,
+        output_tokens=600,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=1500,
+    )
+    defaults.update(usage_overrides)
+    mock_response.usage = SimpleNamespace(**defaults)
+    return mock_response
+
+
+class TestStrVersListe:
+    def test_liste_json_propre(self):
+        assert _str_vers_liste('["a", "b"]') == ["a", "b"]
+
+    def test_chaine_corrompue_garde_premier_fragment(self):
+        # cas COIN : la chaîne a absorbé d'autres champs et n'est plus du JSON valide
+        brut = '[\n  "Z-Score 0.547 — détresse"\n  ]\n}'
+        assert _str_vers_liste(brut) == ["Z-Score 0.547 — détresse"]
+
+    def test_chaine_vide(self):
+        assert _str_vers_liste("   ") == []
+
+    def test_scalaire_json(self):
+        assert _str_vers_liste('"un seul drapeau"') == ["un seul drapeau"]
+
+
+class TestCoercePayloadLlm:
+    def test_drapeaux_chaine_json_devient_liste(self):
+        data = {"drapeaux_rouges": '["Z-Score détresse", "F-Score value_trap"]'}
+        _coerce_payload_llm(data)
+        assert data["drapeaux_rouges"] == ["Z-Score détresse", "F-Score value_trap"]
+
+    def test_drapeaux_none_devient_liste_vide(self):
+        data = {"drapeaux_rouges": None}
+        _coerce_payload_llm(data)
+        assert data["drapeaux_rouges"] == []
+
+    def test_drapeaux_deja_liste_inchange(self):
+        data = {"drapeaux_rouges": ["x"]}
+        _coerce_payload_llm(data)
+        assert data["drapeaux_rouges"] == ["x"]
+
+    def test_reco_chaine_devient_liste(self):
+        data = {"recommandation_prochaine_etape": "analyser le cash-flow"}
+        _coerce_payload_llm(data)
+        assert data["recommandation_prochaine_etape"] == ["analyser le cash-flow"]
+
+
+class TestEarningsCoinRobustesse:
+    @pytest.mark.asyncio
+    async def test_drapeaux_stringifies_recuperes_sans_retry(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """drapeaux_rouges en chaîne JSON → récupéré par coercion en un seul appel."""
+        payload = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        payload["drapeaux_rouges"] = '["Z-Score détresse", "accruals dégradés"]'
+
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _mock_tool_use_from_input(payload)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        assert output.drapeaux_rouges == ["Z-Score détresse", "accruals dégradés"]
+        assert mock_client.messages.create.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_sortie_tronquee_declenche_un_retry(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """verdict avalé (champ requis absent) → un retry, succès sur la 2e réponse."""
+        bon = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        casse = dict(bon)
+        casse.pop("verdict")  # tronqué : non récupérable par coercion
+        casse["drapeaux_rouges"] = '[\n  "Z-Score 0.547 — détresse"\n  ]\n}'
+
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.side_effect = [
+            _mock_tool_use_from_input(casse),
+            _mock_tool_use_from_input(bon),
+        ]
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="COIN", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        assert output.verdict in {"AUCUN_SIGNAL", "ATTENTION", "WATCHLIST", "REJETER"}
+        assert mock_client.messages.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_deux_sorties_invalides_levent_erreur(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Deux réponses malformées d'affilée → ValueError explicite (pas de boucle infinie)."""
+        casse = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        casse.pop("verdict")
+
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.side_effect = [
+            _mock_tool_use_from_input(casse),
+            _mock_tool_use_from_input(casse),
+        ]
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="COIN", ratios=ratios_earnings_msft)
+        with pytest.raises(ValueError, match="invalide après 2 tentatives"):
+            await skill.execute(inp)
+        assert mock_client.messages.create.await_count == 2
