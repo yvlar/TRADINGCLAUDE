@@ -68,6 +68,26 @@ class TestEarningsQualitySchemas:
         inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
         assert inp.graham_context is None
 
+    def test_tracabilite_absente_par_defaut_none(
+        self, ratios_earnings_msft: EarningsQualityRatios
+    ):
+        """ratios_fetched_at / ratios_source absents → None (rétrocompatible, Sprint 138)."""
+        assert ratios_earnings_msft.ratios_fetched_at is None
+        assert ratios_earnings_msft.ratios_source is None
+
+    def test_tracabilite_renseignee_et_iso_acceptee(self):
+        """ratios_fetched_at accepte une string ISO et ratios_source un littéral (Sprint 138)."""
+        r = EarningsQualityRatios(
+            sales_t=1.0, sales_t1=1.0, cogs_t=1.0, cogs_t1=1.0,
+            net_income_t=1.0, cfo_t=1.0, receivables_t=1.0, receivables_t1=1.0,
+            total_assets_t=1.0, total_assets_t1=1.0,
+            current_assets_t=1.0, current_liabilities_t=1.0,
+            ratios_fetched_at="2026-05-30T12:00:00+00:00", ratios_source="Yahoo Finance",
+        )
+        assert r.ratios_source == "Yahoo Finance"
+        assert r.ratios_fetched_at is not None
+        assert r.ratios_fetched_at.year == 2026
+
     def test_graham_context_peuple(self, ratios_earnings_msft: EarningsQualityRatios):
         ctx = GrahamContext(
             verdict="CANDIDAT_SOLIDE",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, model_validator
 
 from app.skills.base import Citation
@@ -26,6 +28,15 @@ class ValuationRatios(BaseModel):
     sector: str | None = None
     wacc: float | None = None
     terminal_growth_rate: float | None = None
+    # Traçabilité source+date (Sprint 138) — parité avec GrahamRatios (Sprint 134)
+    ratios_fetched_at: datetime | None = Field(
+        None,
+        description="Date UTC de récupération des ratios depuis la source. None pour les analyses persistées avant ce champ ou les ratios saisis manuellement.",
+    )
+    ratios_source: str | None = Field(
+        None,
+        description="Source des ratios (ex. « Yahoo Finance »). None si inconnue (analyse ancienne ou saisie manuelle).",
+    )
 
 
 class GrahamContext(BaseModel):

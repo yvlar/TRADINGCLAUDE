@@ -1,87 +1,81 @@
-# Sprint 137 — Evals ciblées des prompts rendus déterministes (earnings_quality, stock_valuation)
+# Sprint 139 — Affichage de la traçabilité sur l'analyse persistée (AnalysisResult)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.23.0 — Sprint 136 complété)
+## État du projet (v10.24.0 — Sprint 138 complété)
 
-Le Sprint 136 a comblé l'asymétrie d'auditabilité côté frontend : la carte Z-Score (Earnings Quality) affiche désormais ses termes X1-X5 en grille, en parité avec les 8 indices du M-Score (calculés en Python et persistés depuis le Sprint 131). Sprint frontend pur — type TS `ZScoreDetail` étendu + `ZScoreCard` enrichi.
+Le Sprint 138 a étendu la traçabilité source+date (posée sur `GrahamRatios` au Sprint 134) à `ValuationRatios` et `EarningsQualityRatios` (schemas + extracteurs tier1 + type/affichage earnings côté frontend). La source+date d'une analyse n'est toutefois visible que sur le **formulaire d'entrée** (`AnalyzeForm`, après auto-fill) et dans le PDF — **pas sur le dossier d'analyse rendu/rechargé** (`AnalysisResult`), car `AnalyzeResponse` ne porte pas les ratios.
 
 > **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
+
+> **Sprint 137 différé** — Les evals ciblées (Claude réel) `earnings_quality`/`stock_valuation` exigent `ANTHROPIC_API_KEY`, absente du conteneur web → à exécuter en local (le harnais `tests/evals/test_valuation_evals.py` existe déjà, créé par un PR mergé post-Sprint 136). Voir SPRINTS SUGGÉRÉS.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (déjà injecté comme *project instructions* — ne pas le relire avec un outil)
-2. `ROADMAP.md` — état courant v10.23.0, Sprint 136 ✅
-3. `.claude/rules/tests-pyramide.md` — cœur du sprint : niveaux de la pyramide, **règle absolue du mock de `call_claude_with_retry`** (les evals sont l'EXCEPTION : elles appellent Claude réel et sont exclues du CI standard via `--ignore=tests/evals`)
-4. `.claude/rules/base-connaissances-skills.md` — protocole de lecture des SKILL.md/references avant de juger la qualité d'un prompt de skill
+2. `ROADMAP.md` — état courant v10.24.0, Sprint 138 ✅
+3. `.claude/rules/api-orchestrator.md` — cœur du sprint backend : structure `AnalyzeResponse` dans `core.py`, persistance (`_persist`) et rechargement (`report.py`). Le sprint thread un nouveau champ jusqu'à `AnalyzeResponse`.
+4. `.claude/rules/conventions-frontend.md` — affichage React/TS strict (le sprint ajoute l'affichage source+date sous la carte Graham de `AnalysisResult`).
 
 ---
 
-## ⚠️ Contrainte d'environnement — bloquante pour ce sprint
+## TÂCHE — Sprint 139 : exposer la traçabilité sur l'analyse rendue
 
-Ce sprint **exige une vraie clé Anthropic** (`ANTHROPIC_API_KEY`) pour exécuter les evals contre Claude réel. **Le conteneur de session web n'en a pas** (vérifié de sprint en sprint : « aucune clé Anthropic dans le conteneur »). Conséquences :
-
-- En session web sans clé : ce sprint **n'est pas exécutable** tel quel. Le signaler à Yves dès l'amorçage et lui proposer soit (a) exécuter ce sprint **localement** (machine avec clé), soit (b) choisir un autre sprint web-compatible parmi les suggestions ci-dessous (138, 139, 141 sont backend/frontend purs, mockés, donc exécutables en conteneur web).
-- Ne **jamais** prétendre avoir « passé les evals » si la clé est absente — le dire explicitement (cf. `.claude/prompts/prompt-executer-sprint.md`, gate evals).
-
----
-
-## TÂCHE — Sprint 137 : exécuter et documenter les evals des skills rendus déterministes
-
-**Objectif** : depuis les Sprints 128/131/132, les prompts d'`earnings_quality` et `stock_valuation` ont basculé en mode « le LLM interprète des chiffres calculés en amont, il ne les produit plus ». `pytest` reste vert avec Claude mocké **sans rien prouver sur la qualité réelle du prompt** : un prompt peut se dégrader silencieusement (mauvaise interprétation, verdict incohérent avec les chiffres injectés). Ce sprint exécute les `evals` ciblées (Claude réel) de ces deux skills pour confirmer l'absence de dégradation qualitative, puis documente les résultats (drift, coût, verdicts) dans la roadmap.
+**Objectif** : rendre la source + date de récupération des ratios visible **aussi sur l'analyse rendue** (`AnalysisResult`), pas seulement sur le formulaire d'entrée et le PDF. Aujourd'hui `AnalyzeResponse` ne transporte pas les ratios d'entrée : la traçabilité posée aux Sprints 134/138 est donc invisible une fois l'analyse lancée ou rechargée depuis l'historique. Threader la traçabilité jusqu'à `AnalyzeResponse` puis l'afficher.
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Harnais d'evals EXISTANT** — `tests/evals/` contient `__init__.py`, `conftest.py`, `eval_runner.py`, `test_earnings_evals.py`, `test_graham_evals.py`, `test_buffett_evals.py`, `test_dorsey_evals.py`, `test_damodaran_evals.py`, `test_multi_model_evals.py`, `test_screener_evals.py`, `golden_screener_dataset.json`, `fixtures/`. Exclu du CI standard via `--ignore=tests/evals`.
-2. **Pas d'eval `stock_valuation` dédiée aujourd'hui** — aucun `test_valuation_evals.py` dans `tests/evals/` (à CRÉER si le sprint veut couvrir `stock_valuation` ; sinon le sprint se limite à `test_earnings_evals.py` existant + une nouvelle suite valuation).
-3. **Skills concernés** : `app/skills/tier2/earnings_quality/` (Sprints 128/131 — scores + sous-composantes déterministes) et `app/skills/tier2/stock_valuation/` (Sprint 132 — ossature DCF déterministe).
+1. **`AnalyzeResponse` ne porte pas les ratios** — `class AnalyzeResponse(BaseModel)` à `app/orchestrator/core.py:237` ; aucun champ `ratios` (le `ratios: GrahamRatios | None` à `core.py:213` appartient à `AnalyzeRequest`, pas à la réponse). Côté frontend, `interface AnalyzeResponse` à `frontend/src/types/index.ts:446` (idem, pas de `ratios`).
+2. **La traçabilité existe déjà sur les schemas d'entrée** — `GrahamRatios.ratios_fetched_at`/`ratios_source` (`app/skills/tier2/graham_analysis/schemas.py:34-41`, Sprint 134) ; idem `ValuationRatios`/`EarningsQualityRatios` (Sprint 138).
+3. **Affichage de référence** — `AnalyzeForm.tsx` affiche déjà « Source : … · récupéré le AAAA-MM-JJ » (`data-testid="ratios-source"`) sous les ratios après auto-fill ; le PDF a `_fmt_ratios_source` (`app/services/pdf_report_service.py:150`). À CLONER pour `AnalysisResult`.
 
 ### Spécification
 
-1. **Inventaire** : recenser ce que `test_earnings_evals.py` couvre déjà et identifier les cas manquants pour les prompts post-déterminisme (le LLM reçoit des scores/indices/DCF déjà calculés → vérifier que ses verdicts/interprétations restent cohérents avec ces valeurs).
-2. **Exécution** (si clé présente) : lancer `.venv/bin/python -m pytest tests/evals/test_earnings_evals.py -v` (+ suite valuation si créée). Mesurer drift, coût USD, taux de réussite.
-3. **Suite valuation** (optionnel mais recommandé) : créer `tests/evals/test_valuation_evals.py` sur le modèle de `test_earnings_evals.py` — golden cases vérifiant que le LLM reprend bien la valeur DCF + matrice injectées (ne les recalcule pas), narrative cohérente.
-4. **Documentation** : consigner les résultats (drift/coût/verdicts) dans le bloc Sprint 137 de `ROADMAP.md` et dans la note d'environnement (honnêteté : si non exécuté faute de clé, le dire).
+1. **Backend — threader la traçabilité dans `AnalyzeResponse`** : ajouter un champ portant la source + date des ratios Graham (a minima `ratios_fetched_at` / `ratios_source`, ou un sous-objet de traçabilité). Le peupler depuis `request.ratios` lors de la construction de la réponse, ET le reconstruire au rechargement d'une analyse persistée (depuis `input_data` JSONB en DB / cache) pour que l'historique affiche aussi la traçabilité. **Rétrocompatible** : champ optionnel `None` pour les analyses anciennes sans horodatage.
+2. **Décision de périmètre** : se limiter à la traçabilité **Graham** (les ratios d'entrée du workflow `value_graham`), cohérent avec l'affichage existant ; documenter si valuation/earnings sont hors périmètre de CE sprint.
+3. **Frontend — type + affichage** : étendre `interface AnalyzeResponse` (`types/index.ts`) du champ (optionnel) ; afficher « Source : … · récupéré le AAAA-MM-JJ » sous la carte Graham de `AnalysisResult` (`data-testid` dédié), rien si `None`. Zéro `any`.
+4. **Vérifier le hazard de sérialisation** : tout nouveau champ `datetime` threadé dans `AnalyzeResponse` est sérialisé via `response.model_dump()` / `model_dump_json()` (SSE `complete`, persistance, cache `model_dump_json`). Confirmer qu'aucun chemin ne fait `json.dumps(model_dump())` brut sur la réponse (cf. correctif Sprint 134 sur `_cache_key`/`_persist`). Utiliser `mode="json"` si un `json.dumps` brut est sur le chemin.
 
 ### Tests obligatoires (pyramide)
-- Niveau **evals** (Claude réel) — l'objet même du sprint. Si une suite valuation est créée, ses golden cases sont le livrable testable.
-- Non-régression : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q` reste vert (les evals ne touchent pas le code de prod ; si le sprint ajoute un fichier de test, vérifier qu'il n'est pas collecté par le CI standard).
-- `.venv/bin/ruff check app/ tests/`.
+- Unitaire/schema : `AnalyzeResponse` accepte le nouveau champ + défaut `None` (rétrocompat).
+- Intégration : une analyse renvoie la traçabilité quand `request.ratios` la porte ; une analyse rechargée (historique) la reconstruit ; analyse ancienne sans horodatage → champ `None`, pas de crash.
+- Composant : `AnalysisResult` affiche la source+date quand présente, rien sinon.
+- Non-régression : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q` + `.venv/bin/ruff check app/ tests/` + Vitest + `tsc --noEmit` + ESLint.
 
 ### Note d'environnement (session web)
-Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setup-web-session.sh` (idempotent). **Clé Anthropic absente → evals NON lançables en web** (voir contrainte bloquante ci-dessus). `node_modules` frontend non requis (sprint backend pur). Stack Docker non démarrée. Pas de test navigateur live.
+Conteneur cloné à neuf ; deps backend préparées par `SessionStart` → `scripts/setup-web-session.sh`. `node_modules` frontend absent à l'amorçage → `npm install`. Aucun prompt de skill ni l'orchestrateur (logique de routing) modifié dans la logique de décision → **evals non concernées** (sprint de threading/affichage). Stack Docker non démarrée. Pas de test navigateur live.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 138 — Traçabilité source+date étendue aux autres extracteurs
-**Objectif** : appliquer le pattern source+date du Sprint 134 (posé sur `GrahamRatios`) aux autres ratios extraits — `ValuationRatios` et `EarningsQualityRatios`.
-**Complexité** : Faible
-**Justification** : le Sprint 134 ne couvre que `GrahamRatios` ; les ratios de valorisation et de qualité comptable restent sans horodatage de récupération, même exigence `donnees-financieres.md`. Web-compatible (mockable).
-**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier1/yahoo_finance.py:303` `extract_earnings_quality()` et `:441` `extract_valuation()` ; constante `RATIOS_SOURCE` (`yahoo_finance.py:164`) + champs `ratios_fetched_at`/`ratios_source` déjà posés au Sprint 134 sur `GrahamRatios` (`graham_analysis/schemas.py:34-41`). À CRÉER — réutiliser la constante/champs sur ces deux chemins + leurs schemas (`stock_valuation`/`earnings_quality`)/types/affichages.
-
-### Sprint 139 — Affichage de la traçabilité sur l'analyse persistée (AnalysisResult)
-**Objectif** : rendre la source+date visible aussi sur l'analyse rendue (pas seulement le formulaire d'entrée et le PDF), en threadant `GrahamRatios` jusqu'à `AnalyzeResponse`.
-**Complexité** : Moyenne
-**Justification** : au Sprint 134, l'affichage UI a été posé dans `AnalyzeForm` (où vivent les ratios d'entrée) car `AnalyzeResponse` ne porte pas les ratios ; le dossier persisté n'expose la traçabilité que via le PDF. La rendre visible sur `AnalysisResult` demande un threading backend assumé. Web-compatible.
-**Référence** : EXISTANT (vérifié cette session) — `app/orchestrator/core.py:237` `class AnalyzeResponse` (sans champ `ratios`) ; `frontend/src/types/index.ts:446` `interface AnalyzeResponse` (idem). À CRÉER — champ `ratios` sur `AnalyzeResponse` (backend + reconstruction au reload depuis DB/cache + type TS) puis affichage sous la carte Graham.
+### Sprint 137 (différé) — Exécuter et documenter les evals déterministes (earnings_quality, stock_valuation)
+**Objectif** : lancer les `evals` ciblées (Claude réel) confirmant que les prompts rendus déterministes (Sprints 128/131/132) n'ont pas dérivé qualitativement, et consigner drift/coût/verdicts.
+**Complexité** : Faible (exécution + doc) — **MAIS bloqué en web**.
+**Justification** : `pytest` mocké ne prouve rien sur la qualité réelle du prompt. À exécuter en local.
+**Référence** : EXISTANT (vérifié cette session) — harnais `tests/evals/` avec `test_earnings_evals.py` ET `test_valuation_evals.py` (ce dernier créé par un PR mergé post-Sprint 136 ; la carte du Sprint 137 le disait « à créer » — désormais obsolète). **Contrainte** : exige `ANTHROPIC_API_KEY`, absente du conteneur web.
 
 ### Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`)
-**Objectif** : capitaliser sur la `clé_retenue` que `_resolve_ratio` (Sprint 135) retourne déjà mais qui est aujourd'hui ignorée (`_`) : exposer, par ratio replié, quelle source yfinance a effectivement fourni la valeur.
+**Objectif** : capitaliser sur la `clé_retenue` que `_resolve_ratio` retourne déjà mais qui est aujourd'hui ignorée (`_`) : exposer, par ratio replié, quelle source yfinance a effectivement fourni la valeur.
 **Complexité** : Moyenne
-**Justification** : le Sprint 135 a posé l'abstraction mais n'expose la provenance que dans les logs ; un champ de provenance par ratio rendrait l'analyse pleinement auditable côté API/UI. Pertinent seulement une fois que des replis multi-clés réels existent (aujourd'hui les appelants passent zéro clé de repli).
-**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier1/yahoo_finance.py:87` `_resolve_ratio(...)` retourne `(valeur | None, clé_retenue)` ; les appels dans `extract()` ignorent la clé. À CRÉER — un véhicule de provenance (champ schema ou structure dédiée) + propagation type TS/UI ; définir d'abord des clés de repli réelles (sinon la provenance = toujours la clé primaire).
+**Justification** : le Sprint 135 a posé l'abstraction mais n'expose la provenance que dans les logs. Pertinent surtout une fois que des clés de repli réelles existent (aujourd'hui les appels passent zéro clé de repli).
+**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier1/yahoo_finance.py:87` `_resolve_ratio(...)` retourne `(valeur | None, clé_retenue)` ; les appels dans `extract()` ignorent la clé. À CRÉER — un véhicule de provenance + propagation type/UI ; définir d'abord des clés de repli réelles.
 
 ### Sprint 141 — Calculs déterministes : signaux détaillés F-Score / C-Score
 **Objectif** : rendre déterministes (calcul Python + substitution post-parse) les signaux détaillés du F-Score (`criteria[].passe`) et du C-Score (`signaux[].present`), aujourd'hui encore interprétés par le LLM.
 **Complexité** : Moyenne
-**Justification** : limite connue documentée au Sprint 131 — seuls les *scores agrégés* F/C sont déterministes (Sprint 128) ; les signaux individuels restent produits par le LLM, dernière poche de non-déterminisme dans `earnings_quality`. Web-compatible (mockable).
-**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier2/earnings_quality/schemas.py:120` (`FScoreCriterion`), `:132` (`CScoreSignal`) ; pattern de substitution `_injecter_scores` à `app/skills/tier2/earnings_quality/skill.py:152` (Sprint 128/131). À CRÉER — fonctions pures par signal dans `app/services/financial_calculations.py` + extension de `_injecter_scores`.
+**Justification** : limite connue (Sprint 131) — seuls les *scores agrégés* F/C sont déterministes (Sprint 128) ; les signaux individuels restent produits par le LLM, dernière poche de non-déterminisme dans `earnings_quality`. Web-compatible (mockable).
+**Référence** : EXISTANT (vérifié cette session) — `app/skills/tier2/earnings_quality/schemas.py:132` (`class FScoreCriterion`), `:144` (`class CScoreSignal`) ; pattern de substitution `_injecter_scores` à `app/skills/tier2/earnings_quality/skill.py:154`. À CRÉER — fonctions pures par signal dans `app/services/financial_calculations.py` + extension de `_injecter_scores`.
+
+### Sprint 142 — Traçabilité source+date dans le PDF earnings/valuation
+**Objectif** : afficher la source+date des ratios `EarningsQualityRatios`/`ValuationRatios` dans les rapports PDF (le PDF ne couvre aujourd'hui que la ligne « Source des ratios » Graham).
+**Complexité** : Faible
+**Justification** : suite naturelle du Sprint 138 (les champs existent désormais sur ces schemas) ; complète la parité de traçabilité côté rapport.
+**Référence** : EXISTANT (vérifié cette session) — `_fmt_ratios_source` à `app/services/pdf_report_service.py:150` et `_build_ratios_rows(r: GrahamRatios)` à `:228` (Graham uniquement). À CRÉER — rows source+date pour earnings/valuation quand ces ratios sont reconstruits dans le PDF.
 
 ---
 
@@ -89,10 +83,10 @@ Conteneur cloné à neuf ; deps préparées par `SessionStart` → `scripts/setu
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.23.0), .claude/rules/tests-pyramide.md et base-connaissances-skills.md avant de commencer.
-Sprint actif : 137 — Evals ciblées des prompts rendus déterministes (earnings_quality, stock_valuation).
-⚠️ CONTRAINTE : ce sprint exige une clé Anthropic (Claude réel) ABSENTE du conteneur web → non exécutable en session web.
-Si tu es en session web sans clé : signale-le à Yves AVANT d'implémenter et propose soit l'exécution locale,
-soit un sprint web-compatible (138/139/141, tous mockables). Ne jamais prétendre avoir passé des evals non lancées.
-Harnais existant : tests/evals/ (eval_runner.py, test_earnings_evals.py) ; pas encore de test_valuation_evals.py.
+Lis CLAUDE.md, ROADMAP.md (v10.24.0), .claude/rules/api-orchestrator.md et conventions-frontend.md avant de commencer.
+Sprint actif : 139 — Affichage de la traçabilité sur l'analyse persistée (AnalysisResult).
+Backend : threader la source+date des ratios jusqu'à AnalyzeResponse (champ optionnel, rétrocompatible) + reconstruction au rechargement depuis l'historique.
+Frontend : afficher « Source : … · récupéré le AAAA-MM-JJ » sous la carte Graham de AnalysisResult.
+Vérifier le hazard json.dumps-sur-datetime (cf. correctif Sprint 134 sur _cache_key/_persist).
+Point de départ vérifié : AnalyzeResponse à core.py:237 (sans champ ratios) ; interface AnalyzeResponse à types/index.ts:446.
 ```

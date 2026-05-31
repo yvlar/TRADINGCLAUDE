@@ -88,6 +88,13 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
   }
 
   const earningsAvailable = earningsRatios !== null
+  // Traçabilité source+date des ratios earnings_quality (Sprint 138) — parité avec Graham.
+  // Sans horodatage (analyse ancienne / source manuelle), reste « (Yahoo Finance) ».
+  const earningsSourceLabel = earningsRatios
+    ? `✓ chargé (${earningsRatios.ratios_source ?? 'Yahoo Finance'}${
+        earningsRatios.ratios_fetched_at ? ` · ${earningsRatios.ratios_fetched_at.slice(0, 10)}` : ''
+      })`
+    : ''
 
   return (
     <form onSubmit={handleSubmit} aria-label="Formulaire d'analyse">
@@ -193,7 +200,9 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
               />
               Qualité bénéfices
               {earningsAvailable ? (
-                <span className="text-xs text-bull font-medium">✓ chargé (Yahoo Finance)</span>
+                <span className="text-xs text-bull font-medium" data-testid="earnings-source">
+                  {earningsSourceLabel}
+                </span>
               ) : (
                 <span className="text-xs">(Auto-fill requis)</span>
               )}
