@@ -236,6 +236,67 @@ class TestYahooFinanceExtract:
         assert result.ratios_fetched_at >= avant
 
     @pytest.mark.asyncio
+    async def test_extract_provenance_cles_primaires(self):
+        """Clés primaires présentes → provenance pointe la clé primaire pour pb/debt_equity/book_value."""
+        extractor = YahooFinanceExtractor()
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(_INFO_BNS_FINANCIER)):
+            result = await extractor.extract("BNS")
+        assert result.ratios_provenance == {
+            "pb": "priceToBook",
+            "debt_equity": "debtToEquity",
+            "book_value": "bookValue",
+        }
+
+    @pytest.mark.asyncio
+    async def test_extract_provenance_repli_sur_cle_secondaire(self):
+        """Clé primaire absente mais clé de repli présente → provenance expose la clé de repli effective."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items()
+                if k not in ("priceToBook", "bookValue", "debtToEquity")}
+        info = {
+            **info,
+            "priceToBookRatio": 1.4,
+            "bookValuePerShare": 60.0,
+            "debtToEquityRatio": 50.0,
+        }
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.pb == pytest.approx(1.4)
+        assert result.book_value == pytest.approx(60.0)
+        assert result.debt_equity == pytest.approx(0.5)  # 50.0 % / 100
+        assert result.ratios_provenance == {
+            "pb": "priceToBookRatio",
+            "debt_equity": "debtToEquityRatio",
+            "book_value": "bookValuePerShare",
+        }
+
+    @pytest.mark.asyncio
+    async def test_extract_provenance_none_si_aucun_ratio_replie(self):
+        """Aucun ratio à repli résolu (ni primaire ni repli) → ratios_provenance = None (pas dict vide)."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items()
+                if k not in ("priceToBook", "bookValue", "debtToEquity")}
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.ratios_provenance is None
+
+    @pytest.mark.asyncio
+    async def test_extract_provenance_partielle_mix_primaire_repli_absent(self):
+        """Résolution hétérogène : pb en primaire, debt_equity en repli, book_value absent →
+        provenance ne contient QUE les ratios résolus (pas de clé pour book_value, pas de dict vide)."""
+        extractor = YahooFinanceExtractor()
+        info = {k: v for k, v in _INFO_BNS_FINANCIER.items()
+                if k not in ("debtToEquity", "bookValue")}
+        info = {**info, "debtToEquityRatio": 50.0}  # pb reste sur priceToBook ; book_value introuvable
+        with patch.object(extractor, "_fetch_info_and_history", return_value=_raw(info)):
+            result = await extractor.extract("BNS")
+        assert result.book_value is None
+        assert result.ratios_provenance == {
+            "pb": "priceToBook",
+            "debt_equity": "debtToEquityRatio",
+        }
+
+    @pytest.mark.asyncio
     async def test_timeout_gere(self):
         """asyncio.wait_for lève TimeoutError → HTTPException 504."""
         extractor = YahooFinanceExtractor(timeout_s=0.001)
@@ -676,6 +737,13 @@ class TestResolveRatio:
             42.0, "bookValuePerShare",
         )
 
+    def test_primaire_l_emporte_sur_repli_quand_les_deux_presents(self):
+        """Primaire ET repli présents → la primaire gagne, le repli n'est jamais consulté."""
+        info = {"priceToBook": 1.3, "priceToBookRatio": 9.9}
+        assert _resolve_ratio(info, "BNS", "priceToBook", "priceToBookRatio") == (
+            1.3, "priceToBook",
+        )
+
     def test_aucune_source_retourne_none(self):
         """Primaire et replis absents → (None, None), jamais 0.0."""
         assert _resolve_ratio({}, "BNS", "priceToBook", "bookValuePerShare") == (None, None)
@@ -703,3 +771,43 @@ class TestFiniteFloat:
     def test_zero_conserve(self):
         """0.0 est un nombre fini valide — conservé, jamais converti en None."""
         assert _finite_float(0.0) == 0.0
+
+
+class TestGrahamRatiosProvenance:
+    def test_provenance_defaut_none(self):
+        """ratios_provenance par défaut None — rétrocompat avec les analyses persistées avant le champ."""
+        r = GrahamRatios(eps_growth_total=0.0, price=80.0)
+        assert r.ratios_provenance is None
+
+    def test_provenance_accepte_dict(self):
+        """ratios_provenance accepte un dict[str, str] (clé yfinance par ratio)."""
+        r = GrahamRatios(
+            eps_growth_total=0.0, price=80.0,
+            ratios_provenance={"pb": "priceToBook", "book_value": "bookValuePerShare"},
+        )
+        assert r.ratios_provenance == {"pb": "priceToBook", "book_value": "bookValuePerShare"}
+
+    def test_provenance_exclue_de_la_cle_de_cache(self):
+        """La provenance n'altère pas l'identité de cache (comme source/date — Sprint 134)."""
+        from app.services.analysis_cache import AnalysisCacheService
+
+        svc = AnalysisCacheService(None)  # _cache_key est pur — n'utilise pas le client redis
+        base = dict(eps_growth_total=0.0, price=80.0, pe=11.0, pb=1.3, book_value=61.5)
+        sans = GrahamRatios(**base)
+        avec = GrahamRatios(**base, ratios_provenance={"pb": "priceToBook"})
+        assert svc._cache_key("BNS", "value_graham", sans) == svc._cache_key(
+            "BNS", "value_graham", avec
+        )
+
+    def test_valeur_de_ratio_differente_change_la_cle_de_cache(self):
+        """Garde-fou complémentaire : exclure la provenance ne doit PAS désensibiliser la clé aux
+        valeurs financières — un pb différent doit produire une clé différente."""
+        from app.services.analysis_cache import AnalysisCacheService
+
+        svc = AnalysisCacheService(None)
+        prov = {"pb": "priceToBook"}
+        a = GrahamRatios(eps_growth_total=0.0, price=80.0, pb=1.3, ratios_provenance=prov)
+        b = GrahamRatios(eps_growth_total=0.0, price=80.0, pb=2.7, ratios_provenance=prov)
+        assert svc._cache_key("BNS", "value_graham", a) != svc._cache_key(
+            "BNS", "value_graham", b
+        )

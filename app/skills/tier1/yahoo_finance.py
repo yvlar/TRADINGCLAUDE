@@ -254,12 +254,23 @@ class YahooFinanceExtractor:
         if pe is None and eps_ttm is not None and eps_ttm != 0:
             pe = float(price) / eps_ttm
 
-        raw_de, _ = _resolve_ratio(info, ticker, "debtToEquity")
+        # Clés de repli : variantes de nommage que yfinance peut exposer selon le payload/version
+        # (rares en pratique) — la valeur du sprint est la provenance vérifiable, pas le repli lui-même.
+        raw_de, de_key = _resolve_ratio(info, ticker, "debtToEquity", "debtToEquityRatio")
         # yfinance retourne debtToEquity en % (ex: 45.0 = 45%) → diviser par 100 ; None si absent
         debt_equity: float | None = raw_de / 100.0 if raw_de is not None else None
 
-        pb, _ = _resolve_ratio(info, ticker, "priceToBook")
-        book_value, _ = _resolve_ratio(info, ticker, "bookValue")
+        pb, pb_key = _resolve_ratio(info, ticker, "priceToBook", "priceToBookRatio")
+        book_value, bv_key = _resolve_ratio(info, ticker, "bookValue", "bookValuePerShare")
+
+        # Provenance par ratio à repli : clé yfinance effectivement retenue (primaire ou repli),
+        # capitalisant sur la clé_retenue que _resolve_ratio renvoyait sans qu'on l'exploite.
+        # None pour un ratio non résolu ; le champ reste None si aucun ratio n'a de valeur.
+        ratios_provenance: dict[str, str] | None = {
+            name: key
+            for name, key in (("pb", pb_key), ("debt_equity", de_key), ("book_value", bv_key))
+            if key is not None
+        } or None
 
         revenue = info.get("totalRevenue")
         revenue_bn: float | None = revenue / 1e9 if revenue is not None else None
@@ -284,6 +295,7 @@ class YahooFinanceExtractor:
             no_deficit_years=no_deficit_years,
             ratios_fetched_at=datetime.now(timezone.utc),
             ratios_source=RATIOS_SOURCE,
+            ratios_provenance=ratios_provenance,
         )
 
     def _fetch_earnings_data(self, ticker: str) -> dict[str, Any]:
