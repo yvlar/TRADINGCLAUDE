@@ -39,6 +39,10 @@ class GrahamRatios(BaseModel):
         None,
         description="Source des ratios (ex. « Yahoo Finance »). None si inconnue (analyse ancienne ou saisie manuelle).",
     )
+    ratios_provenance: dict[str, str] | None = Field(
+        None,
+        description="Clé yfinance effectivement retenue par ratio à repli (pb/debt_equity/book_value) — ex. {'pb': 'priceToBook'} ; clé de repli si la primaire était absente. None pour saisie manuelle ou analyses antérieures. Exclu de la clé de cache (provenance ≠ identité financière).",
+    )
 
     @model_validator(mode="after")
     def valider_coherence_ratios(self) -> "GrahamRatios":

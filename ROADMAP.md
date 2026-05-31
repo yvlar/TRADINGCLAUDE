@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-05-31 — Sprint 139 complété**
+**Dernière mise à jour : 2026-05-31 — Sprint 140 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.25.0 |
+| **Version** | 10.26.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) |
-| **Dernier sprint complété** | Sprint 139 — Affichage de la traçabilité sur l'analyse rendue (AnalysisResult) ✅ |
+| **Sprint actif** | Sprint 141 — Propagation frontend de la provenance par ratio (type TS + tooltip) |
+| **Dernier sprint complété** | Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅ |
 
 > **Sprint 137 différé** — Les evals ciblées (Claude réel) d'`earnings_quality`/`stock_valuation` exigent `ANTHROPIC_API_KEY`, absente du conteneur de session web → à exécuter en local. Le Sprint 138 (web-compatible, mockable) a été exécuté à sa place.
 
@@ -82,6 +82,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅
+
+**Objectif :** `_resolve_ratio` (`yahoo_finance.py:87`) retournait déjà la `clé_retenue` (clé primaire ou clé de repli effective) mais les appelants la **jetaient** (`raw_de, _ = …`). Capitaliser sur cette provenance : exposer, pour chaque ratio Graham susceptible de repli (`pb`, `debt_equity`, `book_value`), **quelle clé yfinance a effectivement fourni la valeur** — provenance vérifiable plutôt que seulement loggée. Suite de la file revue expert FinTech. **Sprint backend seul** (frontend reporté au Sprint 141).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — `extract()` capture la `clé_retenue` (au lieu de `_`) et passe ≥ 1 clé de repli par ratio (`debtToEquity`←`debtToEquityRatio`, `priceToBook`←`priceToBookRatio`, `bookValue`←`bookValuePerShare`) ; construit `ratios_provenance: dict[str, str] | None` (nom de ratio → clé yfinance effective, `None` si aucun ratio résolu). **Honnêteté documentée** : ces clés de repli sont des variantes de nommage rarement exposées par yfinance actuel ; la valeur livrée est le **mécanisme de provenance vérifiable** (qui confirme la clé primaire et diverge si un repli réel se produit), pas le repli lui-même
+- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios` gagne `ratios_provenance: dict[str, str] | None = None` (optionnel → rétrocompatible avec les analyses persistées et la saisie manuelle)
+- `app/services/analysis_cache.py` — `ratios_provenance` ajouté à l'`exclude` de `_cache_key` (comme `ratios_fetched_at`/`ratios_source` au Sprint 134) : la provenance ne change pas l'identité financière, sinon le cache ne hit jamais
+- **Décision de périmètre** : limité aux 3 ratios Graham passant par `_resolve_ratio`. `pe` (repli calculé `price/eps`) et `eps_growth` (repli `_resolve_eps_growth`) hors périmètre. Propagation TS + tooltip UI reportées au Sprint 141 (le payload `/extract` transporte déjà le champ ; l'interface TS ignore la clé inconnue → aucune régression frontend)
+- Tests : extracteur (provenance = clés primaires ; repli simulé → clés de repli effectives ; aucun ratio résolu → `None`), schema (`ratios_provenance` défaut `None` + accepte un dict), cache (deux `GrahamRatios` ne différant que par la provenance → même `_cache_key`)
+
+**Version** : 10.26.0
+**Tests** : `ruff All checks passed` ; `tests/skills/test_yahoo_finance.py` + `tests/services/test_analysis_cache.py` verts avec les edits (61 passés mesurés avant ajout des tests provenance). Compteur backend complet et suite Vitest/tsc/ESLint **à confirmer en local** (canal d'exécution de la session web dégradé — flush sporadique ; sprint backend seul, aucun changement frontend)
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`_resolve_ratio` retourne `(valeur, clé)` `yahoo_finance.py:87` ; appelants jetaient la clé `:257/:261/:262` ; `GrahamRatios` `graham_analysis/schemas.py:14` ; exclusion cache `analysis_cache.py:72`). Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live. **Revue indépendante à contexte frais non exécutée** (canal dégradé) — à compléter en local avant merge.
+
 ### Sprint 139 — Affichage de la traçabilité sur l'analyse rendue (AnalysisResult) ✅
 
 **Objectif :** La traçabilité source+date des ratios (Sprints 134/138) n'était visible que sur le **formulaire d'entrée** (`AnalyzeForm`, après auto-fill) et dans le PDF — pas sur le **dossier d'analyse rendu/rechargé** (`AnalysisResult`), car `AnalyzeResponse` ne portait pas les ratios d'entrée. Une fois l'analyse lancée (event SSE `complete`) ou rechargée depuis l'historique, la source+date disparaissait. Threader la traçabilité Graham jusqu'à `AnalyzeResponse` puis l'afficher sous la carte Graham. Suite de la file revue expert FinTech.
@@ -130,22 +146,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 614 backend collectés (inchangé — sprint frontend pur, non-régression : 1 610 passés, 3 skipped, 1 xfailed) ; 422 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Réconciliation carte↔code : les 4 prémisses du chemin critique (backend `x1`-`x5` en `schemas.py:106-110`, type TS `ZScoreDetail` sans termes en `index.ts:114`, `ZScoreCard` sans grille en `EarningsQualitySection.tsx:139`, pattern `MScoreCard:106-134`) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité, 2 sous-agents distincts de la session auteur) : **aucun bug de correctness** ; seul point qualité (extraire un helper `RatioGrid` partagé M-Score/Z-Score) **écarté** — l'extraction toucherait `MScoreCard` que la spec impose de laisser intact (zéro-régression), et c'est un clone intentionnel à 2 sites avec divergences (`title`/`testid`). Stack Docker non démarrée. Pas de test navigateur live.
-
-### Sprint 135 — Repli multi-sources généralisé (au-delà d'eps_growth) ✅
-
-**Objectif :** Le Sprint 130 n'avait introduit un repli de source que pour `eps_growth`. Les autres ratios Graham extraits de yfinance retombaient **silencieusement à `0.0`** quand le champ primaire était absent (`info.get("priceToBook") or 0.0`, `bookValue or 0.0`, `debt_equity = 0.0` si `debtToEquity` absent) — un `0.0` faux est indiscernable d'un vrai `0.0` et fausse le scoring Graham en aval (`donnees-financieres.md` : « un `0.0` silencieux pour une donnée absente est le piège à éliminer »). Généraliser le pattern : une donnée primaire absente produit `None` (donnée manquante honnête) et est traçable, jamais un `0.0` trompeur. Suite de la revue expert FinTech. Sprint backend pur (le type TS `GrahamRatios` était déjà nullable côté frontend).
-
-**Livrables :**
-- `app/skills/tier1/yahoo_finance.py` — deux helpers purs : `_finite_float(value)` (float fini ou `None` ; rejette `None`/NaN/inf/non numérique, **conserve un `0.0` réel**) et `_resolve_ratio(info, ticker, primary_key, *fallback_keys)` (abstraction de repli réutilisable style `_resolve_eps_growth` : essaie la clé primaire, puis chaque clé de repli tracée par `logger.info`, retourne `(valeur | None, clé_retenue)` — jamais de `0.0` masquant une absence). `extract()` route `pb`/`book_value`/`debt_equity` via `_resolve_ratio` ; le `or 0.0` muet est supprimé. `pe` conserve son repli calculé (`price/eps_ttm`) puis `None` (au lieu de `0.0`). `current_ratio=None` pour les banques (`is_financial`) inchangé (None légitime documenté)
-- `app/skills/tier2/graham_analysis/schemas.py` — `pb`, `debt_equity`, `book_value` passent de `float` (obligatoire) à `float | None` (défaut `None`). **Rétrocompatible** : élargir un type accepte les flottants déjà persistés ; le frontend TS déclarait déjà `number | null`. Validateur `valider_coherence_ratios` gardé sur `None` (`self.pb is not None and self.pb < 0`)
-- **Décision type-vs-rétrocompat** : la carte signalait l'arbitrage comme potentiellement ambigu ; la réconciliation l'a tranché sans ambiguïté — la spec impose `None`, l'élargissement `float | None` ne casse ni les analyses persistées (vieux flottants valides) ni le type TS (déjà `number | null`) → aucune migration. Seuls les consommateurs `None`-safe (`graham_number`, `_fmt_num` PDF, `poids_capital`, clé de cache JSON) touchent ces champs
-- **Traçabilité par ratio** (spec point 3, optionnel) : non implémentée ce sprint — `_resolve_ratio` retourne déjà la `clé_retenue` (tracée par `logger.info`), l'exposition par champ est reportée (Sprint 138 généralise source+date aux autres extracteurs)
-- Tests : unitaires `_resolve_ratio` (primaire présent → primaire ; repli sur clé secondaire tracé ; tout absent → `None` ; `0.0` réel conservé ; NaN/inf/chaîne ignorés) + `_finite_float` ; intégration `extract()` (`priceToBook`/`bookValue`/`debtToEquity` absents → `None` pas `0.0` ; `pe` absent → `None` ; `0.0` réel conservé ; banque `current_ratio=None` inchangé) ; non-régression scoring (`GrahamRatios` tout `None` → `execute()` OK, `graham_number` `None`) ; tests 422 repivotés sur `price` (toujours obligatoire)
-
-**Version** : 10.22.0
-**Tests** : 1 614 backend collectés (1 610 passés, 3 skipped, 1 xfailed — +20) ; Vitest inchangé (sprint backend pur, type TS déjà nullable) ; ruff `All checks passed`
-
-**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : les 7 prémisses du chemin critique (`fichier:ligne` du pattern `_resolve_eps_growth`, des `or 0.0`, du schema non-optionnel, du type TS déjà nullable, des consommateurs `None`-safe) vérifiées par `grep`/lecture avant implémentation. Revue indépendante à contexte frais (correctness high + qualité 4 angles) : **aucun bug de correctness** ; le seul point qualité (varargs `*fallback_keys` sans appelant à repli aujourd'hui) **écarté** — la spec impose explicitement le paramètre « clés de repli » et le test `test_repli_sur_cle_secondaire` l'exerce. Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live.
 
 ---
 

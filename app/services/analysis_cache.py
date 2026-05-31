@@ -65,11 +65,14 @@ class AnalysisCacheService:
         return int(count)
 
     def _cache_key(self, ticker: str, workflow: str, ratios: GrahamRatios) -> str:
-        # mode="json" sérialise les datetime ; exclut la traçabilité (horodatage/source) de la clé :
-        # l'identité de cache porte sur les données financières, pas sur le MOMENT de récupération
-        # (sinon chaque extraction change la clé et le cache ne hit jamais).
+        # mode="json" sérialise les datetime ; exclut la traçabilité (horodatage/source/provenance)
+        # de la clé : l'identité de cache porte sur les données financières, pas sur le MOMENT ni la
+        # CLÉ de récupération (sinon chaque extraction change la clé et le cache ne hit jamais).
         ratios_json = json.dumps(
-            ratios.model_dump(mode="json", exclude={"ratios_fetched_at", "ratios_source"}),
+            ratios.model_dump(
+                mode="json",
+                exclude={"ratios_fetched_at", "ratios_source", "ratios_provenance"},
+            ),
             sort_keys=True,
         )
         ratios_hash = hashlib.sha256(ratios_json.encode()).hexdigest()[:12]
