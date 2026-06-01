@@ -10,6 +10,23 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 138 — Traçabilité source+date étendue (ValuationRatios + EarningsQualityRatios) ✅
+
+**Objectif :** Le Sprint 134 n'avait posé la traçabilité source+date (`donnees-financieres.md` : « une donnée sans date est inutilisable ») que sur `GrahamRatios`. Les ratios de valorisation (`ValuationRatios`) et de qualité comptable (`EarningsQualityRatios`) extraits de Yahoo Finance restaient sans horodatage de récupération. Étendre le pattern à ces deux schemas + leurs extracteurs tier1, et l'exposer côté frontend (type + affichage earnings). Suite de la file revue expert FinTech.
+
+**Livrables :**
+- `app/skills/tier2/stock_valuation/schemas.py` + `app/skills/tier2/earnings_quality/schemas.py` — `ValuationRatios` et `EarningsQualityRatios` gagnent `ratios_fetched_at: datetime | None = None` et `ratios_source: str | None = None` (défaut `None` → rétrocompatible avec les analyses persistées avant ce champ ; miroir exact des champs posés sur `GrahamRatios` au Sprint 134)
+- `app/skills/tier1/yahoo_finance.py` — `extract_valuation()` et `extract_earnings_quality()` posent `ratios_fetched_at=datetime.now(timezone.utc)` + `ratios_source=RATIOS_SOURCE` (constante module réutilisée, jamais un littéral dispersé)
+- `frontend/src/types/index.ts` — `interface EarningsQualityRatios` gagne `ratios_fetched_at?`/`ratios_source?` (optionnels, miroir du payload `/extract`). `ValuationRatios` n'a pas d'interface TS (non exposé au frontend) → aucun changement TS de ce côté
+- `frontend/src/components/AnalyzeForm.tsx` — le badge « ✓ chargé (Yahoo Finance) » des ratios earnings affiche désormais la date quand présente (« ✓ chargé (Yahoo Finance · AAAA-MM-JJ) ») via `earningsSourceLabel` ; reste « (Yahoo Finance) » sans horodatage (`data-testid="earnings-source"`)
+- **Décision de sérialisation (confirmée par la revue)** : contrairement au Sprint 134, aucun risque de crash `json.dumps`-sur-`datetime` — ni `_persist`/`_cache_key` (qui ne touchent que `GrahamRatios`) ni les skills (`model_dump_json`, datetime-safe) ne sérialisent ces deux types via un `json.dumps(model_dump())` brut
+- Tests : extracteurs (`extract_valuation`/`extract_earnings_quality` horodatent UTC + posent la source), schemas (champs `None` par défaut + ISO acceptée, rétrocompat), composant `AnalyzeForm` (source+date earnings affichées après auto-fill)
+
+**Version** : 10.24.0
+**Tests** : 1 635 backend collectés (1 631 passés, 3 skipped, 1 xfailed — +6) ; 425 Vitest verts (+1) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend installé à l'amorçage (`npm install`). Réconciliation carte↔code : prémisses du chemin critique (`RATIOS_SOURCE` `yahoo_finance.py:164`, `extract_earnings_quality` `:303`, `extract_valuation` `:441`, champs Sprint 134 `graham_analysis/schemas.py:34-41`) vérifiées par `grep`/lecture avant implémentation. **Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur) : 1 bug HIGH détecté et corrigé** — l'ajout des champs `ratios_fetched_at?`/`ratios_source?` à l'interface TS `EarningsQualityRatios` (`types/index.ts`) n'avait pas été persisté (édition perdue, masquée par Vitest qui transpile sans typecheck → `tsc` rouge en CI) ; champs ré-ajoutés. Même incident corrigé sur `docs/roadmap-archive.md` (bloc Sprint 133 réinséré). Sérialisation vérifiée : **aucun `json.dumps(model_dump())` brut** sur `ValuationRatios`/`EarningsQualityRatios` (`model_dump_json` datetime-safe dans les skills ; `_cache_key`/`_persist` ne touchent que `GrahamRatios` via `mode="json"`) → contrairement au Sprint 134, pas de hazard `datetime`. 2 limites connues : `extract_valuation` sans appelant câblé aujourd'hui ; earnings/valuation non encore propagés au PDF / à l'analyse persistée (reportés Sprints 139/142). Qualité : extraction d'un mixin partagé des 2 champs **écartée** — parité intentionnelle (comme Graham). Stack Docker non démarrée. Pas de test navigateur live.
+
 ### Sprint 136 — UI : sous-composantes auditables X1-X5 du Z-Score ✅
 
 **Objectif :** Les termes X1-X5 du Z-Score d'Altman sont calculés en Python et persistés depuis le Sprint 131, mais l'UI ne les affichait pas — alors que la carte M-Score rendait déjà ses 8 indices Beneish en grille. Asymétrie d'auditabilité côté frontend. Combler l'écart : déclarer `x1`-`x5` dans le type TS `ZScoreDetail` puis les rendre dans `ZScoreCard` en clonant le pattern de grille de `MScoreCard`. Sprint frontend pur — aucun backend, aucune migration, aucun prompt de skill.

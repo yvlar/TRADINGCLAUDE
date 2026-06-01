@@ -14,10 +14,12 @@ from app.rag.service import RagService
 from app.services.financial_calculations import (
     AltmanComponents,
     BeneishComponents,
+    MontierSignal,
+    PiotroskiCriterion,
     altman_z_score_detail,
     beneish_m_score_detail,
-    montier_c_score,
-    piotroski_f_score,
+    montier_c_signaux,
+    piotroski_f_criteria,
     sloan_accrual_ratio,
 )
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
@@ -44,6 +46,8 @@ class _ScoresDeterministes:
 
     `m` et `z` portent les intermédiaires (8 indices Beneish, termes X1-X5 Altman)
     substitués post-parse au même titre que les scores agrégés (Sprint 131).
+    `f_criteria`/`c_signaux` portent le détail par signal F/C, substitué de même
+    (Sprint 142) ; None dans les mêmes cas que le score agrégé correspondant.
     """
 
     m: BeneishComponents
@@ -51,12 +55,53 @@ class _ScoresDeterministes:
     f_score: int | None
     c_score: int | None
     accrual_ratio: float | None
+    f_criteria: list[PiotroskiCriterion] | None
+    c_signaux: list[MontierSignal] | None
 
 
 def _scores_depuis_ratios(
     ratios: EarningsQualityRatios, is_financial: bool
 ) -> _ScoresDeterministes:
     """Mappe EarningsQualityRatios → les cinq scores déterministes (financial_calculations)."""
+    f_criteria = piotroski_f_criteria(
+        net_income_t=ratios.net_income_t,
+        total_assets_t=ratios.total_assets_t,
+        total_assets_t1=ratios.total_assets_t1,
+        net_income_t1=ratios.net_income_t1,
+        cfo_t=ratios.cfo_t,
+        ltd_t=ratios.ltd_t,
+        ltd_t1=ratios.ltd_t1,
+        current_assets_t=ratios.current_assets_t,
+        current_liabilities_t=ratios.current_liabilities_t,
+        current_assets_t1=ratios.current_assets_t1,
+        current_liabilities_t1=ratios.current_liabilities_t1,
+        sales_t=ratios.sales_t,
+        sales_t1=ratios.sales_t1,
+        cogs_t=ratios.cogs_t,
+        cogs_t1=ratios.cogs_t1,
+        shares_issued_net=ratios.shares_issued_net,
+        is_financial=is_financial,
+    )
+    c_signaux = montier_c_signaux(
+        net_income_t=ratios.net_income_t,
+        cfo_t=ratios.cfo_t,
+        net_income_t1=ratios.net_income_t1,
+        cfo_t1=ratios.cfo_t1,
+        receivables_t=ratios.receivables_t,
+        receivables_t1=ratios.receivables_t1,
+        sales_t=ratios.sales_t,
+        sales_t1=ratios.sales_t1,
+        inventory_t=ratios.inventory_t,
+        inventory_t1=ratios.inventory_t1,
+        cogs_t=ratios.cogs_t,
+        cogs_t1=ratios.cogs_t1,
+        depreciation_t=ratios.depreciation_t,
+        depreciation_t1=ratios.depreciation_t1,
+        ppe_gross_t=ratios.ppe_gross_t,
+        ppe_gross_t1=ratios.ppe_gross_t1,
+        total_assets_t=ratios.total_assets_t,
+        total_assets_t1=ratios.total_assets_t1,
+    )
     return _ScoresDeterministes(
         m=beneish_m_score_detail(
             receivables_t=ratios.receivables_t,
@@ -96,51 +141,16 @@ def _scores_depuis_ratios(
             variant="original",
             is_financial=is_financial,
         ),
-        f_score=piotroski_f_score(
-            net_income_t=ratios.net_income_t,
-            total_assets_t=ratios.total_assets_t,
-            total_assets_t1=ratios.total_assets_t1,
-            net_income_t1=ratios.net_income_t1,
-            cfo_t=ratios.cfo_t,
-            ltd_t=ratios.ltd_t,
-            ltd_t1=ratios.ltd_t1,
-            current_assets_t=ratios.current_assets_t,
-            current_liabilities_t=ratios.current_liabilities_t,
-            current_assets_t1=ratios.current_assets_t1,
-            current_liabilities_t1=ratios.current_liabilities_t1,
-            sales_t=ratios.sales_t,
-            sales_t1=ratios.sales_t1,
-            cogs_t=ratios.cogs_t,
-            cogs_t1=ratios.cogs_t1,
-            shares_issued_net=ratios.shares_issued_net,
-            is_financial=is_financial,
-        ),
-        c_score=montier_c_score(
-            net_income_t=ratios.net_income_t,
-            cfo_t=ratios.cfo_t,
-            net_income_t1=ratios.net_income_t1,
-            cfo_t1=ratios.cfo_t1,
-            receivables_t=ratios.receivables_t,
-            receivables_t1=ratios.receivables_t1,
-            sales_t=ratios.sales_t,
-            sales_t1=ratios.sales_t1,
-            inventory_t=ratios.inventory_t,
-            inventory_t1=ratios.inventory_t1,
-            cogs_t=ratios.cogs_t,
-            cogs_t1=ratios.cogs_t1,
-            depreciation_t=ratios.depreciation_t,
-            depreciation_t1=ratios.depreciation_t1,
-            ppe_gross_t=ratios.ppe_gross_t,
-            ppe_gross_t1=ratios.ppe_gross_t1,
-            total_assets_t=ratios.total_assets_t,
-            total_assets_t1=ratios.total_assets_t1,
-        ),
+        f_score=None if f_criteria is None else sum(1 for c in f_criteria if c.passe),
+        c_score=None if c_signaux is None else sum(1 for s in c_signaux if s.present),
         accrual_ratio=sloan_accrual_ratio(
             net_income_t=ratios.net_income_t,
             cfo_t=ratios.cfo_t,
             total_assets_t=ratios.total_assets_t,
             total_assets_t1=ratios.total_assets_t1,
         ),
+        f_criteria=f_criteria,
+        c_signaux=c_signaux,
     )
 
 
@@ -154,7 +164,8 @@ def _fmt(valeur: float | int | None) -> str:
 def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None:
     """
     Écrase les scores numériques ET leurs sous-composantes du bloc LLM par les valeurs
-    Python (Sprint 128 pour les scores agrégés, Sprint 131 pour les indices/termes).
+    Python (Sprint 128 pour les scores agrégés, Sprint 131 pour les indices/termes,
+    Sprint 142 pour les critères F / signaux C détaillés).
     Les champs entiers (f/c_score) n'acceptent pas None — si le calcul Python échoue
     (donnée manquante / financière), la valeur LLM est conservée pour respecter le schéma.
     """
@@ -165,10 +176,18 @@ def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None
     data.setdefault("m_score", {}).update(asdict(scores.m))
     data.setdefault("z_score", {}).update(asdict(scores.z))
     data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio
-    if scores.f_score is not None:
-        data.setdefault("f_score", {})["f_score"] = scores.f_score
-    if scores.c_score is not None:
-        data.setdefault("c_score", {})["c_score"] = scores.c_score
+    # f_score/f_criteria (resp. c_score/c_signaux) sont None ensemble : sous le gate
+    # non-None, l'entier et la liste détaillée sont cohérents (sum(passe) == f_score).
+    # PiotroskiCriterion/MontierSignal sont nommés comme FScoreCriterion/CScoreSignal
+    # → asdict() produit des dicts directement validables.
+    if scores.f_criteria is not None:
+        bloc_f = data.setdefault("f_score", {})
+        bloc_f["f_score"] = scores.f_score
+        bloc_f["criteria"] = [asdict(c) for c in scores.f_criteria]
+    if scores.c_signaux is not None:
+        bloc_c = data.setdefault("c_score", {})
+        bloc_c["c_score"] = scores.c_score
+        bloc_c["signaux"] = [asdict(s) for s in scores.c_signaux]
 
 
 def _str_vers_liste(valeur: str) -> list[str]:
