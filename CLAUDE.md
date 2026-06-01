@@ -178,7 +178,9 @@ Un sprint n'est terminé qu'après ces 3 étapes : (1) mettre à jour `ROADMAP.m
 
 ## Confirmation obligatoire avant d'agir
 
-Actions **locales et réversibles** → agir directement. Ces 5 actions exigent une confirmation préalable de Yves : `git push`, `docker-compose down`, suppression de fichiers, modification de `.env`, opérations DB destructives (`DROP`/`DELETE` sans `WHERE`). Détails : [`autonomie-confirmations.md`](.claude/rules/autonomie-confirmations.md).
+Actions **locales et réversibles** → agir directement. Ces actions exigent une confirmation préalable de Yves : `git push`, ouverture/fusion de PR, `docker-compose down`, suppression de fichiers, modification de `.env`, opérations DB destructives (`DROP`/`DELETE` sans `WHERE`). Détails : [`autonomie-confirmations.md`](.claude/rules/autonomie-confirmations.md).
+
+**Branches** : `dev` = intégration (cible de toutes les PR de sprint), `master` = stable (mise à jour uniquement via PR de promotion `dev → master`). Détails : [`workflow-sprint.md`](.claude/rules/workflow-sprint.md).
 
 ---
 

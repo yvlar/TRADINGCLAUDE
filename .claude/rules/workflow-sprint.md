@@ -97,3 +97,20 @@ Ne jamais inclure : `frontend/node_modules/`, `.env`, `frontend/vite.config.ts.t
 ### Rappel
 
 `ROADMAP.md`, `prompt-mise-a-jour-roadmap.md` et le commit git sont la source de vérité pour la prochaine session. Sans ces trois étapes, la session suivante commence avec un contexte obsolète et du travail non sauvegardé.
+
+## Stratégie de branches & pull requests
+
+Modèle de branches : **`dev` = branche d'intégration, `master` = branche stable**.
+
+| Branche | Rôle |
+|---|---|
+| `dev` | Intégration — toutes les PR de sprint y sont fusionnées |
+| `master` | Stable / release — mise à jour **uniquement** depuis `dev` via une PR de promotion validée par Yves |
+
+### Règles
+
+- **Chaque sprint se développe sur sa propre branche de feature** (ex. `claude/sprintNN-<nom-court>`), jamais directement sur `dev` ni `master`.
+- **Toute PR de sprint cible `dev`** (`base = dev`). Ne **jamais** ouvrir une PR de sprint vers `master`.
+- `master` n'est mise à jour qu'au moment d'une release, via une PR `dev → master` — opération explicitement décidée par Yves, jamais automatique.
+- `git push` et l'ouverture/fusion d'une PR restent des actions à **confirmation obligatoire** (cf. `autonomie-confirmations.md`).
+- À la création d'une PR via les outils GitHub, vérifier que `base` est bien `dev` avant de soumettre.

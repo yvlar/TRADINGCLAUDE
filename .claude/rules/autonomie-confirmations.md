@@ -23,11 +23,14 @@ Ces actions requièrent une confirmation explicite de Yves **avant** toute exéc
 
 | Action | Exemple | Raison |
 |---|---|---|
-| `git push` | `git push origin master` | Affecte le dépôt distant partagé |
+| `git push` | `git push -u origin dev` | Affecte le dépôt distant partagé |
+| Ouvrir / fusionner une PR | PR de sprint vers `dev`, PR de promotion `dev → master` | Affecte le dépôt distant partagé |
 | `docker-compose down` | `docker-compose down` | Coupe l'infrastructure en cours d'exécution |
 | Suppression de fichiers | `rm fichier.py`, `del fichier.ts` | Irréversible — pas de corbeille |
 | Modification de `.env` | Ajouter/modifier une variable secrète | Impact direct sur tous les services |
 | Opérations DB destructives | `DROP TABLE`, `DELETE FROM table` sans clause `WHERE` | Destruction irréversible de données |
+
+> **Stratégie de branches** : `dev` = intégration (cible de toutes les PR de sprint), `master` = stable (mise à jour seulement via PR de promotion `dev → master`). Détails : [`workflow-sprint.md`](workflow-sprint.md).
 
 ### Principe de décision
 
