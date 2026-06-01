@@ -630,7 +630,9 @@ def montier_c_signaux(
     croissance_ta = total_assets_t / total_assets_t1 - 1
 
     divergence_calculable = gap_t is not None and gap_t1 is not None
-    divergence = divergence_calculable and gap_t > gap_t1
+    # Comparaison réécrite inline (et non `divergence_calculable and …`) : mypy ne propage
+    # pas le narrowing None à travers une variable booléenne intermédiaire.
+    divergence = gap_t is not None and gap_t1 is not None and gap_t > gap_t1
 
     return [
         MontierSignal(
