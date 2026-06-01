@@ -183,6 +183,17 @@ Compter le nombre de cadres défaillants parmi : M-Score (manipulateur), Z-Score
 
 Un cadre marqué "DONNÉES_MANQUANTES" ou "inapplicable" n'est ni défaillant ni conforme — il est exclu du compte. Si `is_financial=true`, ne pas comptabiliser M-Score et Z-Score classiques.
 
+### Drapeaux rouges (`drapeaux_rouges`)
+
+Un drapeau rouge est un signal **concret et matériel** de manipulation comptable ou de détresse financière, **ancré dans un cadre** : un indice Beneish franchissant son seuil, un Z-Score en `zone_detresse`, un F-Score faible (`value_trap`), un signal C-Score présent, des accruals `qualite_degradee`, ou un drapeau Graham croisé. Liste **uniquement** ce qui est réellement préoccupant — la liste est vide pour une entreprise saine.
+
+Ne **jamais** compter comme drapeau rouge :
+- une **donnée manquante** ou un cadre inapplicable / `DONNEES_MANQUANTES` — c'est une limite d'analyse, pas un signal (le mentionner plutôt dans `recommandation_prochaine_etape`) ;
+- une **variation marginale sous le seuil propre du cadre** (ex : DSO +3 % alors que le seuil C-Score est +10 % ; un seul sous-critère F-Score manqué dans un F-Score par ailleurs élevé ; marge brute en baisse de quelques dixièmes de point) ;
+- une **caractéristique sectorielle normale** (bilan bancaire, AQI mécaniquement gonflé d'un REIT, F-Score 1/3 d'une jeune entreprise non rentable — cf. Cadre 7).
+
+Cardinalité attendue : **0 pour une entreprise financièrement solide** (scores propres) ; chaque drapeau listé doit pouvoir être rattaché à l'un des signaux ci-dessus. Une société aux cinq cadres conformes ne devrait présenter aucun drapeau, ou au plus un à deux signaux mineurs réellement matériels.
+
 ---
 
 ## Cadre 7 — Inapplicabilités sectorielles
@@ -277,6 +288,7 @@ Règles strictes :
 - `f_score.criteria` doit contenir **exactement 9 objets** dans l'ordre : ROA > 0, CFO > 0, ROA en hausse, CFO > bénéfice net, Désendettement, Current ratio en hausse, Pas d'émission d'actions, Marge brute en hausse, Asset turnover en hausse.
 - `c_score.signaux` doit contenir **exactement 6 objets** dans l'ordre : Divergence NI-CFO, DSO en hausse, DIO en hausse, Autres actifs courants, Dépréciation réduite, Croissance actifs > 10 %.
 - `verdict` doit être exactement l'une de ces valeurs : `AUCUN_SIGNAL`, `ATTENTION`, `WATCHLIST`, `REJETER`.
+- `drapeaux_rouges` : voir la définition dédiée (Cadre 6) — uniquement des signaux matériels ancrés dans un cadre ; **jamais** une donnée manquante ni une variation sous le seuil du cadre. Vide pour une entreprise saine.
 - `interpretation` des scores : utiliser les valeurs exactes définies dans chaque cadre (ex : `non_manipulateur`, `zone_grise`, `manipulateur`, `zone_sure`, `zone_detresse`, `non_applicable`, `forte_qualite`, `bonne_qualite`, `qualite_moyenne`, `value_trap`, `propre`, `signaux_mineurs`, `signaux_multiples`, `qualite_elevee`, `neutre`, `qualite_degradee`, `DONNEES_MANQUANTES`). Pour M-Score et Z-Score, ces libellés sont recalculés de façon déterministe côté serveur — émets ta meilleure estimation, elle sera écrasée.
 - `cost_usd` est toujours `0.0` — l'orchestrateur l'injecte après l'appel.
 - Si une variable requise pour un score est `null`, calculer les autres variables disponibles et retourner `null` pour les variables manquantes, `null` pour le score agrégé, et `"DONNÉES_MANQUANTES"` comme interprétation.
