@@ -457,6 +457,156 @@ class TestEarningsQualitySkill:
         assert output.z_score.x5 is None
 
     @pytest.mark.asyncio
+    async def test_signaux_f_et_c_python_priment_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 142 : les critères F (passe) et signaux C (present) calculés en Python
+        écrasent les booléens du bloc LLM ; la somme reste cohérente avec le score agrégé."""
+        from app.services.financial_calculations import (
+            montier_c_signaux,
+            piotroski_f_criteria,
+        )
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        # Le LLM « hallucine » des booléens et scores incohérents.
+        data["f_score"]["criteria"][0]["passe"] = False
+        data["f_score"]["f_score"] = 1
+        data["c_score"]["signaux"][0]["present"] = True
+        data["c_score"]["c_score"] = 5
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        f_attendu = piotroski_f_criteria(
+            net_income_t=ratios_earnings_msft.net_income_t,
+            total_assets_t=ratios_earnings_msft.total_assets_t,
+            total_assets_t1=ratios_earnings_msft.total_assets_t1,
+            net_income_t1=ratios_earnings_msft.net_income_t1,
+            cfo_t=ratios_earnings_msft.cfo_t,
+            ltd_t=ratios_earnings_msft.ltd_t,
+            ltd_t1=ratios_earnings_msft.ltd_t1,
+            current_assets_t=ratios_earnings_msft.current_assets_t,
+            current_liabilities_t=ratios_earnings_msft.current_liabilities_t,
+            current_assets_t1=ratios_earnings_msft.current_assets_t1,
+            current_liabilities_t1=ratios_earnings_msft.current_liabilities_t1,
+            sales_t=ratios_earnings_msft.sales_t,
+            sales_t1=ratios_earnings_msft.sales_t1,
+            cogs_t=ratios_earnings_msft.cogs_t,
+            cogs_t1=ratios_earnings_msft.cogs_t1,
+            shares_issued_net=ratios_earnings_msft.shares_issued_net,
+        )
+        c_attendu = montier_c_signaux(
+            net_income_t=ratios_earnings_msft.net_income_t,
+            cfo_t=ratios_earnings_msft.cfo_t,
+            net_income_t1=ratios_earnings_msft.net_income_t1,
+            cfo_t1=ratios_earnings_msft.cfo_t1,
+            receivables_t=ratios_earnings_msft.receivables_t,
+            receivables_t1=ratios_earnings_msft.receivables_t1,
+            sales_t=ratios_earnings_msft.sales_t,
+            sales_t1=ratios_earnings_msft.sales_t1,
+            inventory_t=ratios_earnings_msft.inventory_t,
+            inventory_t1=ratios_earnings_msft.inventory_t1,
+            cogs_t=ratios_earnings_msft.cogs_t,
+            cogs_t1=ratios_earnings_msft.cogs_t1,
+            depreciation_t=ratios_earnings_msft.depreciation_t,
+            depreciation_t1=ratios_earnings_msft.depreciation_t1,
+            ppe_gross_t=ratios_earnings_msft.ppe_gross_t,
+            ppe_gross_t1=ratios_earnings_msft.ppe_gross_t1,
+            total_assets_t=ratios_earnings_msft.total_assets_t,
+            total_assets_t1=ratios_earnings_msft.total_assets_t1,
+        )
+        # Critères/signaux Python (booléens) remplacent ceux du LLM.
+        assert [c.passe for c in output.f_score.criteria] == [c.passe for c in f_attendu]
+        assert [s.present for s in output.c_score.signaux] == [s.present for s in c_attendu]
+        # Le poison du LLM est écrasé : ROA positif rétabli (True), divergence rétablie (False).
+        assert output.f_score.criteria[0].passe is True
+        assert output.c_score.signaux[0].present is False
+        # ROA en hausse non accordé (NI T-1 absent du fixture) → critère 3 conservé False.
+        assert output.f_score.criteria[2].nom == "ROA en hausse"
+        assert output.f_score.criteria[2].passe is False
+        # Invariant de cohérence après substitution : sum(passe) == f_score, idem C.
+        assert sum(c.passe for c in output.f_score.criteria) == output.f_score.f_score
+        assert sum(s.present for s in output.c_score.signaux) == output.c_score.c_score
+        # Les scores agrégés poison (1 et 5) sont écrasés par le Python déterministe.
+        assert output.c_score.c_score == 0
+
+    @pytest.mark.asyncio
+    async def test_financiere_garde_criteria_f_llm_mais_substitue_c(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """is_financial=True → Piotroski inapplicable : les critères F du LLM sont conservés.
+        Montier n'a pas de gate sectoriel → ses signaux restent substitués (parité avec le
+        comportement des scores agrégés f_score/c_score)."""
+        from app.services.financial_calculations import montier_c_signaux
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        # Marqueur reconnaissable sur les critères F du LLM (doivent survivre).
+        data["f_score"]["criteria"][0]["nom"] = "MARQUEUR_LLM"
+        data["c_score"]["signaux"][0]["present"] = True  # poison C → doit être écrasé
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        # F : critères LLM conservés (Piotroski None pour une financière).
+        assert output.f_score.criteria[0].nom == "MARQUEUR_LLM"
+        # C : signaux substitués par le Python déterministe (poison écrasé).
+        c_attendu = montier_c_signaux(
+            net_income_t=ratios_earnings_msft.net_income_t,
+            cfo_t=ratios_earnings_msft.cfo_t,
+            net_income_t1=ratios_earnings_msft.net_income_t1,
+            cfo_t1=ratios_earnings_msft.cfo_t1,
+            receivables_t=ratios_earnings_msft.receivables_t,
+            receivables_t1=ratios_earnings_msft.receivables_t1,
+            sales_t=ratios_earnings_msft.sales_t,
+            sales_t1=ratios_earnings_msft.sales_t1,
+            inventory_t=ratios_earnings_msft.inventory_t,
+            inventory_t1=ratios_earnings_msft.inventory_t1,
+            cogs_t=ratios_earnings_msft.cogs_t,
+            cogs_t1=ratios_earnings_msft.cogs_t1,
+            depreciation_t=ratios_earnings_msft.depreciation_t,
+            depreciation_t1=ratios_earnings_msft.depreciation_t1,
+            ppe_gross_t=ratios_earnings_msft.ppe_gross_t,
+            ppe_gross_t1=ratios_earnings_msft.ppe_gross_t1,
+            total_assets_t=ratios_earnings_msft.total_assets_t,
+            total_assets_t1=ratios_earnings_msft.total_assets_t1,
+        )
+        assert [s.present for s in output.c_score.signaux] == [s.present for s in c_attendu]
+        assert output.c_score.signaux[0].present is False
+
+    @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
         self,
         ratios_earnings_msft: EarningsQualityRatios,

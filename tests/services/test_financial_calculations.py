@@ -14,6 +14,8 @@ from app.services.financial_calculations import (
     beneish_m_score_detail,
     graham_number,
     montier_c_score,
+    montier_c_signaux,
+    piotroski_f_criteria,
     piotroski_f_score,
     sloan_accrual_ratio,
 )
@@ -229,6 +231,30 @@ class TestPiotroskiFScore:
         # net_income_t1 absent → critère 3 (ROA en hausse) non accordé : 7 au lieu de 8
         assert piotroski_f_score(**self._vecteur(net_income_t1=None)) == 7
 
+    def test_criteria_neuf_entrees_et_coherent_avec_score(self):
+        criteres = piotroski_f_criteria(**self._vecteur())
+        assert criteres is not None
+        assert len(criteres) == 9
+        # invariant Sprint 142 : la somme des critères passés == le score agrégé.
+        assert sum(1 for c in criteres if c.passe) == piotroski_f_score(**self._vecteur()) == 8
+        # rotation des actifs stable (1.0 == 1.0) → seul critère non passé (le 9e).
+        assert [c.passe for c in criteres] == [True] * 8 + [False]
+        assert criteres[8].nom == "Rotation des actifs en hausse"
+
+    def test_criteria_banque_none(self):
+        assert piotroski_f_criteria(**self._vecteur(is_financial=True)) is None
+
+    def test_criteria_profitabilite_manquante_none(self):
+        assert piotroski_f_criteria(**self._vecteur(net_income_t=None)) is None
+
+    def test_criteria_comparatif_manquant_neuf_entrees_mais_non_accorde(self):
+        # net_income_t1 absent → critère 3 (ROA en hausse) False, mais toujours 9 entrées.
+        criteres = piotroski_f_criteria(**self._vecteur(net_income_t1=None))
+        assert criteres is not None
+        assert len(criteres) == 9
+        assert criteres[2].passe is False
+        assert sum(1 for c in criteres if c.passe) == 7
+
 
 class TestMontierCScore:
     def _stable(self, **overrides):
@@ -251,6 +277,25 @@ class TestMontierCScore:
 
     def test_base_actifs_manquante_none(self):
         assert montier_c_score(**self._stable(total_assets_t1=None)) is None
+
+    def test_signaux_six_entrees_et_coherent_avec_score(self):
+        signaux = montier_c_signaux(**self._stable())
+        assert signaux is not None
+        assert len(signaux) == 6
+        assert all(not s.present for s in signaux)
+        # invariant Sprint 142 : la somme des signaux présents == le score agrégé.
+        assert sum(1 for s in signaux if s.present) == montier_c_score(**self._stable()) == 0
+        # signal 4 (« autres actifs courants ») jamais coché par construction.
+        assert signaux[3].present is False
+
+    def test_signaux_croissance_actifs_coche_signal_six(self):
+        signaux = montier_c_signaux(**self._stable(total_assets_t=1200))
+        assert signaux is not None
+        assert signaux[5].present is True
+        assert sum(1 for s in signaux if s.present) == 1
+
+    def test_signaux_base_actifs_manquante_none(self):
+        assert montier_c_signaux(**self._stable(total_assets_t1=None)) is None
 
 
 class TestSloanAccrualRatio:

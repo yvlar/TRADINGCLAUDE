@@ -142,6 +142,31 @@ class AltmanComponents:
     interpretation: str = "DONNEES_MANQUANTES"
 
 
+@dataclass(frozen=True)
+class PiotroskiCriterion:
+    """Un des 9 critères de Piotroski — libellé, booléen « passé » et détail (Sprint 142).
+
+    Les noms de champs (`nom`/`passe`/`detail`) reflètent ceux de `FScoreCriterion`
+    (schema Pydantic) → `asdict()` produit un dict directement substituable post-parse.
+    """
+
+    nom: str
+    passe: bool
+    detail: str
+
+
+@dataclass(frozen=True)
+class MontierSignal:
+    """Un des 6 signaux de Montier — libellé, booléen « présent » et détail (Sprint 142).
+
+    `nom`/`present`/`detail` reflètent `CScoreSignal` → substitution directe par `asdict()`.
+    """
+
+    nom: str
+    present: bool
+    detail: str
+
+
 def graham_number(eps: float | None, bvps: float | None) -> float | None:
     """
     Nombre de Graham : √(22.5 × EPS × BVPS) (variables-financieres.md).
@@ -395,6 +420,130 @@ def beneish_m_score(
     ).m_score
 
 
+def _pct(valeur: float | None) -> str:
+    """Formate un ratio en pourcentage pour un libellé de critère — « N/A » si None."""
+    return "N/A" if valeur is None else f"{valeur:.1%}"
+
+
+def _num(valeur: float | None) -> str:
+    """Formate un nombre à deux décimales pour un libellé de critère — « N/A » si None."""
+    return "N/A" if valeur is None else f"{valeur:.2f}"
+
+
+def piotroski_f_criteria(
+    *,
+    net_income_t: float | None,
+    total_assets_t: float | None,
+    total_assets_t1: float | None,
+    net_income_t1: float | None,
+    cfo_t: float | None,
+    ltd_t: float | None,
+    ltd_t1: float | None,
+    current_assets_t: float | None,
+    current_liabilities_t: float | None,
+    current_assets_t1: float | None,
+    current_liabilities_t1: float | None,
+    sales_t: float | None,
+    sales_t1: float | None,
+    cogs_t: float | None,
+    cogs_t1: float | None,
+    shares_issued_net: bool | None,
+    is_financial: bool = False,
+) -> list[PiotroskiCriterion] | None:
+    """
+    Détail des 9 critères de Piotroski — chacun porte son booléen et son libellé.
+    Mêmes seuils que `piotroski_f_score`, qui en dérive la somme : la cohérence
+    `sum(passe) == f_score` est garantie par construction. None dans les mêmes cas
+    que le score agrégé (financière, profitabilité de base manquante). Un critère
+    dont la donnée comparative manque vaut False (jamais accordé).
+    """
+    if is_financial:
+        return None
+    if net_income_t is None or total_assets_t is None or total_assets_t == 0 or cfo_t is None:
+        return None
+
+    roa_t = net_income_t / total_assets_t
+    roa_t1 = _ratio(net_income_t1, total_assets_t1)
+    ltd_ta_t = _ratio(ltd_t, total_assets_t)
+    ltd_ta_t1 = _ratio(ltd_t1, total_assets_t1)
+    cr_t = _ratio(current_assets_t, current_liabilities_t)
+    cr_t1 = _ratio(current_assets_t1, current_liabilities_t1)
+    gm_t = _ratio(_diff(sales_t, cogs_t), sales_t)
+    gm_t1 = _ratio(_diff(sales_t1, cogs_t1), sales_t1)
+    turnover_t = _ratio(sales_t, total_assets_t)
+    turnover_t1 = _ratio(sales_t1, total_assets_t1)
+
+    desendettement = ltd_ta_t is not None and ltd_ta_t1 is not None and ltd_ta_t < ltd_ta_t1
+    liquidite_hausse = cr_t is not None and cr_t1 is not None and cr_t > cr_t1
+    marge_hausse = gm_t is not None and gm_t1 is not None and gm_t > gm_t1
+    rotation_hausse = (
+        turnover_t is not None and turnover_t1 is not None and turnover_t > turnover_t1
+    )
+    emission_detail = (
+        "Aucune émission nette d'actions"
+        if shares_issued_net is False
+        else "Émission nette d'actions (dilution)"
+        if shares_issued_net is True
+        else "Émission nette d'actions inconnue"
+    )
+
+    return [
+        PiotroskiCriterion("ROA positif", roa_t > 0, f"ROA = {_pct(roa_t)}"),
+        PiotroskiCriterion(
+            "Flux de trésorerie d'exploitation positif",
+            cfo_t > 0,
+            "CFO positif" if cfo_t > 0 else "CFO négatif ou nul",
+        ),
+        PiotroskiCriterion(
+            "ROA en hausse",
+            roa_t1 is not None and roa_t > roa_t1,
+            f"ROA {_pct(roa_t)} vs {_pct(roa_t1)} (T-1)"
+            if roa_t1 is not None
+            else "ROA T-1 indisponible",
+        ),
+        PiotroskiCriterion(
+            "Flux de trésorerie supérieur au bénéfice net",
+            cfo_t > net_income_t,
+            "CFO supérieur au bénéfice net (accruals sains)"
+            if cfo_t > net_income_t
+            else "CFO inférieur ou égal au bénéfice net",
+        ),
+        PiotroskiCriterion(
+            "Dette long terme en baisse",
+            desendettement,
+            f"Dette LT/actifs {_pct(ltd_ta_t)} vs {_pct(ltd_ta_t1)} (T-1)"
+            if ltd_ta_t is not None and ltd_ta_t1 is not None
+            else "Dette LT ou actifs T-1 indisponibles",
+        ),
+        PiotroskiCriterion(
+            "Ratio de liquidité courante en hausse",
+            liquidite_hausse,
+            f"Ratio courant {_num(cr_t)} vs {_num(cr_t1)} (T-1)"
+            if cr_t is not None and cr_t1 is not None
+            else "Ratio courant T ou T-1 indisponible",
+        ),
+        PiotroskiCriterion(
+            "Aucune émission nette d'actions",
+            shares_issued_net is False,
+            emission_detail,
+        ),
+        PiotroskiCriterion(
+            "Marge brute en hausse",
+            marge_hausse,
+            f"Marge brute {_pct(gm_t)} vs {_pct(gm_t1)} (T-1)"
+            if gm_t is not None and gm_t1 is not None
+            else "Marge brute T ou T-1 indisponible",
+        ),
+        PiotroskiCriterion(
+            "Rotation des actifs en hausse",
+            rotation_hausse,
+            f"Rotation des actifs {_num(turnover_t)} vs {_num(turnover_t1)} (T-1)"
+            if turnover_t is not None and turnover_t1 is not None
+            else "Rotation des actifs T ou T-1 indisponible",
+        ),
+    ]
+
+
 def piotroski_f_score(
     *,
     net_income_t: float | None,
@@ -416,55 +565,117 @@ def piotroski_f_score(
     is_financial: bool = False,
 ) -> int | None:
     """
-    F-Score de Piotroski (2000) — 9 critères binaires (0-9). Financières → None
-    (marges/rotation d'actifs non comparables). None si la donnée de profitabilité
-    de base manque (NI_t, TA_t, CFO_t). Un critère dont la donnée comparative manque
-    n'est pas accordé (0 point) — le score reste un entier déterministe.
+    F-Score de Piotroski (2000) — somme des 9 critères (0-9). Dérivé de
+    `piotroski_f_criteria` (source unique des seuils) : None dans les mêmes cas
+    (financière, profitabilité de base manquante).
     """
-    if is_financial:
+    criteres = piotroski_f_criteria(
+        net_income_t=net_income_t,
+        total_assets_t=total_assets_t,
+        total_assets_t1=total_assets_t1,
+        net_income_t1=net_income_t1,
+        cfo_t=cfo_t,
+        ltd_t=ltd_t,
+        ltd_t1=ltd_t1,
+        current_assets_t=current_assets_t,
+        current_liabilities_t=current_liabilities_t,
+        current_assets_t1=current_assets_t1,
+        current_liabilities_t1=current_liabilities_t1,
+        sales_t=sales_t,
+        sales_t1=sales_t1,
+        cogs_t=cogs_t,
+        cogs_t1=cogs_t1,
+        shares_issued_net=shares_issued_net,
+        is_financial=is_financial,
+    )
+    return None if criteres is None else sum(1 for c in criteres if c.passe)
+
+
+def montier_c_signaux(
+    *,
+    net_income_t: float | None,
+    cfo_t: float | None,
+    net_income_t1: float | None,
+    cfo_t1: float | None,
+    receivables_t: float | None,
+    receivables_t1: float | None,
+    sales_t: float | None,
+    sales_t1: float | None,
+    inventory_t: float | None,
+    inventory_t1: float | None,
+    cogs_t: float | None,
+    cogs_t1: float | None,
+    depreciation_t: float | None,
+    depreciation_t1: float | None,
+    ppe_gross_t: float | None,
+    ppe_gross_t1: float | None,
+    total_assets_t: float | None,
+    total_assets_t1: float | None,
+) -> list[MontierSignal] | None:
+    """
+    Détail des 6 signaux de Montier — chacun porte son booléen et son libellé.
+    Mêmes seuils que `montier_c_score`, qui en dérive la somme. None si la base de
+    croissance des actifs manque (TA_t, TA_{t-1}). Signal #1 approximé sur T vs T-1 ;
+    signal #4 (« autres actifs courants ») non calculable depuis le contrat → jamais
+    coché. Un signal dont la donnée manque n'est pas coché (déterministe).
+    """
+    if total_assets_t is None or total_assets_t1 is None or total_assets_t1 == 0:
         return None
-    if net_income_t is None or total_assets_t is None or total_assets_t == 0 or cfo_t is None:
-        return None
 
-    score = 0
-    roa_t = net_income_t / total_assets_t
+    gap_t = _diff(net_income_t, cfo_t)
+    gap_t1 = _diff(net_income_t1, cfo_t1)
+    dso_index = _ratio(_ratio(receivables_t, sales_t), _ratio(receivables_t1, sales_t1))
+    dio_index = _ratio(_ratio(inventory_t, cogs_t), _ratio(inventory_t1, cogs_t1))
+    dep_index = _ratio(_ratio(depreciation_t, ppe_gross_t), _ratio(depreciation_t1, ppe_gross_t1))
+    croissance_ta = total_assets_t / total_assets_t1 - 1
 
-    # Profitabilité
-    if roa_t > 0:  # 1. ROA > 0
-        score += 1
-    if cfo_t > 0:  # 2. CFO > 0
-        score += 1
-    roa_t1 = _ratio(net_income_t1, total_assets_t1)
-    if roa_t1 is not None and roa_t > roa_t1:  # 3. ROA en hausse
-        score += 1
-    if cfo_t > net_income_t:  # 4. CFO > Net Income (qualité des accruals)
-        score += 1
+    divergence_calculable = gap_t is not None and gap_t1 is not None
+    # Comparaison réécrite inline (et non `divergence_calculable and …`) : mypy ne propage
+    # pas le narrowing None à travers une variable booléenne intermédiaire.
+    divergence = gap_t is not None and gap_t1 is not None and gap_t > gap_t1
 
-    # Levier, liquidité, source de fonds
-    ltd_ta_t = _ratio(ltd_t, total_assets_t)
-    ltd_ta_t1 = _ratio(ltd_t1, total_assets_t1)
-    if ltd_ta_t is not None and ltd_ta_t1 is not None and ltd_ta_t < ltd_ta_t1:  # 5. désendettement
-        score += 1
-    cr_t = _ratio(current_assets_t, current_liabilities_t)
-    cr_t1 = _ratio(current_assets_t1, current_liabilities_t1)
-    if cr_t is not None and cr_t1 is not None and cr_t > cr_t1:  # 6. current ratio en hausse
-        score += 1
-    if shares_issued_net is False:  # 7. pas d'émission nette d'actions
-        score += 1
-
-    # Efficacité opérationnelle
-    gm_t = _ratio(_diff(sales_t, cogs_t), sales_t)
-    gm_t1 = _ratio(_diff(sales_t1, cogs_t1), sales_t1)
-    if gm_t is not None and gm_t1 is not None and gm_t > gm_t1:  # 8. marge brute en hausse
-        score += 1
-    turnover_t = _ratio(sales_t, total_assets_t)
-    turnover_t1 = _ratio(sales_t1, total_assets_t1)
-    if (
-        turnover_t is not None and turnover_t1 is not None and turnover_t > turnover_t1
-    ):  # 9. asset turnover en hausse
-        score += 1
-
-    return score
+    return [
+        MontierSignal(
+            "Divergence bénéfice net / flux de trésorerie",
+            divergence,
+            "Écart bénéfice net / flux en hausse vs T-1"
+            if divergence
+            else "Écart bénéfice net / flux stable ou en baisse"
+            if divergence_calculable
+            else "Bénéfice net ou flux T-1 indisponible",
+        ),
+        MontierSignal(
+            "Jours de créances (DSO) en hausse",
+            dso_index is not None and dso_index > 1.10,
+            f"Indice DSO = {_num(dso_index)} (seuil 1.10)"
+            if dso_index is not None
+            else "Créances ou ventes indisponibles",
+        ),
+        MontierSignal(
+            "Jours d'inventaire (DIO) en hausse",
+            dio_index is not None and dio_index > 1.10,
+            f"Indice DIO = {_num(dio_index)} (seuil 1.10)"
+            if dio_index is not None
+            else "Inventaire ou COGS indisponible",
+        ),
+        MontierSignal(
+            "Autres actifs courants en hausse",
+            False,
+            "Non calculable depuis le contrat de données (jamais coché)",
+        ),
+        MontierSignal(
+            "Dépréciation / immobilisations brutes en baisse",
+            dep_index is not None and dep_index < 0.95,
+            f"Indice dépréciation/immobilisations = {_num(dep_index)} (seuil 0.95)"
+            if dep_index is not None
+            else "Dépréciation ou immobilisations brutes indisponibles",
+        ),
+        MontierSignal(
+            "Croissance du total des actifs > 10 %",
+            croissance_ta > 0.10,
+            f"Croissance des actifs {_pct(croissance_ta)} (seuil 10 %)",
+        ),
+    ]
 
 
 def montier_c_score(
@@ -489,45 +700,30 @@ def montier_c_score(
     total_assets_t1: float | None,
 ) -> int | None:
     """
-    C-Score de Montier (« Cooking the books ») — 6 signaux binaires (0-6).
-    None si la base de croissance des actifs manque (TA_t, TA_{t-1}).
-    Signal #1 approximé sur T vs T-1 (la version d'origine couvre 4 ans glissants) ;
-    signal #4 (« autres actifs courants ») non calculable depuis le contrat de données
-    → jamais coché. Un signal dont la donnée manque n'est pas coché (déterministe).
+    C-Score de Montier — somme des 6 signaux (0-6). Dérivé de `montier_c_signaux`
+    (source unique des seuils) : None si la base de croissance des actifs manque.
     """
-    if total_assets_t is None or total_assets_t1 is None or total_assets_t1 == 0:
-        return None
-
-    score = 0
-
-    # 1. Divergence NI vs CFO qui se creuse (proxy T vs T-1)
-    gap_t = _diff(net_income_t, cfo_t)
-    gap_t1 = _diff(net_income_t1, cfo_t1)
-    if gap_t is not None and gap_t1 is not None and gap_t > gap_t1:
-        score += 1
-
-    # 2. DSO en hausse > 10 %
-    dso_index = _ratio(_ratio(receivables_t, sales_t), _ratio(receivables_t1, sales_t1))
-    if dso_index is not None and dso_index > 1.10:
-        score += 1
-
-    # 3. DIO en hausse > 10 %
-    dio_index = _ratio(_ratio(inventory_t, cogs_t), _ratio(inventory_t1, cogs_t1))
-    if dio_index is not None and dio_index > 1.10:
-        score += 1
-
-    # 4. « Autres actifs courants » / ventes — non disponible, jamais coché.
-
-    # 5. Dépréciation / PPE brut en baisse > 5 %
-    dep_index = _ratio(_ratio(depreciation_t, ppe_gross_t), _ratio(depreciation_t1, ppe_gross_t1))
-    if dep_index is not None and dep_index < 0.95:
-        score += 1
-
-    # 6. Croissance du total des actifs > 10 %
-    if total_assets_t / total_assets_t1 - 1 > 0.10:
-        score += 1
-
-    return score
+    signaux = montier_c_signaux(
+        net_income_t=net_income_t,
+        cfo_t=cfo_t,
+        net_income_t1=net_income_t1,
+        cfo_t1=cfo_t1,
+        receivables_t=receivables_t,
+        receivables_t1=receivables_t1,
+        sales_t=sales_t,
+        sales_t1=sales_t1,
+        inventory_t=inventory_t,
+        inventory_t1=inventory_t1,
+        cogs_t=cogs_t,
+        cogs_t1=cogs_t1,
+        depreciation_t=depreciation_t,
+        depreciation_t1=depreciation_t1,
+        ppe_gross_t=ppe_gross_t,
+        ppe_gross_t1=ppe_gross_t1,
+        total_assets_t=total_assets_t,
+        total_assets_t1=total_assets_t1,
+    )
+    return None if signaux is None else sum(1 for s in signaux if s.present)
 
 
 def sloan_accrual_ratio(
