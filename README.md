@@ -1,10 +1,10 @@
-[![CI](https://github.com/yvlar/tradingClaude/actions/workflows/ci.yml/badge.svg)](https://github.com/yvlar/tradingClaude/actions/workflows/ci.yml)
+[![CI](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml/badge.svg)](https://github.com/yvlar/TRADINGCLAUDE/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg?logo=python&logoColor=white)](https://www.python.org/downloads/release/python-3110/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Claude API](https://img.shields.io/badge/Claude%20API-Tool%20Use-7C3AED)](https://docs.anthropic.com)
-[![Version](https://img.shields.io/badge/version-v10.3.0-2563EB)](ROADMAP.md)
+[![Version](https://img.shields.io/badge/version-v10.28.0-2563EB)](ROADMAP.md)
 
 # TradingClaude — Copilote d'analyse financière IA
 
@@ -12,7 +12,7 @@
 
 TradingClaude est un outil d'analyse fondamentale IA — pas un bot de trading algorithmique. Il structure et accélère la recherche sur les actions cotées (TSX, NYSE, NASDAQ) en appliquant simultanément plusieurs grilles d'analyse rigoureuses. Concrètement, une requête `POST /analyze` sur `BNS.TO` déclenche 16 frameworks en parallèle : Graham, Buffett, Dorsey, Klarman, Damodaran, et plus encore. La philosophie du projet est de transformer une discipline value investing reproductible en checklist IA exécutable — inspirée du four-pillar (ETF passif, thématique, valeur, systématique).
 
-**Version :** 10.3.0 — Phase 3 (Pipeline de synthèse) · **Tests :** 1 423 CI verts · 307 Vitest verts
+**Version :** 10.28.0 — Phase 3 (Pipeline de synthèse) · **Tests :** 1 660 CI verts · 428 Vitest verts
 
 ---
 
@@ -150,8 +150,8 @@ graph TD
 ### 1. Cloner et configurer
 
 ```bash
-git clone https://github.com/yvlar/tradingClaude.git
-cd tradingClaude
+git clone https://github.com/yvlar/TRADINGCLAUDE.git
+cd TRADINGCLAUDE
 cp .env.example .env
 # Éditer .env — ajouter au minimum ANTHROPIC_API_KEY
 ```
@@ -308,11 +308,11 @@ GET    /telemetry/eval-drift             Dérive des evals vs golden dataset
 ```bash
 # Backend — aucun token Claude consommé
 python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals
-# → 1 401 passed
+# → 1 660 passed, 3 skipped, 1 xfailed
 
 # Frontend
 cd frontend && npm run test
-# → 217 passed
+# → 428 passed
 
 # Lint + typecheck
 ruff check app/
@@ -334,7 +334,7 @@ cd frontend && npm run lint && npm run typecheck
 ## Structure du projet
 
 ```
-tradingClaude/
+TRADINGCLAUDE/
 ├── app/
 │   ├── api/
 │   │   ├── main.py             # FastAPI lifespan, tables idempotentes, app.state
@@ -412,4 +412,4 @@ MIT — voir [LICENSE](LICENSE).
 
 ---
 
-*TradingClaude — Yves Larivière, Québec · v10.3.0 · Phase 3 active · Dernière mise à jour : 2026-05-27*
+*TradingClaude — Yves Larivière, Québec · v10.28.0 · Phase 3 active · Dernière mise à jour : 2026-06-01*

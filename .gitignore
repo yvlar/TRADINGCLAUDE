@@ -62,6 +62,10 @@ analyses/
 reports/
 tmp_replacements.txt
 
+# Revues internes / audits / due diligence (non destinés à la publication)
+revue-*.md
+docs/revues/
+
 # Configuration locale Claude Code (permissions + chemins locaux)
 .claude/settings.local.json
 
