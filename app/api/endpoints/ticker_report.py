@@ -4,10 +4,12 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import TypeVar
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.services.composite_history_service import CompositeHistoryService
 from app.services.pdf_report_service import PdfReportService
@@ -187,10 +189,8 @@ async def _resolve_esg_score(
     return points[0].score if points else None
 
 
-def _extract_ratios(row) -> "GrahamRatios | None":
-    """Parse les ratios Graham depuis input_data ; None si absents ou non conformes."""
-    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
-
+def _parse_input_data(row) -> dict | None:
+    """Parse input_data persisté (JSONB) en dict ; None si absent, illisible ou vide."""
     raw = row["input_data"]
     if raw is None:
         return None
@@ -198,12 +198,51 @@ def _extract_ratios(row) -> "GrahamRatios | None":
         data: dict = json.loads(raw) if isinstance(raw, str) else dict(raw)
     except (ValueError, TypeError):
         return None
-    if not data:
+    return data or None
+
+
+def _extract_ratios(row) -> "GrahamRatios | None":
+    """Parse les ratios Graham depuis input_data ; None si absents ou non conformes."""
+    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+
+    data = _parse_input_data(row)
+    if data is None:
         return None
     try:
         return GrahamRatios.model_validate(data)
     except Exception:
         return None
+
+
+_RatiosT = TypeVar("_RatiosT", bound=BaseModel)
+
+
+def _extract_sub_ratios(row, key: str, model_cls: type[_RatiosT]) -> "_RatiosT | None":
+    """Valide la sous-clé `key` d'input_data en `model_cls` ; None si absente/illisible/non conforme."""
+    data = _parse_input_data(row)
+    if data is None:
+        return None
+    sous_data = data.get(key)
+    if not sous_data:
+        return None
+    try:
+        return model_cls.model_validate(sous_data)
+    except Exception:
+        return None
+
+
+def _extract_earnings_ratios(row) -> "EarningsQualityRatios | None":
+    """Parse les ratios earnings depuis la clé dédiée d'input_data ; None si absents/non conformes."""
+    from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
+
+    return _extract_sub_ratios(row, "earnings_ratios", EarningsQualityRatios)
+
+
+def _extract_valuation_ratios(row) -> "ValuationRatios | None":
+    """Parse les ratios valorisation depuis la clé dédiée d'input_data ; None si absents/non conformes."""
+    from app.skills.tier2.stock_valuation.schemas import ValuationRatios
+
+    return _extract_sub_ratios(row, "valuation_ratios", ValuationRatios)
 
 
 # Mapping clé du JSONB result → (champ AnalyzeResponse, classe Pydantic du skill)

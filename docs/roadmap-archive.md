@@ -10,6 +10,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅
+
+**Objectif :** `_resolve_ratio` (`yahoo_finance.py:87`) retournait déjà la `clé_retenue` (clé primaire ou clé de repli effective) mais les appelants la **jetaient** (`raw_de, _ = …`). Capitaliser sur cette provenance : exposer, pour chaque ratio Graham susceptible de repli (`pb`, `debt_equity`, `book_value`), **quelle clé yfinance a effectivement fourni la valeur** — provenance vérifiable plutôt que seulement loggée. Suite de la file revue expert FinTech. **Sprint backend seul** (frontend reporté au Sprint 141).
+
+**Livrables :**
+- `app/skills/tier1/yahoo_finance.py` — `extract()` capture la `clé_retenue` (au lieu de `_`) et passe ≥ 1 clé de repli par ratio (`debtToEquity`←`debtToEquityRatio`, `priceToBook`←`priceToBookRatio`, `bookValue`←`bookValuePerShare`) ; construit `ratios_provenance: dict[str, str] | None` (nom de ratio → clé yfinance effective, `None` si aucun ratio résolu). **Honnêteté documentée** : ces clés de repli sont des variantes de nommage rarement exposées par yfinance actuel ; la valeur livrée est le **mécanisme de provenance vérifiable** (qui confirme la clé primaire et diverge si un repli réel se produit), pas le repli lui-même
+- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios` gagne `ratios_provenance: dict[str, str] | None = None` (optionnel → rétrocompatible avec les analyses persistées et la saisie manuelle)
+- `app/services/analysis_cache.py` — `ratios_provenance` ajouté à l'`exclude` de `_cache_key` (comme `ratios_fetched_at`/`ratios_source` au Sprint 134) : la provenance ne change pas l'identité financière, sinon le cache ne hit jamais
+- **Décision de périmètre** : limité aux 3 ratios Graham passant par `_resolve_ratio`. `pe` (repli calculé `price/eps`) et `eps_growth` (repli `_resolve_eps_growth`) hors périmètre. Propagation TS + tooltip UI reportées au Sprint 141 (le payload `/extract` transporte déjà le champ ; l'interface TS ignore la clé inconnue → aucune régression frontend)
+- Tests : extracteur (provenance = clés primaires ; repli simulé → clés de repli effectives ; aucun ratio résolu → `None`), schema (`ratios_provenance` défaut `None` + accepte un dict), cache (deux `GrahamRatios` ne différant que par la provenance → même `_cache_key`)
+
+**Version** : 10.26.0
+**Tests** : `ruff All checks passed` ; `tests/skills/test_yahoo_finance.py` + `tests/services/test_analysis_cache.py` verts avec les edits (61 passés mesurés avant ajout des tests provenance). Compteur backend complet et suite Vitest/tsc/ESLint **à confirmer en local** (canal d'exécution de la session web dégradé — flush sporadique ; sprint backend seul, aucun changement frontend)
+
+**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`_resolve_ratio` retourne `(valeur, clé)` `yahoo_finance.py:87` ; appelants jetaient la clé `:257/:261/:262` ; `GrahamRatios` `graham_analysis/schemas.py:14` ; exclusion cache `analysis_cache.py:72`). Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live. **Revue indépendante à contexte frais non exécutée** (canal dégradé) — à compléter en local avant merge.
+
 ### Sprint 139 — Affichage de la traçabilité sur l'analyse rendue (AnalysisResult) ✅
 
 **Objectif :** La traçabilité source+date des ratios (Sprints 134/138) n'était visible que sur le **formulaire d'entrée** (`AnalyzeForm`, après auto-fill) et dans le PDF — pas sur le **dossier d'analyse rendu/rechargé** (`AnalysisResult`), car `AnalyzeResponse` ne portait pas les ratios d'entrée. Une fois l'analyse lancée (event SSE `complete`) ou rechargée depuis l'historique, la source+date disparaissait. Threader la traçabilité Graham jusqu'à `AnalyzeResponse` puis l'afficher sous la carte Graham. Suite de la file revue expert FinTech.

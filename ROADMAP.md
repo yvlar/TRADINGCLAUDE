@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-02 — Sprint 143 complété**
+**Dernière mise à jour : 2026-06-02 — Sprint 144 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.29.0 |
+| **Version** | 10.30.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 144 — Traçabilité source+date earnings/valuation dans le PDF |
-| **Dernier sprint complété** | Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M/Z) ✅ |
+| **Sprint actif** | Sprint 145 — Affichage PDF de la source+date earnings/valuation |
+| **Dernier sprint complété** | Sprint 144 — Persistance reconstructible des ratios earnings/valuation (input_data) ✅ |
 
 > **Sprint 137 exécuté (2026-05-31, evals Claude réelles)** — clé API temporaire fournie en session. `stock_valuation` (Sonnet, golden 5 cas) : **15 passed / 5 skipped / 0 failed** (8m50s) — la **substitution DCF déterministe (Sprint 132) survit à l'aller-retour tool-use réel** (valeur DCF + matrice = ossature Python), gate sectoriel financières/REIT correct. `earnings_quality` (Haiku, golden 20 cas) : **81 passed / 10 failed / 10 skipped** (33m45s) — **tous les scores déterministes M/Z/F/C/Sloan passent** (Sprints 128/131) et la concordance verdict globale ≥ 80 % tient ; les 10 échecs portent **uniquement sur des champs narratifs libres du LLM**, pas sur les calculs (voir « Drift earnings_quality » ci-dessous). Aucun lien avec le Sprint 140 (extraction tier1 uniquement).
 
@@ -84,6 +84,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 144 — Persistance reconstructible des ratios earnings/valuation (input_data) ✅
+
+**Objectif :** Le rapport PDF par ticker n'affichait la ligne « Source des ratios » que pour Graham. L'étendre aux ratios `EarningsQualityRatios`/`ValuationRatios` exigeait d'abord de **persister** leur source+date — or la réconciliation carte↔code a révélé que la prémisse « ratios earnings/valuation reconstructibles » était **fausse** : `analysis_history.input_data` ne stockait que `request.ratios` (Graham), et les sorties de skills (`result`) n'échoent pas les ratios d'entrée (`EarningsQualityOutput` `earnings_quality/schemas.py:161` et `StockValuationOutput` `stock_valuation/schemas.py:95` n'ont aucun champ `ratios`). Le périmètre a été **re-cadré (décision Yves) en sprint de persistance pure** : threader/persister les ratios earnings/valuation horodatés de façon reconstructible, **sans changement PDF visible** (l'affichage devient le Sprint 145). **Sprint backend pur** (aucun frontend, migration, ni prompt de skill).
+
+**Livrables :**
+- `app/orchestrator/core.py` — helper `_build_input_data(request) -> str` (`:292`) substitué au `json.dumps` inline du site de persistance `_persist` (`:1734`). Graham reste sérialisé **à plat** (les deux lecteurs valident `input_data` comme `GrahamRatios` ; `extra='ignore'` par défaut ignore les sous-clés → rétrocompat des lignes antérieures, **zéro changement des consommateurs**) ; `earnings_ratios`/`valuation_ratios` persistés sous **clés dédiées** (`model_dump(mode="json")` → datetime ISO), gardés par None.
+- `app/api/endpoints/ticker_report.py` — parsing factorisé `_parse_input_data(row) -> dict | None` (réutilisé par `_extract_ratios`, comportement Graham inchangé) + reconstructeurs `_extract_earnings_ratios` (`:234`) / `_extract_valuation_ratios` (`:241`) via un cœur générique typé `_extract_sub_ratios(row, key, model_cls)` (`:220`, `TypeVar` borné `BaseModel`) — **seam** pour l'affichage PDF différé, non encore câblé (intentionnel). Honnêteté None : sous-clé absente / `input_data` illisible / sous-dict malformé → `None`, jamais d'exception.
+- **Décision de périmètre** : persistance + reconstruction **uniquement**. Cache **non affecté** (`_cache_key` hashe l'objet `request.ratios`, jamais `input_data` — `analysis_cache.py`). Graham (affichage + reconstruction des deux consommateurs `ticker_report`/`report.py`) **byte-for-byte inchangé**. Source+date earnings/valuation portées seulement par les schémas d'entrée (`earnings_quality/schemas.py:69/73`, `stock_valuation/schemas.py:32/36`).
+- Tests : unitaires `_build_input_data` (forme persistée, None-safety, **pin rétrocompat** : `GrahamRatios.model_validate` ignore les sous-clés) ; intégration orchestrateur (input_data persisté porte les sous-clés quand la requête les fournit) ; reconstruction `ticker_report` (avec/sans horodatage, `input_data` illisible → pas de crash, sous-clé malformée → None, Graham intact malgré les sous-clés).
+
+**Version** : 10.30.0
+**Tests** : 1 680 backend collectés (1 676 passés, 3 skipped, 1 xfailed — +12) ; `ruff All checks passed` ; frontend inchangé (sprint backend pur).
+
+**Note d'environnement :** session web — **aucun prompt de skill ni l'orchestrateur (logique de routing) modifié → evals non concernées** (persistance pure ; l'output des skills est inchangé). `ANTHROPIC_API_KEY` absente du conteneur web → evals Claude réelles non exécutables ici de toute façon. Stack Docker non démarrée ; pas de test navigateur live. **Réconciliation carte↔code (STOP avant implémentation)** : la prémisse « earnings/valuation persistés/reconstructibles » s'est avérée fausse (`input_data` = `request.ratios` seul `core.py:1719` pré-sprint ; sorties de skills sans champ `ratios`) → re-cadrage en persistance pure validé par Yves avant tout code. Revue indépendante à contexte frais (sous-agent correctness high, distinct de la session auteur, nourri des critères d'acceptation) : **APPROVE — aucun bug HIGH/MED/LOW** (design `extra='ignore'` vérifié à l'exécution ; edge case graham None + earnings → `GrahamRatios.model_validate` échoue sur champs requis → None, parité avec le comportement antérieur ; cache non touché ; aucun autre lecteur d'`input_data`). Passe qualité `/simplify` (4 sous-agents reuse/simplification/efficacité/altitude) : efficacité/altitude **propres** (clés dédiées = bonne profondeur vs envelope qui forcerait à toucher les deux consommateurs + détection de version) ; **collapse** des deux reconstructeurs en cœur générique typé + wrappers (simplification) **appliqué** ; partage de `_parse_input_data` avec `report.py` (reuse) **écarté** — hors périmètre (report.py non touché ; à faire au Sprint 145 qui active les reconstructeurs).
+
 ### Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M-Score / Z-Score) ✅
 
 **Objectif :** Le Sprint 142 a rendu déterministes les *signaux* F/C (`criteria[].passe`, `signaux[].present`), mais les **libellés d'interprétation au niveau cadre** — `f_score.interpretation` et `c_score.interpretation` — restaient **produits par le LLM**, alors que les interprétations M/Z étaient déjà déterministes (Python, Sprint 131). Compléter la parité : dériver l'interprétation F/C du **score agrégé déjà déterministe** selon les seuils des références, et la substituer post-parse — même remède qui a éliminé la dérive de vocabulaire des golden M/Z. **Sprint backend pur** (frontend rend déjà le libellé verbatim, aucun changement requis).
@@ -128,22 +143,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 655 backend collectés (1 651 passés, 3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 428 Vitest verts (+3) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
 
 **Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Canal d'exécution vérifié (la sortie des commandes rend bien — contrairement au flush sporadique du Sprint 140). Réconciliation carte↔code : les prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`GrahamRatios.ratios_provenance` `graham_analysis/schemas.py:42` ; clés primaires `_resolve_ratio` `yahoo_finance.py:259-264` ; interface TS `GrahamRatios` `types/index.ts:50` ; `handleAutoFill` spread `result.graham` dans `ratios` `AnalyzeForm.tsx:60` ; patterns d'affichage à cloner `AnalyzeForm.tsx:172-177` / `AnalysisResult.tsx:211-216`). Phase A : `pytest`/`ruff` complets reconstatés verts (le Sprint 140 web n'avait pu confirmer que partiellement). Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur, nourri des critères d'acceptation) : **aucun bug HIGH/MED** ; 3 findings LOW — (1) double appel `ratiosEnRepli` **corrigé** (hoisté en `const repliRatios`) ; (2) dépendance au contrat backend (provenance = clé yfinance réelle) **vérifiée** (`yahoo_finance.py:269-273` n'émet jamais d'entrée à clé `None`) ; (3) badge potentiellement périmé si un 2ᵉ auto-fill omettait le champ **écarté** (le backend émet toujours `ratios_provenance`, et le comportement est identique aux champs `ratios_source`/`ratios_fetched_at` voisins). Stack Docker non démarrée. Pas de test navigateur live.
-
-### Sprint 140 — Exposition par ratio de la source de repli (`_resolve_ratio`) ✅
-
-**Objectif :** `_resolve_ratio` (`yahoo_finance.py:87`) retournait déjà la `clé_retenue` (clé primaire ou clé de repli effective) mais les appelants la **jetaient** (`raw_de, _ = …`). Capitaliser sur cette provenance : exposer, pour chaque ratio Graham susceptible de repli (`pb`, `debt_equity`, `book_value`), **quelle clé yfinance a effectivement fourni la valeur** — provenance vérifiable plutôt que seulement loggée. Suite de la file revue expert FinTech. **Sprint backend seul** (frontend reporté au Sprint 141).
-
-**Livrables :**
-- `app/skills/tier1/yahoo_finance.py` — `extract()` capture la `clé_retenue` (au lieu de `_`) et passe ≥ 1 clé de repli par ratio (`debtToEquity`←`debtToEquityRatio`, `priceToBook`←`priceToBookRatio`, `bookValue`←`bookValuePerShare`) ; construit `ratios_provenance: dict[str, str] | None` (nom de ratio → clé yfinance effective, `None` si aucun ratio résolu). **Honnêteté documentée** : ces clés de repli sont des variantes de nommage rarement exposées par yfinance actuel ; la valeur livrée est le **mécanisme de provenance vérifiable** (qui confirme la clé primaire et diverge si un repli réel se produit), pas le repli lui-même
-- `app/skills/tier2/graham_analysis/schemas.py` — `GrahamRatios` gagne `ratios_provenance: dict[str, str] | None = None` (optionnel → rétrocompatible avec les analyses persistées et la saisie manuelle)
-- `app/services/analysis_cache.py` — `ratios_provenance` ajouté à l'`exclude` de `_cache_key` (comme `ratios_fetched_at`/`ratios_source` au Sprint 134) : la provenance ne change pas l'identité financière, sinon le cache ne hit jamais
-- **Décision de périmètre** : limité aux 3 ratios Graham passant par `_resolve_ratio`. `pe` (repli calculé `price/eps`) et `eps_growth` (repli `_resolve_eps_growth`) hors périmètre. Propagation TS + tooltip UI reportées au Sprint 141 (le payload `/extract` transporte déjà le champ ; l'interface TS ignore la clé inconnue → aucune régression frontend)
-- Tests : extracteur (provenance = clés primaires ; repli simulé → clés de repli effectives ; aucun ratio résolu → `None`), schema (`ratios_provenance` défaut `None` + accepte un dict), cache (deux `GrahamRatios` ne différant que par la provenance → même `_cache_key`)
-
-**Version** : 10.26.0
-**Tests** : `ruff All checks passed` ; `tests/skills/test_yahoo_finance.py` + `tests/services/test_analysis_cache.py` verts avec les edits (61 passés mesurés avant ajout des tests provenance). Compteur backend complet et suite Vitest/tsc/ESLint **à confirmer en local** (canal d'exécution de la session web dégradé — flush sporadique ; sprint backend seul, aucun changement frontend)
-
-**Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`_resolve_ratio` retourne `(valeur, clé)` `yahoo_finance.py:87` ; appelants jetaient la clé `:257/:261/:262` ; `GrahamRatios` `graham_analysis/schemas.py:14` ; exclusion cache `analysis_cache.py:72`). Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live. **Revue indépendante à contexte frais non exécutée** (canal dégradé) — à compléter en local avant merge.
 
 ---
 

@@ -13,11 +13,17 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
-from app.api.endpoints.ticker_report import _reconstruct_analyze_response
+from app.api.endpoints.ticker_report import (
+    _extract_earnings_ratios,
+    _extract_ratios,
+    _extract_valuation_ratios,
+    _reconstruct_analyze_response,
+)
 from app.api.main import app
 from app.services.composite_history_service import CompositeHistoryPoint
 from app.services.pdf_report_service import PdfReportService, _build_ratios_rows
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -280,6 +286,8 @@ def _make_analysis_row(
     ticker: str = "BNS",
     earnings_output=None,
     ratios: GrahamRatios | None = None,
+    earnings_ratios=None,
+    valuation_ratios=None,
     analysis_id: str | None = None,
     skill_corrompu: bool = False,
 ) -> dict:
@@ -289,12 +297,17 @@ def _make_analysis_row(
         result["earnings_quality"] = earnings_output.model_dump()
     if skill_corrompu:
         result["dorsey_moat"] = {"champ_invalide": "data corrompue"}
+    input_payload: dict = ratios.model_dump(mode="json") if ratios is not None else {}
+    if earnings_ratios is not None:
+        input_payload["earnings_ratios"] = earnings_ratios.model_dump(mode="json")
+    if valuation_ratios is not None:
+        input_payload["valuation_ratios"] = valuation_ratios.model_dump(mode="json")
     return {
         "id": analysis_id or str(uuid.uuid4()),
         "ticker": ticker,
         "workflow_name": "value_graham",
         "skills_used": json.dumps(list(result.keys())),
-        "input_data": json.dumps(ratios.model_dump(mode="json") if ratios is not None else {}),
+        "input_data": json.dumps(input_payload),
         "result": json.dumps(result),
         "cost_usd": 0.0042,
         "created_at": datetime(2026, 5, 20, 12, 0, 0, tzinfo=timezone.utc),
@@ -377,6 +390,82 @@ class TestReconstructAnalyzeResponse:
         assert result is not None
         assert result.ratios_fetched_at is None
         assert result.ratios_source is None
+
+
+# ---------------------------------------------------------------------------
+# Tests : reconstruction earnings/valuation depuis input_data (sous-clés dédiées)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractEarningsValuationRatios:
+
+    def test_earnings_reconstruits_avec_tracabilite(
+        self, graham_output_msft, ratios_msft, ratios_earnings_msft
+    ):
+        """Sous-clé earnings_ratios horodatée → reconstruction avec source+date."""
+        earnings = ratios_earnings_msft.model_copy(
+            update={
+                "ratios_fetched_at": datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+                "ratios_source": "Yahoo Finance",
+            }
+        )
+        row = _make_analysis_row(
+            graham_output_msft, ticker="MSFT", ratios=ratios_msft, earnings_ratios=earnings
+        )
+        recon = _extract_earnings_ratios(row)
+        assert recon is not None
+        assert recon.ratios_source == "Yahoo Finance"
+        assert recon.ratios_fetched_at is not None
+
+    def test_valuation_reconstruits_avec_tracabilite(self, graham_output_msft, ratios_msft):
+        """Sous-clé valuation_ratios horodatée → reconstruction avec source+date."""
+        valuation = ValuationRatios(
+            pe=34.2,
+            ratios_fetched_at=datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        row = _make_analysis_row(
+            graham_output_msft, ticker="MSFT", ratios=ratios_msft, valuation_ratios=valuation
+        )
+        recon = _extract_valuation_ratios(row)
+        assert recon is not None
+        assert recon.ratios_source == "Yahoo Finance"
+        assert recon.pe == 34.2
+
+    def test_ligne_ancienne_sans_sous_cles_donne_none(self, graham_output_msft, ratios_msft):
+        """Ancienne ligne plate (Graham seul) → earnings/valuation None, pas de crash."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios_msft)
+        assert _extract_earnings_ratios(row) is None
+        assert _extract_valuation_ratios(row) is None
+
+    def test_input_data_illisible_donne_none(self, graham_output_msft, ratios_msft):
+        """input_data corrompu → None, jamais d'exception."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios_msft)
+        row["input_data"] = "{ pas du JSON valide"
+        assert _extract_earnings_ratios(row) is None
+        assert _extract_valuation_ratios(row) is None
+
+    def test_sous_cle_malformee_donne_none(self, graham_output_msft, ratios_msft):
+        """Sous-clé earnings_ratios non conforme au schéma → None, pas de crash."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios_msft)
+        data = json.loads(row["input_data"])
+        data["earnings_ratios"] = {"sales_t": "pas_un_nombre"}
+        row["input_data"] = json.dumps(data)
+        assert _extract_earnings_ratios(row) is None
+
+    def test_graham_intact_malgre_sous_cles(
+        self, graham_output_msft, ratios_msft, ratios_earnings_msft
+    ):
+        """Rétrocompat : _extract_ratios (Graham) reste correct quand input_data porte les sous-clés."""
+        row = _make_analysis_row(
+            graham_output_msft,
+            ticker="MSFT",
+            ratios=ratios_msft,
+            earnings_ratios=ratios_earnings_msft,
+        )
+        graham = _extract_ratios(row)
+        assert graham is not None
+        assert graham.price == 420.0
 
 
 # ---------------------------------------------------------------------------
