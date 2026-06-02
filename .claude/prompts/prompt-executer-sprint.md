@@ -112,7 +112,7 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
 > seuls la branche poussée et le numéro de PR sont nécessaires. Recommandé après
 > un gros sprint, quand le contexte de la Phase A est saturé.
 
-8. Ouvrir une PR vers `master` : titre court (< 70 car.), corps avec Résumé +
+8. Ouvrir une PR vers `dev` : titre court (< 70 car.), corps avec Résumé +
    Test plan ; via les outils GitHub MCP (jamais `gh`).
 9. S'abonner à l'activité de la PR (`subscribe_pr_activity`), puis vérifier l'état
    CI initial et les commentaires de revue. Corriger les échecs CI tractables et
