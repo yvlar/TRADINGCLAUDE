@@ -10,6 +10,23 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 139 — Affichage de la traçabilité sur l'analyse rendue (AnalysisResult) ✅
+
+**Objectif :** La traçabilité source+date des ratios (Sprints 134/138) n'était visible que sur le **formulaire d'entrée** (`AnalyzeForm`, après auto-fill) et dans le PDF — pas sur le **dossier d'analyse rendu/rechargé** (`AnalysisResult`), car `AnalyzeResponse` ne portait pas les ratios d'entrée. Une fois l'analyse lancée (event SSE `complete`) ou rechargée depuis l'historique, la source+date disparaissait. Threader la traçabilité Graham jusqu'à `AnalyzeResponse` puis l'afficher sous la carte Graham. Suite de la file revue expert FinTech.
+
+**Livrables :**
+- `app/orchestrator/core.py` — `AnalyzeResponse` gagne `ratios_fetched_at: str | None = None` et `ratios_source: str | None = None` (optionnels → rétrocompatibles avec les analyses persistées). **Choix de type : `str` ISO** (cohérent avec `created_at: str` déjà présent) plutôt que `datetime` — élimine tout hazard de sérialisation `json.dumps`-sur-`datetime` sur les chemins SSE/cache/persistance. Helper `_graham_ratios_trace(ratios) -> (date ISO | None, source | None)` centralisant la conversion `.isoformat()`, câblé aux 4 sites de construction (2 builds principaux sync/stream + 2 courts-circuits cache composite)
+- **Reconstruction depuis l'historique** : `app/api/endpoints/report.py` (la requête `get_report` sélectionne désormais `input_data` ; nouveau `_reconstruct_ratios_trace` parse `GrahamRatios` depuis le JSONB de façon défensive : None/vide/illisible → `(None, None)`) et `app/api/endpoints/ticker_report.py` (réutilise `_extract_ratios` existant + `_graham_ratios_trace`). Les hits cache Redis transportent le champ automatiquement (round-trip `model_dump_json`/`model_validate_json`)
+- `frontend/src/types/index.ts` — `interface AnalyzeResponse` gagne `ratios_fetched_at?`/`ratios_source?` (`string | null`, zéro `any`)
+- `frontend/src/components/AnalysisResult.tsx` — affiche « Source : … · récupéré le AAAA-MM-JJ » sous la carte Graham (`data-testid="result-ratios-source"`, `.slice(0,10)`), rien si `None` — clone du pattern `AnalyzeForm`
+- **Décision de périmètre** : limité à la traçabilité **Graham** (cohérent avec l'affichage existant). Earnings/valuation hors périmètre de ce sprint (PDF : Sprint 142)
+- Tests : schema (`AnalyzeResponse` accepte les champs + défaut `None`), helper `_graham_ratios_trace` (None/datetime/sans horodatage), reconstruction `report.py` et `ticker_report.py` (input_data avec/sans horodatage + `input_data` illisible → `None` sans crash), composant `AnalysisResult` (source+date affichées si présentes, rien sinon)
+
+**Version** : 10.25.0
+**Tests** : 1 646 backend collectés (1 642 passés, 3 skipped, 1 xfailed — +11) ; 425 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
+
+**Note d'environnement :** session web — sprint de threading/affichage, **aucun prompt de skill ni l'orchestrateur (logique de routing) modifié → evals non concernées**. `node_modules` frontend installé à l'amorçage (`npm install`). Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`AnalyzeResponse` sans champ ratios `core.py:237`, `AnalyzeRequest.ratios` `core.py:213`, `GrahamRatios.ratios_fetched_at/source` `graham_analysis/schemas.py:34-41`, `interface AnalyzeResponse` `types/index.ts:449`, clé de cache excluant déjà les champs trace `analysis_cache.py:72`). **Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur)** : aucun bug HIGH/MED ; 1 finding LOW (le `json.loads` non gardé de `_extract_ratios` dans `ticker_report.py`, pré-existant mais désormais sur un chemin de rechargement) **corrigé** (try/except symétrique au chemin report.py + test de régression `test_input_data_corrompu_ne_fait_pas_crasher`). Passe qualité : helper déjà DRY ; asymétrie report.py self-contained vs ticker_report réutilisant `_extract_ratios` **écartée** (intentionnelle — un import inter-endpoints serait pire). Stack Docker non démarrée. Pas de test navigateur live.
+
 ### Sprint 138 — Traçabilité source+date étendue (ValuationRatios + EarningsQualityRatios) ✅
 
 **Objectif :** Le Sprint 134 n'avait posé la traçabilité source+date (`donnees-financieres.md` : « une donnée sans date est inutilisable ») que sur `GrahamRatios`. Les ratios de valorisation (`ValuationRatios`) et de qualité comptable (`EarningsQualityRatios`) extraits de Yahoo Finance restaient sans horodatage de récupération. Étendre le pattern à ces deux schemas + leurs extracteurs tier1, et l'exposer côté frontend (type + affichage earnings). Suite de la file revue expert FinTech.

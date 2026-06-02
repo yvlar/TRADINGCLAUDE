@@ -8,11 +8,20 @@ import pytest
 from pydantic import ValidationError
 
 
-def _earnings_tool_use_response(output: "EarningsQualityOutput", **usage_overrides) -> MagicMock:
-    """Construit une réponse Anthropic simulée avec bloc tool_use pour earnings_quality."""
+def _earnings_tool_use_response(
+    output: "EarningsQualityOutput | None" = None,
+    *,
+    data: dict | None = None,
+    **usage_overrides,
+) -> MagicMock:
+    """Construit une réponse Anthropic simulée avec bloc tool_use pour earnings_quality.
+
+    `data` permet d'injecter un payload LLM déjà « empoisonné » (champ mutilé) sans repasser
+    par un EarningsQualityOutput valide ; sinon le dump de `output` est utilisé.
+    """
     mock_block = MagicMock()
     mock_block.type = "tool_use"
-    mock_block.input = output.model_dump(exclude={"confidence_score"})
+    mock_block.input = data if data is not None else output.model_dump(exclude={"confidence_score"})
     mock_response = MagicMock()
     mock_response.content = [mock_block]
     mock_response.stop_reason = "tool_use"
@@ -605,6 +614,73 @@ class TestEarningsQualitySkill:
         )
         assert [s.present for s in output.c_score.signaux] == [s.present for s in c_attendu]
         assert output.c_score.signaux[0].present is False
+
+    @pytest.mark.asyncio
+    async def test_interpretation_f_et_c_python_priment_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 143 : l'interprétation cadre F/C dérivée du score Python déterministe
+        écrase le libellé du bloc LLM (parité avec M/Z, Sprint 131)."""
+        from app.skills.tier2.earnings_quality.skill import _scores_depuis_ratios
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        # Le LLM « hallucine » des libellés d'interprétation incohérents.
+        data["f_score"]["interpretation"] = "POISON_F_LLM"
+        data["c_score"]["interpretation"] = "POISON_C_LLM"
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        attendus = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        # Le poison LLM est écrasé par le libellé dérivé du score agrégé déterministe.
+        assert output.f_score.interpretation == attendus.f_interpretation
+        assert output.c_score.interpretation == attendus.c_interpretation
+        assert output.f_score.interpretation != "POISON_F_LLM"
+        assert output.c_score.interpretation != "POISON_C_LLM"
+        # Cohérence libellé ↔ score : l'interprétation correspond au seuil du score agrégé.
+        from app.services.financial_calculations import (
+            _montier_interpretation,
+            _piotroski_interpretation,
+        )
+        assert output.f_score.interpretation == _piotroski_interpretation(output.f_score.f_score)
+        assert output.c_score.interpretation == _montier_interpretation(output.c_score.c_score)
+
+    @pytest.mark.asyncio
+    async def test_financiere_garde_interpretation_f_llm_mais_substitue_c(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """is_financial=True → F-Score inapplicable (gate None) : l'interprétation F du LLM
+        survit. Montier n'a pas de gate sectoriel → l'interprétation C reste substituée."""
+        from app.services.financial_calculations import _montier_interpretation
+        from app.skills.tier2.earnings_quality.skill import _scores_depuis_ratios
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        data["f_score"]["interpretation"] = "MARQUEUR_F_LLM"  # doit survivre (gate None)
+        data["c_score"]["interpretation"] = "POISON_C_LLM"  # doit être écrasé
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        # F : interprétation LLM conservée (Piotroski None pour une financière).
+        assert output.f_score.interpretation == "MARQUEUR_F_LLM"
+        # C : interprétation substituée par le libellé déterministe (poison écrasé).
+        attendus = _scores_depuis_ratios(ratios_earnings_msft, is_financial=True)
+        assert output.c_score.interpretation == attendus.c_interpretation
+        assert output.c_score.interpretation == _montier_interpretation(output.c_score.c_score)
+        assert output.c_score.interpretation != "POISON_C_LLM"
 
     @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
