@@ -36,6 +36,7 @@ from tests.e2e.fixtures.claude_stubs import (
     thesis_stub,
     valuation_stub,
 )
+from tests.e2e.fixtures.personas import PERSONAS, InMemoryUserService
 
 # ---------------------------------------------------------------------------
 # Paths à patcher (identiques au conftest parent)
@@ -319,6 +320,10 @@ def backend_server():
         app.state.yahoo_extractor = yahoo_mock
         # Override aussi l'extractor interne du screener
         app.state.screener._extractor = yahoo_mock
+        # Service utilisateur en mémoire avec personas — rend le flux email/mot de
+        # passe + JWT cookie réellement traversable (le pool asyncpg mocké ne sait
+        # pas authentifier). auth_token_service reste réel (JWT + fakeredis).
+        app.state.user_service = InMemoryUserService.with_personas()
 
         yield
 
@@ -354,3 +359,68 @@ def authenticated_page(page):
     page.goto("http://localhost:5173/")
     page.wait_for_selector("nav", timeout=10_000)
     return page
+
+
+# ---------------------------------------------------------------------------
+# Fixtures auth réelle (cookie JWT) + personas + monitoring — Sprint E2E QA
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def clean_context(backend_server, playwright):
+    """Contexte SANS api_token en localStorage — exerce le vrai flux cookie JWT.
+
+    Indispensable pour les parcours d'auth : `browser_context` injecte un Bearer
+    token qui court-circuite la session cookie et masquerait les régressions.
+    """
+    browser = playwright.chromium.launch(headless=True)
+    context = browser.new_context(base_url="http://localhost:5173")
+    yield context
+    context.close()
+    browser.close()
+
+
+@pytest.fixture
+def clean_page(clean_context):
+    """Page fraîche sans session — point de départ des tests de login/register."""
+    p = clean_context.new_page()
+    yield p
+    p.close()
+
+
+@pytest.fixture
+def login_as(clean_context):
+    """Factory : connecte un persona via l'UI réelle et retourne sa page authentifiée."""
+    from tests.e2e.pages.auth_pages import LoginPage
+
+    def _login(persona_key: str = "standard"):
+        persona = PERSONAS[persona_key]
+        p = clean_context.new_page()
+        login = LoginPage(p).goto()
+        login.login(persona.email, persona.password)
+        p.wait_for_url("http://localhost:5173/", timeout=10_000)
+        p.wait_for_selector("nav", timeout=10_000)
+        return p
+
+    return _login
+
+
+@pytest.fixture
+def standard_page(login_as):
+    """Page authentifiée en tant qu'utilisateur standard (cas nominal)."""
+    return login_as("standard")
+
+
+@pytest.fixture
+def admin_page(login_as):
+    """Page authentifiée en tant qu'administrateur."""
+    return login_as("admin")
+
+
+@pytest.fixture
+def monitor(page):
+    """Attache un PageMonitor à la page par défaut (console + réseau + React)."""
+    from tests.e2e.helpers.monitoring import PageMonitor
+
+    with PageMonitor(page) as mon:
+        yield mon
