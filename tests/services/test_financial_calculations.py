@@ -342,6 +342,27 @@ class TestInterpretationsDeterministes:
         assert _beneish_interpretation(None, False) == "DONNEES_MANQUANTES"
         assert _beneish_interpretation(-5.0, True) == "non_applicable"
 
+    def test_piotroski_par_seuil(self):
+        from app.services.financial_calculations import _piotroski_interpretation
+        assert _piotroski_interpretation(9) == "forte_qualite"
+        assert _piotroski_interpretation(8) == "forte_qualite"
+        assert _piotroski_interpretation(7) == "bon"
+        assert _piotroski_interpretation(6) == "moyen"
+        assert _piotroski_interpretation(4) == "moyen"
+        assert _piotroski_interpretation(3) == "qualite_degradee"
+        assert _piotroski_interpretation(0) == "qualite_degradee"
+        assert _piotroski_interpretation(None) == "DONNEES_MANQUANTES"
+
+    def test_montier_par_seuil(self):
+        from app.services.financial_calculations import _montier_interpretation
+        assert _montier_interpretation(0) == "propre"
+        assert _montier_interpretation(1) == "propre"
+        assert _montier_interpretation(2) == "surveiller"
+        assert _montier_interpretation(3) == "surveiller"
+        assert _montier_interpretation(4) == "manipulation_probable"
+        assert _montier_interpretation(6) == "manipulation_probable"
+        assert _montier_interpretation(None) == "DONNEES_MANQUANTES"
+
     def test_detail_expose_interpretation(self):
         # Z = 3.575 (vecteur sain) → zone_sure ; M stable = -2.48 → non_manipulateur.
         z = altman_z_score_detail(

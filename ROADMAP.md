@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-01 — Sprint 142 complété**
+**Dernière mise à jour : 2026-06-02 — Sprint 143 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.28.0 |
+| **Version** | 10.29.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M/Z) |
-| **Dernier sprint complété** | Sprint 142 — Calculs déterministes : signaux détaillés F-Score / C-Score ✅ |
+| **Sprint actif** | Sprint 144 — Traçabilité source+date earnings/valuation dans le PDF |
+| **Dernier sprint complété** | Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M/Z) ✅ |
 
 > **Sprint 137 exécuté (2026-05-31, evals Claude réelles)** — clé API temporaire fournie en session. `stock_valuation` (Sonnet, golden 5 cas) : **15 passed / 5 skipped / 0 failed** (8m50s) — la **substitution DCF déterministe (Sprint 132) survit à l'aller-retour tool-use réel** (valeur DCF + matrice = ossature Python), gate sectoriel financières/REIT correct. `earnings_quality` (Haiku, golden 20 cas) : **81 passed / 10 failed / 10 skipped** (33m45s) — **tous les scores déterministes M/Z/F/C/Sloan passent** (Sprints 128/131) et la concordance verdict globale ≥ 80 % tient ; les 10 échecs portent **uniquement sur des champs narratifs libres du LLM**, pas sur les calculs (voir « Drift earnings_quality » ci-dessous). Aucun lien avec le Sprint 140 (extraction tier1 uniquement).
 
@@ -23,7 +23,7 @@
 
 #### API FastAPI (localhost:8000)
 - `GET /healthz` — vérifie le processus, PostgreSQL et Qdrant
-- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128) ; **sous-composantes auditables** (8 indices Beneish DSRI/GMI/… + termes X1-X5 Altman ; **+ critères détaillés F-Score (9 Piotroski) et signaux C-Score (6 Montier) — booléen `passe`/`present` par signal, Sprint 142**) également calculées en Python et persistées dans l'output — `sum(passe) == f_score` / `sum(present) == c_score` par construction, analyse entièrement rejouable (Sprint 131) ; **ossature DCF déterministe** (`stock_valuation`) — WACC (CMPC), valeur intrinsèque DCF par action et matrice de sensibilité WACC×g calculées en Python (`app/services/valuation_calculations.py`) et substituées au bloc LLM ; le modèle conserve comparables, sectoriel et verdict ; financières/REIT exclues du DCF (méthode sectorielle prime) (Sprint 132)
+- `POST /analyze` — 16 skills tier2 + cache Redis + cache composite_score < 24h (Sprint 65 — circuit court DB) ; **scores financiers déterministes** (Altman Z, Beneish M, Piotroski F, Montier C, Sloan, Nombre de Graham) calculés en Python (`app/services/financial_calculations.py`) et substitués au bloc LLM — le modèle interprète, il ne produit plus les chiffres (Sprint 128) ; **sous-composantes auditables** (8 indices Beneish DSRI/GMI/… + termes X1-X5 Altman ; **+ critères détaillés F-Score (9 Piotroski) et signaux C-Score (6 Montier) — booléen `passe`/`present` par signal, Sprint 142** ; **+ libellés d'interprétation au niveau cadre F/C — `f_score.interpretation`/`c_score.interpretation` dérivés du score agrégé déterministe en Python et substitués post-parse, parité avec M/Z, Sprint 143**) également calculées en Python et persistées dans l'output — `sum(passe) == f_score` / `sum(present) == c_score` par construction, analyse entièrement rejouable (Sprint 131) ; **ossature DCF déterministe** (`stock_valuation`) — WACC (CMPC), valeur intrinsèque DCF par action et matrice de sensibilité WACC×g calculées en Python (`app/services/valuation_calculations.py`) et substituées au bloc LLM ; le modèle conserve comparables, sectoriel et verdict ; financières/REIT exclues du DCF (méthode sectorielle prime) (Sprint 132)
 - `POST /screen` — screener multi-tickers (max 20, asyncio.gather + Semaphore) ; `ScreenEntry.analyzed_at` = date ISO de l'analyse sous-jacente (cache ou fraîche), None pour les échecs (Sprint 109)
 - `DELETE /cache/{ticker}` — invalidation cache admin
 - `GET /history?ticker=BNS` — historique paginé par cursor ; `?q=ACHAT` pour recherche cross-ticker (Sprint 73) ; `?tags=value,growth` filtre les analyses dont l'annotation porte TOUS les tags (`@>` sur `annotations.tags TEXT[]`, index GIN ; aussi sur `/history-paged`) (Sprint 126)
@@ -84,6 +84,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M/Z) ✅
+
+**Objectif :** Le Sprint 142 a rendu déterministes les *signaux* détaillés F/C, mais les **libellés d'interprétation au niveau cadre** — `f_score.interpretation` et `c_score.interpretation` — restaient **produits par le LLM**, alors que M-Score / Z-Score sont déjà déterministes (Python, Sprint 131). Compléter la parité : dériver l'interprétation F/C du **score agrégé déjà déterministe** selon les seuils des références, et la substituer post-parse — même remède qui a éliminé la dérive de vocabulaire des golden M/Z. **Sprint backend pur** (aucun frontend, migration ni prompt de skill).
+
+**Livrables :**
+- `app/services/financial_calculations.py` — fonctions pures `_piotroski_interpretation(f_score: int | None) -> str` et `_montier_interpretation(c_score: int | None) -> str`, calquées sur `_beneish_interpretation` (signature `int | None → str`, sentinelle ASCII `DONNEES_MANQUANTES` pour None, libellé par seuil). Seuils des références : F 8-9 `forte_qualite` / 7 `bon` / 4-6 `moyen` / 0-3 `qualite_degradee` ; C 0-1 `propre` / 2-3 `surveiller` / 4-6 `manipulation_probable`. Vocabulaire réconcilié avec la fixture `earnings_output_msft` (`forte_qualite`/`propre`)
+- `app/skills/tier2/earnings_quality/skill.py` — `_ScoresDeterministes` gagne `f_interpretation`/`c_interpretation: str | None` ; `_scores_depuis_ratios` hisse `f_score`/`c_score` en locaux (calculés une fois, réutilisés pour le champ ET l'interprétation) et dérive l'interprétation du score agrégé (`None` quand le score l'est). `_injecter_scores` écrit `data["f_score"]["interpretation"]`/`data["c_score"]["interpretation"]` sous le **même gate None** que `criteria`/`signaux` (Sprint 142) → sous le gate, l'interprétation est garantie non-None (jamais de None injecté dans le champ `str` requis). Financière → `f_criteria` None → libellé F du LLM conservé ; Montier sans gate sectoriel → interprétation C toujours substituée (parité Sprint 142)
+- **Décision de périmètre** : interprétation F/C **uniquement**. M/Z (Sprint 131), `criteria`/`signaux`/scores agrégés (Sprint 142) non touchés ; prompt de skill et `_build_user_message` inchangés. Le frontend rend `interpretation` en texte libre (italique) sans matching de chaîne → aucun changement d'affichage requis ; le golden n'assertit que sur M/Z (pas F/C) → aucune réconciliation golden nécessaire
+- Tests : unitaires `financial_calculations` (`_piotroski_interpretation`/`_montier_interpretation` par seuil 8-9/7/4-6/0-3 et 0-1/2-3/4-6, `None → DONNEES_MANQUANTES`) ; intégration `skill.py` (Claude mocké : poison LLM `POISON_F`/`POISON_C` écrasé par le libellé dérivé du score ; financière → libellé F LLM conservé, C substitué)
+
+**Version** : 10.29.0
+**Tests** : 1 668 backend collectés (1 664 passés, 3 skipped, 1 xfailed — +4) ; `ruff All checks passed` ; frontend inchangé (sprint backend pur).
+
+**Note d'environnement :** session web — **prompt de skill et orchestrateur NON modifiés** (substitution post-parse uniquement), mais l'output `earnings_quality` change (`interpretation` F/C déterministe) → **evals ciblées à relancer en local** : `ANTHROPIC_API_KEY` absente du conteneur web → evals Claude réelles non exécutées ici. Stack Docker non démarrée ; pas de test navigateur live. Réconciliation carte↔code : prémisses du chemin critique vérifiées avant implémentation (`FScoreDetail.interpretation`/`CScoreDetail.interpretation` `schemas.py:141/153` ; précédent `_beneish_interpretation`/`_altman_interpretation` `financial_calculations.py:71/91` ; gate `_injecter_scores` `skill.py:183-190` ; golden n'assertit que M/Z ; frontend rend `interpretation` en texte libre). Revue indépendante à contexte frais (sous-agent correctness high, distinct de la session auteur, nourri des critères d'acceptation) : **APPROVE — aucun bug HIGH/MED/LOW** (chaîne `f_criteria None ⟺ f_score None ⟺ f_interpretation None` étanche → jamais de None dans le champ `str` requis ; seuils sans off-by-one aux bornes 7/4/1 ; asymétrie financière F/C correcte ; M/Z intacts). Passe qualité `/simplify` : **propre** — extension fidèle du pattern Sprint 131/142, hoisting `f_score`/`c_score` = DRY correct (calcul unique), altitude juste (pas de fausse dataclass detail pour F/C) ; aucune suggestion.
+
 ### Sprint 142 — Calculs déterministes : signaux détaillés F-Score / C-Score ✅
 
 **Objectif :** Seuls les **scores agrégés** F-Score (0-9) et C-Score (0-6) étaient déterministes (Python, Sprints 128/131) ; les **signaux individuels** — `f_score.criteria[].passe` (9 critères Piotroski) et `c_score.signaux[].present` (6 signaux Montier) — restaient interprétés par le LLM, donc non rejouables et susceptibles de diverger du score agrégé qu'ils composent. Les calculer en Python et les substituer post-parse, en cohérence stricte avec le score agrégé. Suite de la file revue expert FinTech. **Sprint backend pur** (aucun frontend, migration ni prompt de skill).
@@ -129,23 +144,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : `ruff All checks passed` ; `tests/skills/test_yahoo_finance.py` + `tests/services/test_analysis_cache.py` verts avec les edits (61 passés mesurés avant ajout des tests provenance). Compteur backend complet et suite Vitest/tsc/ESLint **à confirmer en local** (canal d'exécution de la session web dégradé — flush sporadique ; sprint backend seul, aucun changement frontend)
 
 **Note d'environnement :** session web — extraction tier1 = données brutes, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`_resolve_ratio` retourne `(valeur, clé)` `yahoo_finance.py:87` ; appelants jetaient la clé `:257/:261/:262` ; `GrahamRatios` `graham_analysis/schemas.py:14` ; exclusion cache `analysis_cache.py:72`). Stack Docker non démarrée → extraction yfinance sur mocks. Pas de test navigateur live. **Revue indépendante à contexte frais non exécutée** (canal dégradé) — à compléter en local avant merge.
-
-### Sprint 139 — Affichage de la traçabilité sur l'analyse rendue (AnalysisResult) ✅
-
-**Objectif :** La traçabilité source+date des ratios (Sprints 134/138) n'était visible que sur le **formulaire d'entrée** (`AnalyzeForm`, après auto-fill) et dans le PDF — pas sur le **dossier d'analyse rendu/rechargé** (`AnalysisResult`), car `AnalyzeResponse` ne portait pas les ratios d'entrée. Une fois l'analyse lancée (event SSE `complete`) ou rechargée depuis l'historique, la source+date disparaissait. Threader la traçabilité Graham jusqu'à `AnalyzeResponse` puis l'afficher sous la carte Graham. Suite de la file revue expert FinTech.
-
-**Livrables :**
-- `app/orchestrator/core.py` — `AnalyzeResponse` gagne `ratios_fetched_at: str | None = None` et `ratios_source: str | None = None` (optionnels → rétrocompatibles avec les analyses persistées). **Choix de type : `str` ISO** (cohérent avec `created_at: str` déjà présent) plutôt que `datetime` — élimine tout hazard de sérialisation `json.dumps`-sur-`datetime` sur les chemins SSE/cache/persistance. Helper `_graham_ratios_trace(ratios) -> (date ISO | None, source | None)` centralisant la conversion `.isoformat()`, câblé aux 4 sites de construction (2 builds principaux sync/stream + 2 courts-circuits cache composite)
-- **Reconstruction depuis l'historique** : `app/api/endpoints/report.py` (la requête `get_report` sélectionne désormais `input_data` ; nouveau `_reconstruct_ratios_trace` parse `GrahamRatios` depuis le JSONB de façon défensive : None/vide/illisible → `(None, None)`) et `app/api/endpoints/ticker_report.py` (réutilise `_extract_ratios` existant + `_graham_ratios_trace`). Les hits cache Redis transportent le champ automatiquement (round-trip `model_dump_json`/`model_validate_json`)
-- `frontend/src/types/index.ts` — `interface AnalyzeResponse` gagne `ratios_fetched_at?`/`ratios_source?` (`string | null`, zéro `any`)
-- `frontend/src/components/AnalysisResult.tsx` — affiche « Source : … · récupéré le AAAA-MM-JJ » sous la carte Graham (`data-testid="result-ratios-source"`, `.slice(0,10)`), rien si `None` — clone du pattern `AnalyzeForm`
-- **Décision de périmètre** : limité à la traçabilité **Graham** (cohérent avec l'affichage existant). Earnings/valuation hors périmètre de ce sprint (PDF : Sprint 142)
-- Tests : schema (`AnalyzeResponse` accepte les champs + défaut `None`), helper `_graham_ratios_trace` (None/datetime/sans horodatage), reconstruction `report.py` et `ticker_report.py` (input_data avec/sans horodatage + `input_data` illisible → `None` sans crash), composant `AnalysisResult` (source+date affichées si présentes, rien sinon)
-
-**Version** : 10.25.0
-**Tests** : 1 646 backend collectés (1 642 passés, 3 skipped, 1 xfailed — +11) ; 425 Vitest verts (+2) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — sprint de threading/affichage, **aucun prompt de skill ni l'orchestrateur (logique de routing) modifié → evals non concernées**. `node_modules` frontend installé à l'amorçage (`npm install`). Réconciliation carte↔code : prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`AnalyzeResponse` sans champ ratios `core.py:237`, `AnalyzeRequest.ratios` `core.py:213`, `GrahamRatios.ratios_fetched_at/source` `graham_analysis/schemas.py:34-41`, `interface AnalyzeResponse` `types/index.ts:449`, clé de cache excluant déjà les champs trace `analysis_cache.py:72`). **Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur)** : aucun bug HIGH/MED ; 1 finding LOW (le `json.loads` non gardé de `_extract_ratios` dans `ticker_report.py`, pré-existant mais désormais sur un chemin de rechargement) **corrigé** (try/except symétrique au chemin report.py + test de régression `test_input_data_corrompu_ne_fait_pas_crasher`). Passe qualité : helper déjà DRY ; asymétrie report.py self-contained vs ticker_report réutilisant `_extract_ratios` **écartée** (intentionnelle — un import inter-endpoints serait pire). Stack Docker non démarrée. Pas de test navigateur live.
 
 ---
 

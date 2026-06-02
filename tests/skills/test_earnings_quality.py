@@ -607,6 +607,87 @@ class TestEarningsQualitySkill:
         assert output.c_score.signaux[0].present is False
 
     @pytest.mark.asyncio
+    async def test_interpretation_f_et_c_python_priment_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 143 : f_score.interpretation / c_score.interpretation calculés en Python
+        (dérivés du score agrégé) écrasent les libellés du bloc LLM — parité M/Z (Sprint 131)."""
+        from app.services.financial_calculations import (
+            _montier_interpretation,
+            _piotroski_interpretation,
+        )
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        # Le LLM « hallucine » des libellés incohérents avec le score déterministe.
+        data["f_score"]["interpretation"] = "POISON_F"
+        data["c_score"]["interpretation"] = "POISON_C"
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        # Le poison du LLM est écrasé par le libellé dérivé du score agrégé déterministe.
+        assert output.f_score.interpretation == _piotroski_interpretation(output.f_score.f_score)
+        assert output.c_score.interpretation == _montier_interpretation(output.c_score.c_score)
+        assert output.f_score.interpretation != "POISON_F"
+        assert output.c_score.interpretation != "POISON_C"
+        # C-Score MSFT = 0 (entreprise propre) → libellé « propre ».
+        assert output.c_score.interpretation == "propre"
+
+    @pytest.mark.asyncio
+    async def test_financiere_garde_interpretation_f_llm_mais_substitue_c(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """is_financial=True → Piotroski inapplicable (f_criteria None) : le libellé F du LLM
+        survit. Montier sans gate sectoriel → son interprétation reste substituée (parité)."""
+        from app.services.financial_calculations import _montier_interpretation
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        data["f_score"]["interpretation"] = "MARQUEUR_LLM_F"  # doit survivre (gate None)
+        data["c_score"]["interpretation"] = "POISON_C"  # doit être écrasé
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.input = data
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.stop_reason = "tool_use"
+        mock_response.usage = SimpleNamespace(
+            input_tokens=800, output_tokens=600,
+            cache_read_input_tokens=0, cache_creation_input_tokens=1500,
+        )
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = mock_response
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        # F : libellé LLM conservé (Piotroski None pour une financière).
+        assert output.f_score.interpretation == "MARQUEUR_LLM_F"
+        # C : interprétation substituée par le Python déterministe (poison écrasé).
+        assert output.c_score.interpretation == _montier_interpretation(output.c_score.c_score)
+        assert output.c_score.interpretation != "POISON_C"
+
+    @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
         self,
         ratios_earnings_msft: EarningsQualityRatios,

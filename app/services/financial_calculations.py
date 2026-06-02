@@ -105,6 +105,40 @@ def _beneish_interpretation(m_score: float | None, is_financial: bool) -> str:
     return "manipulateur"
 
 
+def _piotroski_interpretation(f_score: int | None) -> str:
+    """Libellé canonique du F-Score — déterministe (Sprint 143).
+
+    Seuils Piotroski (piotroski-f-score.md) : 8-9 forte_qualite | 7 bon |
+    4-6 moyen | 0-3 qualite_degradee. DONNEES_MANQUANTES si non calculable
+    (financière ou profitabilité de base manquante — gate dans le skill).
+    """
+    if f_score is None:
+        return "DONNEES_MANQUANTES"
+    if f_score >= 8:
+        return "forte_qualite"
+    if f_score == 7:
+        return "bon"
+    if f_score >= 4:
+        return "moyen"
+    return "qualite_degradee"
+
+
+def _montier_interpretation(c_score: int | None) -> str:
+    """Libellé canonique du C-Score — déterministe (Sprint 143).
+
+    Seuils Montier (montier-c-score.md) : 0-1 propre | 2-3 surveiller |
+    4-6 manipulation_probable. C élevé = mauvais (signaux de manipulation).
+    DONNEES_MANQUANTES si la base de croissance des actifs manque.
+    """
+    if c_score is None:
+        return "DONNEES_MANQUANTES"
+    if c_score <= 1:
+        return "propre"
+    if c_score <= 3:
+        return "surveiller"
+    return "manipulation_probable"
+
+
 @dataclass(frozen=True)
 class BeneishComponents:
     """Les 8 indices intermédiaires du M-Score de Beneish + le score agrégé (Sprint 131).

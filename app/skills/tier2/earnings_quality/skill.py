@@ -16,6 +16,8 @@ from app.services.financial_calculations import (
     BeneishComponents,
     MontierSignal,
     PiotroskiCriterion,
+    _montier_interpretation,
+    _piotroski_interpretation,
     altman_z_score_detail,
     beneish_m_score_detail,
     montier_c_signaux,
@@ -48,6 +50,8 @@ class _ScoresDeterministes:
     substitués post-parse au même titre que les scores agrégés (Sprint 131).
     `f_criteria`/`c_signaux` portent le détail par signal F/C, substitué de même
     (Sprint 142) ; None dans les mêmes cas que le score agrégé correspondant.
+    `f_interpretation`/`c_interpretation` portent le libellé au niveau cadre, dérivé
+    du score agrégé (Sprint 143) ; None quand le score l'est (substitué sous le même gate).
     """
 
     m: BeneishComponents
@@ -57,6 +61,8 @@ class _ScoresDeterministes:
     accrual_ratio: float | None
     f_criteria: list[PiotroskiCriterion] | None
     c_signaux: list[MontierSignal] | None
+    f_interpretation: str | None
+    c_interpretation: str | None
 
 
 def _scores_depuis_ratios(
@@ -102,6 +108,8 @@ def _scores_depuis_ratios(
         total_assets_t=ratios.total_assets_t,
         total_assets_t1=ratios.total_assets_t1,
     )
+    f_score = None if f_criteria is None else sum(1 for c in f_criteria if c.passe)
+    c_score = None if c_signaux is None else sum(1 for s in c_signaux if s.present)
     return _ScoresDeterministes(
         m=beneish_m_score_detail(
             receivables_t=ratios.receivables_t,
@@ -141,8 +149,8 @@ def _scores_depuis_ratios(
             variant="original",
             is_financial=is_financial,
         ),
-        f_score=None if f_criteria is None else sum(1 for c in f_criteria if c.passe),
-        c_score=None if c_signaux is None else sum(1 for s in c_signaux if s.present),
+        f_score=f_score,
+        c_score=c_score,
         accrual_ratio=sloan_accrual_ratio(
             net_income_t=ratios.net_income_t,
             cfo_t=ratios.cfo_t,
@@ -151,6 +159,8 @@ def _scores_depuis_ratios(
         ),
         f_criteria=f_criteria,
         c_signaux=c_signaux,
+        f_interpretation=None if f_score is None else _piotroski_interpretation(f_score),
+        c_interpretation=None if c_score is None else _montier_interpretation(c_score),
     )
 
 
@@ -180,14 +190,19 @@ def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None
     # non-None, l'entier et la liste détaillée sont cohérents (sum(passe) == f_score).
     # PiotroskiCriterion/MontierSignal sont nommés comme FScoreCriterion/CScoreSignal
     # → asdict() produit des dicts directement validables.
+    # interpretation F/C dérivée du score agrégé déterministe (Sprint 143) — écrase le
+    # libellé du LLM sous le même gate que criteria/signaux (None ensemble). Financière →
+    # f_criteria None → libellé F du LLM conservé ; C sans gate sectoriel → toujours substitué.
     if scores.f_criteria is not None:
         bloc_f = data.setdefault("f_score", {})
         bloc_f["f_score"] = scores.f_score
         bloc_f["criteria"] = [asdict(c) for c in scores.f_criteria]
+        bloc_f["interpretation"] = scores.f_interpretation
     if scores.c_signaux is not None:
         bloc_c = data.setdefault("c_score", {})
         bloc_c["c_score"] = scores.c_score
         bloc_c["signaux"] = [asdict(s) for s in scores.c_signaux]
+        bloc_c["interpretation"] = scores.c_interpretation
 
 
 def _str_vers_liste(valeur: str) -> list[str]:
