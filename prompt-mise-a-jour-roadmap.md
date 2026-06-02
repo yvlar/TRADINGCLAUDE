@@ -1,70 +1,63 @@
-# Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M-Score / Z-Score)
+# Sprint 144 — Traçabilité source+date earnings/valuation dans le PDF
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.28.0 — Sprint 142 complété)
+## État du projet (v10.29.0 — Sprint 143 complété)
 
-Le Sprint 142 a rendu déterministes les **signaux détaillés** F/C : `f_score.criteria[].passe` (9 Piotroski) et `c_score.signaux[].present` (6 Montier) sont calculés en Python (`piotroski_f_criteria`/`montier_c_signaux`) et substitués post-parse, avec invariant `sum(passe) == f_score` / `sum(present) == c_score` garanti par construction.
+Le Sprint 143 a rendu déterministes les **libellés d'interprétation au niveau cadre** F/C : `f_score.interpretation` (`forte_qualite`/`bonne_qualite`/`qualite_moyenne`/`value_trap`) et `c_score.interpretation` (`propre`/`signaux_mineurs`/`signaux_multiples`) sont dérivés du score agrégé déterministe et substitués post-parse — parité complète avec M/Z (Sprint 131). Reste LLM : l'interprétation Sloan (cf. sprint suggéré 148).
 
 > **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
 
-> **Evals différées** — `ANTHROPIC_API_KEY` absente du conteneur web → evals Claude réelles non exécutables ici. **Pertinent pour CE sprint** : rendre l'interprétation F/C déterministe modifie l'output `earnings_quality` → relancer les evals ciblées en local (ou expliciter « non exécutées faute de clé »).
+> **Evals différées** — `ANTHROPIC_API_KEY` absente du conteneur web → evals Claude réelles non exécutables ici. **CE sprint touche un rapport PDF, pas un prompt de skill ni l'orchestrateur → evals non concernées.** (Le PDF est rendu en Python depuis l'output persisté.)
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (déjà injecté comme *project instructions* — ne pas le relire avec un outil)
-2. `ROADMAP.md` — état courant v10.28.0, Sprint 142 ✅
-3. `.claude/rules/api-skills-tier2.md` — cœur du sprint : skill tier2 `earnings_quality`, schemas Pydantic font foi, substitution post-parse via `_injecter_scores`.
-4. `.claude/rules/donnees-financieres.md` — un score `None` (donnée manquante / financière) → interprétation `"DONNEES_MANQUANTES"`, jamais un libellé trompeur ; conserver la valeur LLM si le calcul Python n'aboutit pas.
+2. `ROADMAP.md` — état courant v10.29.0, Sprint 143 ✅
+3. `.claude/rules/donnees-financieres.md` — cœur du sprint : « une donnée sans date est inutilisable » ; traçabilité source+date obligatoire sur tout rapport.
+4. `.claude/rules/api-architecture.md` — section sur la reconstruction depuis `analysis_history` / `input_data` (le PDF reconstruit les ratios depuis le JSONB persisté).
 
 ---
 
-## TÂCHE — Sprint 143 : rendre déterministe l'interprétation au niveau cadre F-Score / C-Score
+## TÂCHE — Sprint 144 : afficher la source+date des ratios earnings/valuation dans les rapports PDF
 
-**Objectif** : le Sprint 142 a rendu déterministes les *signaux* F/C, mais les **libellés d'interprétation au niveau cadre** — `f_score.interpretation` et `c_score.interpretation` — restent **produits par le LLM**, alors que les interprétations M-Score / Z-Score sont déjà déterministes (Python, Sprint 131 : `_beneish_interpretation` / `_altman_interpretation`, portées par le dataclass et substituées en bloc). Compléter la parité : dériver l'interprétation F/C du **score agrégé déjà déterministe** selon les seuils des références, et la substituer post-parse. C'est le même remède qui a éliminé la dérive de vocabulaire des golden M/Z.
+**Objectif** : le rapport PDF par ticker ne rend aujourd'hui la ligne « Source des ratios » **que pour Graham** (`_build_ratios_rows(r: GrahamRatios)`). Les ratios `EarningsQualityRatios` et `ValuationRatios` portent désormais `ratios_fetched_at`/`ratios_source` (Sprint 138) mais cette traçabilité n'apparaît pas dans le PDF. Compléter la parité de traçabilité côté rapport.
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Champs à substituer** — `FScoreDetail.interpretation` `app/skills/tier2/earnings_quality/schemas.py:141` ; `CScoreDetail.interpretation` `:153` (actuellement peuplés par le LLM).
-2. **Précédent M/Z à cloner** — `_beneish_interpretation` / `_altman_interpretation` dans `app/services/financial_calculations.py` (None → `"DONNEES_MANQUANTES"`, sinon libellé par seuil ; testés par `TestInterpretationsDeterministes` dans `tests/services/test_financial_calculations.py`). Elles sont portées par `BeneishComponents.interpretation` / `AltmanComponents.interpretation` et substituées via `asdict()` dans `_injecter_scores`.
-3. **Substitution F/C existante (Sprint 142)** — `_injecter_scores` écrit déjà `f_score`/`c_score` + `criteria`/`signaux` sous le gate `if scores.f_criteria is not None` / `if scores.c_signaux is not None` (`app/skills/tier2/earnings_quality/skill.py:183-190`). Le score agrégé est dérivé dans `_scores_depuis_ratios` (`f_score=None if f_criteria is None else sum(...)`).
-4. **Seuils (références `.claude/skills/earnings-quality-fraud-detection/references/piotroski-f-score.md` et `montier-c-score.md`)** : F-Score 8-9 forte qualité · 7 bon · 4-6 moyen · 0-3 qualité dégradée ; C-Score 0-1 propre · 2-3 surveiller · 4-6 manipulation probable.
-5. **Vocabulaire existant à RESPECTER** — la fixture `earnings_output_msft` (`tests/conftest.py`) utilise `interpretation="forte_qualite"` (F=8) et `"propre"` (C=0). **Réconcilier les chaînes exactes** avec le golden `tests/evals/fixtures/earnings_golden.json` et le rendu frontend `frontend/src/components/EarningsQualitySection.tsx` AVANT de figer les libellés (un libellé divergent casserait le golden ou l'affichage).
+1. **Helper de formatage réutilisable** — `_fmt_ratios_source(source: str | None, fetched_at: datetime | None) -> str` `app/services/pdf_report_service.py:150` (réutilisable tel quel pour earnings/valuation).
+2. **Rendu Graham actuel** — `_build_ratios_rows(r: GrahamRatios)` `pdf_report_service.py:228` ; ligne « Source des ratios » `:245` ; appelé `:327`.
+3. **Champs disponibles sur les schemas** — `EarningsQualityRatios.ratios_fetched_at` `app/skills/tier2/earnings_quality/schemas.py:69` / `ratios_source` `:73` ; `ValuationRatios.ratios_fetched_at` `app/skills/tier2/stock_valuation/schemas.py:32` / `ratios_source` `:36`.
+4. **Reconstruction des ratios pour le PDF (LE point à vérifier en premier — d'où la complexité Moyenne)** — `_extract_ratios(row) -> GrahamRatios | None` `app/api/endpoints/ticker_report.py:190` ne reconstruit **que** `GrahamRatios` depuis `input_data`. **AVANT d'implémenter l'affichage**, vérifier si les ratios earnings/valuation (avec leur `ratios_fetched_at`/`ratios_source`) sont **persistés dans `input_data` et reconstructibles**. Si oui → ajouter leur reconstruction + lignes PDF. Si non → le sprint doit d'abord les threader/persister (re-cadrer le périmètre et me le signaler).
 
 ### Spécification
 
-1. **Fonctions pures** : ajouter `_piotroski_interpretation(f_score: int | None) -> str` et `_montier_interpretation(c_score: int | None) -> str` dans `financial_calculations.py`, calquées sur `_beneish_interpretation` (signature, gestion `None → "DONNEES_MANQUANTES"`, libellé par seuil). Réutiliser le vocabulaire existant identifié au point 5.
-2. **Portage** : calculer l'interprétation dans `_scores_depuis_ratios` à partir du score agrégé déjà dérivé (voie la plus simple — le score est déjà calculé), et la stocker dans `_ScoresDeterministes` (nouveaux champs `f_interpretation` / `c_interpretation: str | None`). `None` quand le score agrégé est `None` (financière / donnée manquante), exactement comme le score.
-3. **Substitution** : dans `_injecter_scores`, sous le **même gate** que `criteria`/`signaux`, écrire `data["f_score"]["interpretation"]` / `data["c_score"]["interpretation"]`. Financière → F conservé du LLM (gate None), C substitué (pas de gate sectoriel, parité Sprint 142).
-4. **Périmètre** : interprétation F/C **uniquement**. Ne pas retoucher `criteria`/`signaux`/scores (Sprint 142) ni M/Z (Sprint 131). Prompt de skill inchangé.
+1. **Vérification de reconstructibilité d'abord** (Phase A de réconciliation) : inspecter le contenu réel de `input_data` persisté (test/mock ou structure du payload `/analyze`) pour confirmer la présence des ratios earnings/valuation horodatés. Documenter le constat (`fichier:ligne`) avant de coder l'affichage.
+2. **Si reconstructibles** : étendre `pdf_report_service.py` pour rendre une ligne « Source des ratios (Qualité bénéfices) » et/ou « Source des ratios (Valorisation) » via le helper `_fmt_ratios_source` existant — **réutiliser le helper, ne pas dupliquer le formatage**. Câbler la reconstruction dans `ticker_report.py` (analogue à `_extract_ratios`).
+3. **Périmètre** : traçabilité PDF earnings/valuation **uniquement**. Ne pas retoucher l'affichage Graham existant ni le threading `AnalyzeResponse` (Sprints 139/143). Pas de changement de prompt de skill.
+4. **Honnêteté None** : ratio sans source/date → ne pas afficher de ligne trompeuse (cohérent avec le comportement Graham `None` → ligne omise).
 
 ### Tests obligatoires (pyramide)
-- Unitaire `financial_calculations` : `_piotroski_interpretation` / `_montier_interpretation` par seuil (8-9 / 7 / 4-6 / 0-3 ; 0-1 / 2-3 / 4-6 ; `None → "DONNEES_MANQUANTES"`), à l'image de `TestInterpretationsDeterministes`.
-- Intégration `skill.py` (Claude mocké) : `_injecter_scores` écrase `f_score.interpretation` / `c_score.interpretation` du bloc LLM (poison) ; financière → interprétation F LLM conservée, C substituée.
-- Non-régression : `pytest` (hors e2e/evals) + `ruff` complets ; frontend inchangé sauf si les libellés exigent un ajustement d'affichage (alors test composant).
+- Unitaire `pdf_report_service` : `_build_ratios_rows` (ou nouveau builder) rend la ligne source+date quand présente, l'omet sinon (parité avec le comportement Graham).
+- Intégration `ticker_report.py` : reconstruction earnings/valuation depuis un `input_data` avec/sans horodatage + `input_data` illisible → pas de crash.
+- Non-régression : `pytest` (hors e2e/evals) + `ruff` complets ; frontend inchangé (sprint backend pur).
 
 ### Note d'environnement (session web)
-`ANTHROPIC_API_KEY` absente → evals Claude réelles non exécutables en web (à faire en local). Stack Docker non démarrée ; pas de test navigateur live. Sprint backend pur (sauf réconciliation de libellés côté frontend). **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes** (flush sporadique observé en session web — les complétions de tâches en arrière-plan déclenchent le flush).
+`ANTHROPIC_API_KEY` absente → evals non exécutables, **mais ce sprint ne touche aucun prompt de skill ni l'orchestrateur → evals non concernées**. Stack Docker non démarrée ; pas de test navigateur live. **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 144 — Traçabilité source+date earnings/valuation dans le PDF
-**Objectif** : afficher la source+date des ratios `EarningsQualityRatios` / `ValuationRatios` dans les rapports PDF (le PDF ne rend aujourd'hui que la ligne « Source des ratios » **Graham**).
-**Complexité** : Moyenne (dépendance de reconstruction à vérifier — pas Faible).
-**Justification** : suite du Sprint 138 (les champs `ratios_fetched_at`/`ratios_source` existent sur ces schemas), complète la parité de traçabilité côté rapport.
-**Référence** : EXISTANT (vérifié cette session) — helper générique `_fmt_ratios_source(source, fetched_at)` `app/services/pdf_report_service.py:150` (réutilisable tel quel) ; `_build_ratios_rows(r: GrahamRatios)` `:228` + ligne « Source des ratios » `:244-245` (**Graham uniquement**) ; champs `EarningsQualityRatios.ratios_fetched_at/source` `earnings_quality/schemas.py:69/73`, `ValuationRatios` `stock_valuation/schemas.py:32/36`. À CRÉER / À VÉRIFIER — la reconstruction des ratios d'entrée pour le PDF ne couvre que Graham (`_extract_ratios(row) -> GrahamRatios | None` `app/api/endpoints/ticker_report.py:190`) ; **vérifier d'abord** si les ratios earnings/valuation (avec leur source/date) sont persistés dans `input_data` et reconstructibles — sinon le sprint doit d'abord les threader/persister (d'où la complexité Moyenne).
-
 ### Sprint 145 — Affichage de la traçabilité earnings sur l'analyse rendue (AnalysisResult)
 **Objectif** : étendre l'affichage source+date de `AnalysisResult` (posé pour Graham au Sprint 139) aux ratios `EarningsQualityRatios`, sous la carte Earnings Quality.
 **Complexité** : Moyenne (threading backend jusqu'à `AnalyzeResponse`).
 **Justification** : parité d'affichage avec Graham ; les champs existent sur le schema mais ne sont ni threadés jusqu'à `AnalyzeResponse` ni affichés.
-**Référence** : EXISTANT (vérifié cette session) — `EarningsQualityRatios.ratios_fetched_at` `earnings_quality/schemas.py:69` / `ratios_source` `:73` ; pattern de threading Graham déjà fait (`AnalyzeResponse.ratios_fetched_at/source` `app/orchestrator/core.py:274/278`, helper `_graham_ratios_trace` `:284`). À CRÉER — un `_earnings_ratios_trace` analogue + champ(s) sur `AnalyzeResponse` + reconstruction historique + affichage `EarningsQualitySection`.
+**Référence** : EXISTANT (vérifié cette session) — `EarningsQualityRatios.ratios_fetched_at` `earnings_quality/schemas.py:69` / `ratios_source` `:73` ; pattern de threading Graham déjà fait (`AnalyzeResponse.ratios_fetched_at` `app/orchestrator/core.py:274` / `ratios_source` `:278`, helper `_graham_ratios_trace` `:284`). À CRÉER — un `_earnings_ratios_trace` analogue + champ(s) sur `AnalyzeResponse` + reconstruction historique + affichage `EarningsQualitySection`.
 
 ### Sprint 146 — Provenance par ratio sur l'analyse rendue (AnalysisResult)
 **Objectif** : étendre l'affichage signal-only de la provenance (posé pour `AnalyzeForm` au Sprint 141) à `AnalysisResult`, en threadant `ratios_provenance` jusqu'à `AnalyzeResponse` (comme la source+date au Sprint 139).
@@ -75,8 +68,14 @@ Le Sprint 142 a rendu déterministes les **signaux détaillés** F/C : `f_score.
 ### Sprint 147 — Confirmer (evals) le calibrage du drift `earnings_quality`
 **Objectif** : confirmer par un re-run d'evals que la sur-génération de `drapeaux_rouges` (10 échecs golden au Sprint 137) est résolue.
 **Complexité** : Faible en code / coûteuse en exécution (re-run evals).
-**Justification** : le prompt encadre **désormais** la cardinalité (« au plus un à deux signaux mineurs réellement matériels ») — fix déjà livré, pas absent comme le supposait l'ancienne carte. Reste à **mesurer** que `drapeaux_rouges_cardinalite` passe sous le golden.
+**Justification** : le prompt encadre **désormais** la cardinalité — fix déjà livré, pas absent. Reste à **mesurer** que `drapeaux_rouges_cardinalite` passe sous le golden.
 **Référence** : EXISTANT (vérifié cette session) — consigne de cardinalité `app/skills/tier2/earnings_quality/prompts/system.md:195` (et `:291`) ; golden `tests/evals/fixtures/earnings_golden.json` (`"drapeaux_rouges_max": 2` aux cas, lignes 47/96/145/193/241) ; schema `EarningsQualityOutput.drapeaux_rouges: list[str]` `earnings_quality/schemas.py:169`. **Contrainte** : re-run exige `ANTHROPIC_API_KEY` (~100 appels Haiku, ~33 min) → hors conteneur web.
+
+### Sprint 148 — Interprétation déterministe Sloan (dernier cadre LLM)
+**Objectif** : rendre déterministe `sloan.interpretation` (dernier libellé d'interprétation encore produit par le LLM après les Sprints 131/143), dérivé du `accrual_ratio` déjà calculé en Python — parité finale des 5 cadres.
+**Complexité** : Faible (calque exact du pattern Sprint 143).
+**Justification** : `_injecter_scores` substitue déjà `sloan.accrual_ratio` mais **pas** `sloan.interpretation` → seul cadre où le libellé peut diverger du chiffre déterministe. Boucle la cohérence chiffre↔libellé sur l'ensemble M/Z/F/C/Sloan.
+**Référence** : EXISTANT (vérifié cette session) — `SloanDetail.interpretation: str` `app/skills/tier2/earnings_quality/schemas.py:158` (LLM, jamais substitué) ; `_injecter_scores` ne pose que `data["sloan"]["accrual_ratio"]` `app/skills/tier2/earnings_quality/skill.py:190` ; `scores.accrual_ratio` déjà calculé (`sloan_accrual_ratio`, `skill.py:155`) ; seuils canoniques `app/skills/tier2/earnings_quality/prompts/system.md:163-165` (≤ −0.05 `qualite_elevee` · −0.05 à 0.05 `neutre` · > 0.05 `qualite_degradee`). À CRÉER — `_sloan_interpretation(accrual_ratio: float | None) -> str` dans `financial_calculations.py` (calque `_piotroski_interpretation`) + champ `sloan_interpretation` sur `_ScoresDeterministes` + substitution sous gate `accrual_ratio is not None`.
 
 ---
 
@@ -84,10 +83,10 @@ Le Sprint 142 a rendu déterministes les **signaux détaillés** F/C : `f_score.
 
 ```
 Tu es un développeur Python/TypeScript senior sur le projet TradingClaude.
-Lis CLAUDE.md, ROADMAP.md (v10.28.0), .claude/rules/api-skills-tier2.md et donnees-financieres.md avant de commencer.
-Sprint actif : 143 — Interprétations déterministes F-Score / C-Score (parité M/Z).
-Objectif : rendre déterministes f_score.interpretation (schemas.py:141) et c_score.interpretation (:153), aujourd'hui produits par le LLM, en les dérivant du score agrégé déjà déterministe — exactement comme _beneish_interpretation/_altman_interpretation (Sprint 131).
-Point de départ vérifié : _injecter_scores substitue déjà criteria/signaux/scores sous gate None (skill.py:183-190) ; ajouter _piotroski_interpretation/_montier_interpretation dans financial_calculations.py + champs f_interpretation/c_interpretation sur _ScoresDeterministes.
-RÉCONCILIER les libellés exacts avec la fixture (forte_qualite/propre), le golden earnings_golden.json et EarningsQualitySection.tsx AVANT de figer les chaînes.
-Evals : la substitution change l'output earnings_quality → relancer les evals ciblées si ANTHROPIC_API_KEY dispo, sinon le dire explicitement.
+Lis CLAUDE.md, ROADMAP.md (v10.29.0), .claude/rules/donnees-financieres.md et api-architecture.md avant de commencer.
+Sprint actif : 144 — Traçabilité source+date earnings/valuation dans le PDF.
+Objectif : afficher la source+date des ratios EarningsQualityRatios / ValuationRatios dans les rapports PDF (le PDF ne rend aujourd'hui que la ligne « Source des ratios » Graham).
+Point de départ vérifié : helper _fmt_ratios_source réutilisable (pdf_report_service.py:150), _build_ratios_rows Graham (:228, ligne source :245), champs sur les schemas (earnings_quality/schemas.py:69/73, stock_valuation/schemas.py:32/36).
+ÉTAPE 1 OBLIGATOIRE (réconciliation) : vérifier si les ratios earnings/valuation (avec source/date) sont persistés dans input_data et reconstructibles — _extract_ratios (ticker_report.py:190) ne reconstruit que GrahamRatios. Si non reconstructibles, re-cadrer le périmètre et me le signaler AVANT de coder.
+Evals : ce sprint ne touche aucun prompt de skill ni l'orchestrateur → evals non concernées.
 ```

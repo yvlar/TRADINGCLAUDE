@@ -352,3 +352,24 @@ class TestInterpretationsDeterministes:
         assert z.interpretation == "zone_sure"
         m = beneish_m_score_detail(**_BENEISH_STABLE)
         assert m.interpretation == "non_manipulateur"
+
+    def test_piotroski_libelle_par_seuil(self):
+        from app.services.financial_calculations import _piotroski_interpretation
+        assert _piotroski_interpretation(9) == "forte_qualite"
+        assert _piotroski_interpretation(8) == "forte_qualite"
+        assert _piotroski_interpretation(7) == "bonne_qualite"
+        assert _piotroski_interpretation(6) == "qualite_moyenne"
+        assert _piotroski_interpretation(4) == "qualite_moyenne"
+        assert _piotroski_interpretation(3) == "value_trap"
+        assert _piotroski_interpretation(0) == "value_trap"
+        assert _piotroski_interpretation(None) == "DONNEES_MANQUANTES"
+
+    def test_montier_libelle_par_seuil(self):
+        from app.services.financial_calculations import _montier_interpretation
+        assert _montier_interpretation(0) == "propre"
+        assert _montier_interpretation(1) == "propre"
+        assert _montier_interpretation(2) == "signaux_mineurs"
+        assert _montier_interpretation(3) == "signaux_mineurs"
+        assert _montier_interpretation(4) == "signaux_multiples"
+        assert _montier_interpretation(6) == "signaux_multiples"
+        assert _montier_interpretation(None) == "DONNEES_MANQUANTES"
