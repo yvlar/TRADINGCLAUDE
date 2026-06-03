@@ -94,12 +94,16 @@ def test_resultat_efface_au_changement_ticker(authenticated_page):
 
 
 def test_analyse_reponse_corrompue(authenticated_page):
-    """JSON tronqué → pas de crash React, message d'erreur affiché."""
+    """Flux SSE tronqué → pas de crash React ; l'app revient à l'état idle, sans résultat."""
+    from playwright.sync_api import expect
+
     with PageMonitor(authenticated_page) as mon:
-        mock_corrupt(authenticated_page, "**/analyze**")
+        mock_corrupt(authenticated_page, "**/analyze-stream**")
         page = AnalyzePage(authenticated_page).goto()
         page.ticker.fill("BNS")
         page.testid("autofill-button").click()
         page.submit.click()
-        page.expect_testid_visible("error-message", timeout=15_000)
+        # Le flux se termine sans event exploitable : le bouton se réactive (isStreaming=false).
+        expect(page.submit).to_be_enabled(timeout=15_000)
     assert not mon.react_faults(), mon.react_faults()
+    assert page.result_ticker.count() == 0

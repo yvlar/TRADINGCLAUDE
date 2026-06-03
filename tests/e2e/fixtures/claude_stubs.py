@@ -6,15 +6,24 @@ from types import SimpleNamespace
 
 
 def _resp(data: dict) -> SimpleNamespace:
+    # Les skills lisent désormais un bloc tool_use (`b.type == "tool_use"`, `b.input`) ;
+    # on expose aussi `.text` pour rester compatible avec un éventuel skill encore en
+    # mode parsing JSON texte.
+    block = SimpleNamespace(
+        type="tool_use",
+        name="output",
+        input=data,
+        text=json.dumps(data),
+    )
     return SimpleNamespace(
-        content=[SimpleNamespace(text=json.dumps(data))],
+        content=[block],
         usage=SimpleNamespace(
             input_tokens=50,
             output_tokens=100,
             cache_read_input_tokens=0,
             cache_creation_input_tokens=100,
         ),
-        stop_reason="end_turn",
+        stop_reason="tool_use",
     )
 
 

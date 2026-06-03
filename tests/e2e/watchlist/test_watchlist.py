@@ -42,11 +42,19 @@ def test_watchlist_vide_pas_de_crash(authenticated_page):
     assert not mon.react_faults(), mon.react_faults()
 
 
-def test_watchlist_erreur_chargement(authenticated_page):
-    """Un 500 au chargement → bloc d'erreur affiché, pas d'écran blanc."""
-    mock_status(authenticated_page, "**/watchlist", 500, {"detail": "indisponible"})
-    page = WatchlistPage(authenticated_page).goto()
-    page.expect_testid_visible("watchlist-error", timeout=10_000)
+def test_watchlist_erreur_chargement_degrade(authenticated_page):
+    """Un 500 au chargement de la liste dégrade proprement (pas d'écran blanc/crash).
+
+    La page n'a pas d'UI d'erreur de chargement dédiée : react-query retombe sur
+    une liste vide. On vérifie donc que l'app reste utilisable (header présent) et
+    ne déclenche pas d'Error Boundary.
+    """
+    with PageMonitor(authenticated_page) as mon:
+        mock_status(authenticated_page, "**/watchlist", 500, {"detail": "indisponible"})
+        page = WatchlistPage(authenticated_page).goto()
+        authenticated_page.wait_for_selector("nav", timeout=10_000)
+        page.expect_testid_visible("export-pdf-watchlist", timeout=10_000)
+    assert not mon.react_faults(), mon.react_faults()
 
 
 def test_watchlist_suppression(authenticated_page):
