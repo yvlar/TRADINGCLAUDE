@@ -53,15 +53,22 @@ def test_BUG003_compte_suspendu_ne_peut_pas_se_connecter(clean_page):
 
 
 def test_BUG004_reponse_analyse_corrompue_ne_crashe_pas_react(authenticated_page):
-    """BUG-004 — Un JSON d'analyse tronqué ne doit pas déclencher d'Error Boundary."""
+    """BUG-004 — Un flux SSE tronqué ne doit pas déclencher d'Error Boundary.
+
+    Un flux SSE corrompu n'émet aucun event exploitable (ni résultat, ni erreur) :
+    on vérifie l'absence de crash React et le retour à l'état idle (bouton réactivé).
+    """
+    from playwright.sync_api import expect
+
     with PageMonitor(authenticated_page) as mon:
-        mock_corrupt(authenticated_page, "**/analyze**")
+        mock_corrupt(authenticated_page, "**/analyze-stream**")
         page = AnalyzePage(authenticated_page).goto()
         page.ticker.fill("BNS")
         page.testid("autofill-button").click()
         page.submit.click()
-        page.expect_testid_visible("error-message", timeout=15_000)
+        expect(page.submit).to_be_enabled(timeout=15_000)
     assert not mon.react_faults(), f"Error Boundary déclenchée : {mon.react_faults()}"
+    assert page.result_ticker.count() == 0
 
 
 def test_BUG005_watchlist_doublon_message_clair(authenticated_page):
