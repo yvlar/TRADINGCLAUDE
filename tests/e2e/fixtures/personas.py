@@ -19,6 +19,9 @@ from argon2.exceptions import VerifyMismatchError
 
 # Mêmes paramètres que app/services/user_service.py — parité de comportement.
 _ph = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=2)
+# Hash factice VALIDE (vrai argon2) pour le chemin timing-safe : vérifier un mot de
+# passe contre lui lève VerifyMismatchError (rattrapé), pas InvalidHash (→ 500).
+_DUMMY_HASH = _ph.hash("dummy-timing-safe-constant")
 
 
 @dataclass(frozen=True)
@@ -181,8 +184,7 @@ class InMemoryUserService:
     async def authenticate(self, email: str, password: str) -> dict | None:
         user_id = self._by_email.get(email.lower())
         row = self._users.get(user_id) if user_id else None
-        dummy = "$argon2id$v=19$m=65536,t=2,p=2$dummy$dummy"
-        candidate = row["hashed_password"] if row else dummy
+        candidate = row["hashed_password"] if row else _DUMMY_HASH
         try:
             _ph.verify(candidate, password)
             valid = True

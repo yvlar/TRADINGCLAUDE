@@ -10,9 +10,11 @@ pytestmark = pytest.mark.e2e
 
 
 def test_historique_vide(authenticated_page):
-    """Historique vide → état vide explicite, pas d'erreur."""
+    """Recherche sans résultat → état vide explicite (history-empty n'apparaît qu'après fetch)."""
     with PageMonitor(authenticated_page) as mon:
         page = HistoryPage(authenticated_page).goto()
+        page.search_input.fill("INTROUVABLE")
+        page.search_button.click()
         page.expect_testid_visible("history-empty", timeout=10_000)
     assert_page_clean(mon)
 

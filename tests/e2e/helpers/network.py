@@ -16,8 +16,14 @@ from playwright.sync_api import Page, Route
 
 
 def _skip_document(route: Route) -> bool:
-    """Laisse filer les navigations HTML ; ne mocke que les appels API (xhr/fetch)."""
-    if route.request.resource_type == "document":
+    """Ne mocke QUE les appels API (xhr/fetch).
+
+    Indispensable : un glob large (`**/analyze**`, `**/screen**`) matche aussi le
+    DOCUMENT HTML et, en dev Vite, les MODULES JS de la page (`/src/pages/AnalyzePage.tsx`,
+    resource_type `script`). Les intercepter casse le chargement de la page (le
+    formulaire ne s'affiche jamais). On laisse donc passer tout sauf xhr/fetch.
+    """
+    if route.request.resource_type not in ("xhr", "fetch"):
         route.fallback()
         return True
     return False

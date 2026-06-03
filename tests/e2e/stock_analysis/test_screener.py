@@ -14,7 +14,7 @@ def test_screener_happy_path(authenticated_page):
     with PageMonitor(authenticated_page) as mon:
         page = ScreenerPage(authenticated_page).goto()
         page.screen("BNS, TD")
-        page.expect_testid_visible("screener-row", timeout=30_000)
+        page.expect_rows(2)  # 2 tickers → 2 lignes (to_be_visible serait en strict mode)
     assert_page_clean(mon)
 
 
