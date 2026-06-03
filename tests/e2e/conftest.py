@@ -468,3 +468,12 @@ def monitor(page):
 
     with PageMonitor(page) as mon:
         yield mon
+
+
+@pytest.fixture(autouse=True)
+def _reset_watchlist_state(backend_server):
+    """Isole l'état watchlist entre tests — le service en mémoire est partagé (session)."""
+    svc = getattr(app.state, "watchlist_service", None)
+    if isinstance(svc, InMemoryWatchlistService):
+        svc._store.clear()
+    yield
