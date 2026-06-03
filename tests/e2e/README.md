@@ -1,7 +1,45 @@
-# Tests E2E — Sprint 30
+# Tests E2E — Sprint 30 (étendu : stratégie QA E2E)
 
 Tests end-to-end traversant le vrai frontend React → vrai backend FastAPI.
 **Aucun token Anthropic consommé** : `call_claude_with_retry` est mocké dans chaque module skill.
+
+> 📋 **Stratégie complète** : voir [`STRATEGIE-QA-E2E.md`](STRATEGIE-QA-E2E.md) — analyse front/back/DB,
+> matrice de couverture, catalogue de scénarios, personas, monitoring anti-défaut, rapport final.
+
+## Arborescence (stratégie QA)
+
+```
+tests/e2e/
+├── STRATEGIE-QA-E2E.md      # stratégie + matrice + rapport
+├── conftest.py              # harnais : uvicorn + mocks + personas + fixtures monitoring
+├── fixtures/
+│   ├── claude_stubs.py      # réponses Claude stubbées
+│   └── personas.py          # 6 personas + InMemoryUserService (auth cookie JWT réelle)
+├── pages/                   # Page Objects (base, auth_pages, app_pages)
+├── helpers/                 # monitoring (console/réseau/React), assertions, network mocks
+├── auth/                    # login, register, session, password reset
+├── watchlist/               # CRUD watchlist (« portefeuille » suivi)
+├── stock_analysis/          # analyse individuelle + screener
+├── settings/                # historique + recherche
+├── regression/              # test_BUGNNN_* — non-régression ancrée
+├── performance/             # budgets de performance perçue
+└── security/                # routes protégées, RBAC, CSRF, anti-énumération
+```
+
+> ✅ **Legacy retiré** : `test_e2e_auth.py` (flux « Clé API » disparu) + `test_e2e_analyze/screener/watchlist.py`
+> ont été **supprimés** ; `test_e2e_stream.py`/`test_e2e_sprint33.py` migrés vers `stock_analysis/`.
+> La fixture `authenticated_page` se connecte maintenant via le **vrai flux cookie JWT + CSRF**.
+
+## Tracing (débogage des échecs)
+
+```bash
+E2E_TRACE=1   pytest tests/e2e -m e2e      # trace .zip sur échec → tests/e2e/.traces/
+E2E_TRACE=all pytest tests/e2e -m e2e      # trace systématique
+npx playwright show-trace tests/e2e/.traces/<test>.zip
+```
+
+> ℹ️ Le job CI `test-e2e` (sur `dev`) installe Chromium, démarre Vite, lance la suite et
+> archive les traces en cas d'échec. En local, `playwright install chromium` est requis.
 
 ## Architecture
 

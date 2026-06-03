@@ -86,3 +86,6 @@ docs/revues/
 *.dump
 backend_data/
 data_export/
+
+# Traces Playwright E2E (générées sur échec)
+tests/e2e/.traces/

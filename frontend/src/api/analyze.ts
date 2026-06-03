@@ -151,11 +151,20 @@ export async function* streamAnalyze(body: AnalyzeRequest): AsyncGenerator<SSEEv
     ''
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  } else {
+    // Auth par cookie : poser le token CSRF (double-submit) sur cette mutation SSE,
+    // sinon /analyze-stream est rejeté (« Token CSRF manquant »).
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)
+    const csrf = match ? decodeURIComponent(match[1]) : ''
+    if (csrf) headers['X-CSRF-Token'] = csrf
+  }
 
   const response = await fetch(`${BASE_URL}/analyze-stream`, {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify(body),
   })
 

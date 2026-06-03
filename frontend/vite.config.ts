@@ -15,11 +15,25 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/admin': 'http://localhost:8000',
+      // /admin et /compare sont AUSSI des routes SPA React Router : laisser passer
+      // la navigation HTML (deep-link / refresh) vers index.html, ne proxifier que
+      // les appels API (XHR/fetch). Sans ce bypass, ouvrir /admin ou /compare en dev
+      // sert la 404 du backend au lieu de l'app.
+      '/admin': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
+      },
       '/annotations': 'http://localhost:8000',
       '/composite-history': 'http://localhost:8000',
       '/esg-history': 'http://localhost:8000',
-      '/compare': 'http://localhost:8000',
+      '/compare': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
+      },
       '/monthly-report': 'http://localhost:8000',
       '/screener-report': 'http://localhost:8000',
       '/semantic-search': 'http://localhost:8000',
