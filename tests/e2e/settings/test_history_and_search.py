@@ -1,5 +1,6 @@
 """E2E — Historique et recherche sémantique (préférences/usage avancé)."""
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.helpers.assertions import assert_page_clean
 from tests.e2e.helpers.monitoring import PageMonitor
@@ -32,7 +33,7 @@ def test_historique_recherche(authenticated_page):
 def test_recherche_semantique_rendu(authenticated_page):
     """La page de recherche se charge dans un état idle/désactivé sans crash."""
     page = SearchPage(authenticated_page).goto()
-    page.page.wait_for_selector("nav", timeout=10_000)
+    expect(page.input).to_be_visible(timeout=10_000)  # SearchPage (chunk lazy) montée
     # search-idle ou search-rag-disabled selon la config RAG — au moins un des deux.
     assert (page.testid("search-idle").count() + page.testid("search-rag-disabled").count()) >= 1
 

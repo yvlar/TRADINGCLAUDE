@@ -9,6 +9,7 @@ sprint (voir STRATEGIE-QA-E2E.md §« Zones à risque »). Chacun verrouille le
 comportement attendu une fois corrigé.
 """
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.fixtures.personas import PERSONAS
 from tests.e2e.helpers.monitoring import PageMonitor
@@ -27,10 +28,11 @@ def test_BUG001_ancien_e2e_auth_ciblait_ecran_cle_api_disparu(clean_page):
     le fait que le formulaire moderne (email-input + password-input) est présent.
     """
     LoginPage(clean_page).goto()
-    assert clean_page.get_by_test_id("email-input").count() == 1
-    assert clean_page.get_by_test_id("password-input").count() == 1
+    # to_have_count auto-attend le montage du chunk lazy LoginPage (count() ne l'attend pas).
+    expect(clean_page.get_by_test_id("email-input")).to_have_count(1)
+    expect(clean_page.get_by_test_id("password-input")).to_have_count(1)
     # L'ancien libellé « Clé API » ne doit plus exister.
-    assert clean_page.get_by_label("Clé API").count() == 0
+    expect(clean_page.get_by_label("Clé API")).to_have_count(0)
 
 
 def test_BUG002_authme_401_ne_laisse_pas_page_protegee_visible(standard_page):

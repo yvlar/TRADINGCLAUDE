@@ -7,6 +7,7 @@ découpage en chunks (Suspense/RouteFallback).
 import time
 
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.pages.base_page import BASE_URL
 
@@ -41,6 +42,5 @@ def test_pas_de_requete_bloquante_au_montage(standard_page):
     """Le dashboard atteint l'état interactif sans rester bloqué sur un spinner."""
     standard_page.goto(f"{BASE_URL}/dashboard")
     standard_page.wait_for_selector("nav", timeout=10_000)
-    # Aucun route-fallback persistant ne doit subsister après stabilisation.
-    standard_page.wait_for_timeout(1000)
-    assert standard_page.get_by_test_id("route-fallback").count() == 0
+    # Aucun route-fallback persistant ne doit subsister une fois la page montée.
+    expect(standard_page.get_by_test_id("route-fallback")).to_have_count(0, timeout=10_000)
