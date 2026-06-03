@@ -168,7 +168,7 @@ jobs:
       - name: Lancer les tests E2E
         env:
           ANTHROPIC_API_KEY: sk-ant-ci-dummy-key
-        run: pytest tests/e2e/ -m e2e -q --tb=short
+        run: pytest tests/e2e/ -m e2e -ra --tb=short
 
       - name: Archiver les traces Playwright (échec)
         if: failure()

@@ -145,13 +145,14 @@ class InMemoryWatchlistService:
 # ---------------------------------------------------------------------------
 
 def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
-    with socket.socket() as s:
-        s.settimeout(timeout)
-        try:
-            s.connect((host, port))
+    # create_connection itère sur getaddrinfo (IPv4 + IPv6) : indispensable car
+    # Vite/Node lient « localhost » qui peut résoudre en ::1, alors qu'un
+    # socket.socket() brut (AF_INET) ne tente que 127.0.0.1 → faux « port fermé ».
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
             return True
-        except (ConnectionRefusedError, OSError):
-            return False
+    except OSError:
+        return False
 
 
 def _wait_for_port(host: str, port: int, retries: int = 60, delay: float = 0.2) -> bool:
@@ -216,11 +217,16 @@ def backend_server():
     Démarre FastAPI sur le port 8000 avec tous les mocks appliqués.
     Vérifie que le Vite dev server est accessible sur le port 5173.
     """
-    if not _is_port_open("localhost", 5173):
-        pytest.skip(
+    # Petite fenêtre de grâce : Vite peut finir de démarrer juste après wait-on.
+    if not _wait_for_port("localhost", 5173, retries=25, delay=0.4):
+        msg = (
             "Vite dev server non accessible sur le port 5173. "
             "Démarrer avec : cd frontend && npm run dev"
         )
+        # En CI, un skip massif masquerait un faux vert (cf. run #1) : on échoue fort.
+        if os.environ.get("CI"):
+            pytest.fail(msg)
+        pytest.skip(msg)
 
     # Port 8000 déjà utilisé → skip plutôt que crash
     if _is_port_open("localhost", 8000):
