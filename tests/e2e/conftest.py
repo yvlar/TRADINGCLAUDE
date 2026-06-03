@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis
 import pytest
 import uvicorn
-from fastapi import HTTPException
 
 from app.api.main import app
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
+from app.services.watchlist_service import DuplicateWatchlistError
 from tests.e2e.fixtures.claude_stubs import (
     buffett_stub,
     canadian_tax_stub,
@@ -94,9 +94,9 @@ class InMemoryWatchlistService:
         t = create.ticker.upper()
         for entry in self._store.values():
             if entry.ticker == t and entry.workflow == create.workflow:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Ticker {t} déjà présent dans la watchlist pour ce workflow",
+                # Même erreur domaine que le vrai WatchlistService → 409 via l'endpoint
+                raise DuplicateWatchlistError(
+                    f"Ticker {t} déjà présent dans la watchlist pour ce workflow"
                 )
         entry = WatchlistEntry(
             id=str(uuid.uuid4()),
@@ -354,11 +354,14 @@ def page(browser_context):
 
 
 @pytest.fixture
-def authenticated_page(page):
-    """Page avec session authentifiée — navigue vers / et attend le header."""
-    page.goto("http://localhost:5173/")
-    page.wait_for_selector("nav", timeout=10_000)
-    return page
+def authenticated_page(login_as):
+    """Page authentifiée via le VRAI flux cookie JWT + CSRF (persona standard).
+
+    L'ancienne implémentation s'appuyait sur `api_token` en localStorage : ce
+    chemin n'authentifie plus depuis le passage à l'auth par cookie (authMe →
+    401 → redirection /login). On se connecte donc réellement via l'UI.
+    """
+    return login_as("standard")
 
 
 # ---------------------------------------------------------------------------
@@ -366,16 +369,44 @@ def authenticated_page(page):
 # ---------------------------------------------------------------------------
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Mémorise l'échec de la phase « call » pour déclencher la sauvegarde de trace."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call":
+        item._e2e_failed = report.failed
+
+
+_TRACE_DIR = os.path.join(os.path.dirname(__file__), ".traces")
+
+
 @pytest.fixture
-def clean_context(backend_server, playwright):
+def clean_context(backend_server, playwright, request):
     """Contexte SANS api_token en localStorage — exerce le vrai flux cookie JWT.
 
     Indispensable pour les parcours d'auth : `browser_context` injecte un Bearer
     token qui court-circuite la session cookie et masquerait les régressions.
+
+    Tracing opt-in via `E2E_TRACE=1` (trace sur échec) ou `E2E_TRACE=all` (toujours)
+    — les .zip Playwright atterrissent dans `tests/e2e/.traces/` pour le trace viewer.
     """
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context(base_url="http://localhost:5173")
+    trace_mode = os.environ.get("E2E_TRACE")
+    if trace_mode:
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+
     yield context
+
+    if trace_mode:
+        failed = getattr(request.node, "_e2e_failed", False)
+        if failed or trace_mode == "all":
+            os.makedirs(_TRACE_DIR, exist_ok=True)
+            safe = request.node.name.replace("/", "_").replace("[", "_").replace("]", "")
+            context.tracing.stop(path=os.path.join(_TRACE_DIR, f"{safe}.zip"))
+        else:
+            context.tracing.stop()
     context.close()
     browser.close()
 

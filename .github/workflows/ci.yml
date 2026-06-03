@@ -123,3 +123,58 @@ jobs:
       - name: Typecheck TypeScript (tsc)
         working-directory: frontend
         run: npm run typecheck
+
+  test-e2e:
+    name: E2E — Playwright
+    runs-on: ubuntu-latest
+    # Suite navigateur : exécutée sur dev (et PR le ciblant). Démarre Vite :5173 ;
+    # le harnais lance FastAPI en thread avec Claude/DB/Redis mockés.
+    if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+    permissions:
+      contents: read
+    env:
+      E2E_TRACE: '1'   # trace Playwright sauvegardée sur échec (tests/e2e/.traces/)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances Python (dev + Playwright)
+        run: pip install -r requirements-dev.txt
+
+      - name: Installer le navigateur Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Installer les dépendances frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Démarrer le serveur Vite (:5173)
+        working-directory: frontend
+        run: |
+          npm run dev &
+          npx wait-on http://localhost:5173 --timeout 60000
+
+      - name: Lancer les tests E2E
+        env:
+          ANTHROPIC_API_KEY: sk-ant-ci-dummy-key
+        run: pytest tests/e2e/ -m e2e -q --tb=short
+
+      - name: Archiver les traces Playwright (échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/e2e/.traces/
+          if-no-files-found: ignore
+          retention-days: 7

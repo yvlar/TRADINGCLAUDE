@@ -19,6 +19,10 @@ _SELECT_COLS = """
 """
 
 
+class DuplicateWatchlistError(Exception):
+    """Ticker déjà présent dans la watchlist pour ce workflow (parité E2E ↔ prod)."""
+
+
 class WatchlistService:
     """CRUD sur la table watchlist PostgreSQL."""
 
@@ -26,6 +30,18 @@ class WatchlistService:
         self._db = db_pool
 
     async def add_entry(self, create: WatchlistCreate) -> WatchlistEntry:
+        ticker = create.ticker.upper()
+        # Garde anti-doublon (ticker + workflow) — alignée sur le service en mémoire
+        # des E2E ; sans elle, la prod acceptait des doublons silencieux (BUG-005).
+        existing = await self._db.fetchval(
+            "SELECT 1 FROM watchlist WHERE ticker = $1 AND workflow = $2",
+            ticker,
+            create.workflow,
+        )
+        if existing:
+            raise DuplicateWatchlistError(
+                f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
+            )
         ratios_json = create.ratios.model_dump_json() if create.ratios else None
         row = await self._db.fetchrow(
             f"""
@@ -33,7 +49,7 @@ class WatchlistService:
             VALUES ($1, $2, $3::jsonb, $4)
             RETURNING {_SELECT_COLS}
             """,
-            create.ticker.upper(),
+            ticker,
             create.workflow,
             ratios_json,
             create.score_alerte_min,

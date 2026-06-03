@@ -26,9 +26,20 @@ tests/e2e/
 └── security/                # routes protégées, RBAC, CSRF, anti-énumération
 ```
 
-> ⚠️ **Legacy à retirer** : `test_e2e_auth.py` (et le flux « Clé API ») ciblent un écran
-> de connexion **disparu** — l'app utilise email/mot de passe + cookie JWT. Conservés
-> temporairement ; remplacés par `auth/`. Voir BUG-001 dans `regression/`.
+> ✅ **Legacy retiré** : `test_e2e_auth.py` (flux « Clé API » disparu) + `test_e2e_analyze/screener/watchlist.py`
+> ont été **supprimés** ; `test_e2e_stream.py`/`test_e2e_sprint33.py` migrés vers `stock_analysis/`.
+> La fixture `authenticated_page` se connecte maintenant via le **vrai flux cookie JWT + CSRF**.
+
+## Tracing (débogage des échecs)
+
+```bash
+E2E_TRACE=1   pytest tests/e2e -m e2e      # trace .zip sur échec → tests/e2e/.traces/
+E2E_TRACE=all pytest tests/e2e -m e2e      # trace systématique
+npx playwright show-trace tests/e2e/.traces/<test>.zip
+```
+
+> ℹ️ Le job CI `test-e2e` (sur `dev`) installe Chromium, démarre Vite, lance la suite et
+> archive les traces en cas d'échec. En local, `playwright install chromium` est requis.
 
 ## Architecture
 

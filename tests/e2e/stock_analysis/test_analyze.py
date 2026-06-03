@@ -61,6 +61,38 @@ def test_analyse_api_indisponible(authenticated_page):
     page.expect_testid_visible("error-message", timeout=15_000)
 
 
+def test_analyse_successive_deux_tickers(authenticated_page):
+    """Analyser BNS puis AAPL : chaque résultat s'affiche, sans message d'erreur (migré legacy)."""
+    from playwright.sync_api import expect
+
+    page = AnalyzePage(authenticated_page).goto()
+    page.ticker.fill("BNS")
+    page.testid("autofill-button").click()
+    page.submit.click()
+    page.expect_result("BNS")
+    expect(page.error).not_to_be_visible()
+
+    page.ticker.fill("AAPL")
+    page.submit.click()
+    page.expect_result("AAPL")
+    expect(page.error).not_to_be_visible()
+
+
+def test_resultat_efface_au_changement_ticker(authenticated_page):
+    """Resoumettre avec un nouveau ticker remplace l'ancien résultat (migré legacy)."""
+    from playwright.sync_api import expect
+
+    page = AnalyzePage(authenticated_page).goto()
+    page.ticker.fill("BNS")
+    page.testid("autofill-button").click()
+    page.submit.click()
+    page.expect_result("BNS")
+
+    page.ticker.fill("TD")
+    page.submit.click()
+    expect(page.result_ticker).to_have_text("TD", timeout=30_000)
+
+
 def test_analyse_reponse_corrompue(authenticated_page):
     """JSON tronqué → pas de crash React, message d'erreur affiché."""
     with PageMonitor(authenticated_page) as mon:

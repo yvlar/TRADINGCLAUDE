@@ -65,7 +65,7 @@
 | Compare / ESG | 🟢 Faible | *smoke seulement* | P3 |
 | Admin (clés API) | 🟠 Élevé | *RBAC couvert, CRUD clés à étendre* | P2 |
 
-**Total ajouté : ~49 tests E2E** répartis sur 8 dossiers + 6 personas + monitoring auto.
+**Total : 68 tests E2E collectés** (8 dossiers + streaming/autofill migrés + sécurité paramétrée ×10) + 6 personas + monitoring auto + **5 tests backend** de parité doublon watchlist (CI standard).
 
 ---
 
@@ -167,12 +167,15 @@ def test_BUG004_reponse_analyse_corrompue_ne_crashe_pas_react(authenticated_page
 - [ ] WebSocket `/ws/metrics` : connexion, message, reconnexion.
 - [ ] Compare & ESG : parcours fonctionnels au-delà du smoke.
 
-### Recommandations
-1. **Remplacer** les anciens `test_e2e_*.py` (racine `tests/e2e/`) par la nouvelle arborescence ; ils ciblent un flux d'auth mort et faussent la confiance.
-2. **Intégrer les E2E au CI** dans un job dédié (`playwright install chromium` + `npm run dev &`), exécuté sur `dev` (pas bloquant master au début), avec upload des traces/vidéos en cas d'échec.
-3. **Aligner le contrôle de doublon watchlist** entre la vraie `WatchlistService` (DB) et l'in-memory, sinon BUG-005 restera invisible en prod.
-4. **Activer `expect` tracing** (`browser.new_context(record_video_dir=...)`, `tracing.start`) pour le débogage des échecs CI.
-5. **Étendre les personas** vers des données réellement seedées (analysis_history) quand un Postgres éphémère sera disponible en CI, pour tester la pagination « massive » de bout en bout.
+### Recommandations — état d'implémentation
+1. ✅ **Fait — Legacy remplacé.** `test_e2e_auth.py` (flux « Clé API » mort) + `test_e2e_analyze/screener/watchlist.py` supprimés ; coverage unique migré (`stock_analysis/test_streaming.py`, `test_autofill.py`, cas successifs/suppression intégrés aux nouvelles suites).
+2. ✅ **Fait — CI E2E.** Job `test-e2e` ajouté à `.github/workflows/ci.yml` (sur `dev` et PR le ciblant) : `playwright install --with-deps chromium` + `npm run dev` (wait-on) + `pytest -m e2e`, upload des traces en cas d'échec.
+3. ✅ **Fait — Doublon watchlist aligné.** `WatchlistService.add_entry` (DB) refuse désormais le doublon ticker+workflow via `DuplicateWatchlistError` → **409** (parité avec l'in-memory). Couvert par `tests/services/test_watchlist_duplicate.py` (5 tests, **exécutés en CI standard**).
+4. ✅ **Fait — Tracing.** Tracing Playwright opt-in (`E2E_TRACE=1` → trace sur échec, `=all` → toujours) dans `clean_context` + hook `pytest_runtest_makereport` ; sorties dans `tests/e2e/.traces/` (gitignored), archivées par le CI.
+5. ✅ **Fix critique — `authenticated_page`** reconstruit sur le **vrai flux cookie JWT + CSRF** (persona standard) au lieu de `api_token` qui n'authentifie plus → toutes les suites exercent enfin le chemin d'auth de production.
+6. 🔲 **Backlog — personas seedés en DB.** Données `analysis_history` réellement seedées quand un Postgres éphémère sera dispo en CI (pagination « massive » de bout en bout, aujourd'hui simulée par interception réseau).
+
+> **Note d'exécution locale** : dans l'environnement d'exécution distant courant, le téléchargement du binaire Chromium (`cdn.playwright.dev`) est **bloqué par l'allowlist réseau** ; les 68 tests E2E *collectent* et *skippent* proprement (faute de navigateur + Vite), mais s'exécutent réellement en CI GitHub Actions (réseau ouvert). Les 5 tests backend du doublon watchlist, eux, tournent et **passent** localement.
 
 ---
 

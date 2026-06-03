@@ -1,5 +1,6 @@
 """E2E — Watchlist (le « portefeuille » suivi : ajout, doublon, liste vide, erreurs)."""
 import pytest
+from playwright.sync_api import expect
 
 from tests.e2e.helpers.assertions import assert_page_clean
 from tests.e2e.helpers.monitoring import PageMonitor
@@ -41,3 +42,14 @@ def test_watchlist_erreur_chargement(authenticated_page):
     mock_status(authenticated_page, "**/watchlist", 500, {"detail": "indisponible"})
     page = WatchlistPage(authenticated_page).goto()
     page.expect_testid_visible("watchlist-error", timeout=10_000)
+
+
+def test_watchlist_suppression(authenticated_page):
+    """Ajouter un ticker puis le supprimer → retour au compte initial (migré legacy)."""
+    page = WatchlistPage(authenticated_page).goto()
+    initial = page.rows().count()
+    page.add("TD")
+    expect(page.rows()).to_have_count(initial + 1, timeout=15_000)
+    # TD est en tête (tri created_at desc) → supprimer la première ligne.
+    authenticated_page.get_by_role("button", name="Supprimer").first.click()
+    expect(page.rows()).to_have_count(initial, timeout=10_000)
