@@ -38,7 +38,7 @@ def test_login_mauvais_mot_de_passe_401(clean_page):
 def test_login_email_inconnu_401(clean_page):
     """Email absent → même message générique (anti-énumération)."""
     login = LoginPage(clean_page).goto()
-    login.login("inconnu@nulle.part", "Quelconque1!@#")
+    login.login("inconnu@example.org", "Quelconque1!@#")
     login.expect_error()
     assert "/login" in clean_page.url
 

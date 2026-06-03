@@ -31,7 +31,7 @@ def test_message_login_ne_revele_pas_existence(clean_page):
     msg_existant = login.error.inner_text()
 
     clean_page.goto(f"{BASE_URL}/login")
-    login.login("vraiment-inconnu@nulle.part", "FauxPass1!@#")
+    login.login("vraiment-inconnu@example.org", "FauxPass1!@#")
     login.expect_error()
     msg_inconnu = login.error.inner_text()
 

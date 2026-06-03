@@ -16,6 +16,9 @@ from playwright.sync_api import ConsoleMessage, Page, Request, Response
 _CONSOLE_ALLOWLIST = (
     re.compile(r"Download the React DevTools", re.I),
     re.compile(r"\[vite\] connect", re.I),
+    # « Failed to load resource » double le signal réseau (déjà capté par _on_response
+    # avec allow_status) ; le compter aussi en console le ferait remonter deux fois.
+    re.compile(r"Failed to load resource", re.I),
 )
 
 # Motifs trahissant un défaut backend renvoyé jusqu'au client.
@@ -109,6 +112,10 @@ class PageMonitor:
 
     def _on_response(self, response: Response) -> None:
         if response.status < 400:
+            return
+        # Sonde de session : AuthContext appelle /auth/me au montage de chaque page ;
+        # un 401 y est le comportement NORMAL quand aucune session n'est active.
+        if response.status == 401 and "/auth/me" in response.url:
             return
         excerpt = ""
         if self._capture_bodies and response.status >= 500:

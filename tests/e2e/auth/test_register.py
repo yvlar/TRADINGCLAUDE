@@ -12,7 +12,7 @@ pytestmark = pytest.mark.e2e
 
 
 def _unique_email() -> str:
-    return f"nouveau-{uuid.uuid4().hex[:8]}@test.local"
+    return f"nouveau-{uuid.uuid4().hex[:8]}@example.com"
 
 
 def test_register_happy_path(clean_page):

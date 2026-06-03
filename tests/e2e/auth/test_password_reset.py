@@ -26,7 +26,7 @@ def test_forgot_password_email_connu(clean_page):
 def test_forgot_password_email_inconnu_meme_reponse(clean_page):
     """Email inconnu → même confirmation neutre (pas de fuite d'information)."""
     page = ForgotPasswordPage(clean_page).goto()
-    page.request_reset("inexistant@nulle.part")
+    page.request_reset("inexistant@example.org")
     clean_page.wait_for_timeout(500)
     # Aucun message distinctif ne doit révéler que le compte n'existe pas.
 

@@ -46,7 +46,7 @@ _DEFAULT_PWD = "Test1234!@#$"
 PERSONAS: dict[str, Persona] = {
     "empty": Persona(
         cle="empty",
-        email="vide@test.local",
+        email="vide@example.com",
         password=_DEFAULT_PWD,
         role="reader",
         label="Utilisateur vide",
@@ -55,7 +55,7 @@ PERSONAS: dict[str, Persona] = {
     ),
     "standard": Persona(
         cle="standard",
-        email="standard@test.local",
+        email="standard@example.com",
         password=_DEFAULT_PWD,
         role="reader",
         label="Utilisateur standard",
@@ -64,7 +64,7 @@ PERSONAS: dict[str, Persona] = {
     ),
     "premium": Persona(
         cle="premium",
-        email="premium@test.local",
+        email="premium@example.com",
         password=_DEFAULT_PWD,
         role="reader",
         label="Utilisateur premium",
@@ -73,7 +73,7 @@ PERSONAS: dict[str, Persona] = {
     ),
     "admin": Persona(
         cle="admin",
-        email="admin@test.local",
+        email="admin@example.com",
         password=_DEFAULT_PWD,
         role="admin",
         label="Administrateur",
@@ -82,7 +82,7 @@ PERSONAS: dict[str, Persona] = {
     ),
     "suspended": Persona(
         cle="suspended",
-        email="suspendu@test.local",
+        email="suspendu@example.com",
         password=_DEFAULT_PWD,
         role="reader",
         is_active=False,
@@ -92,7 +92,7 @@ PERSONAS: dict[str, Persona] = {
     ),
     "massive": Persona(
         cle="massive",
-        email="massif@test.local",
+        email="massif@example.com",
         password=_DEFAULT_PWD,
         role="reader",
         label="Compte avec historique massif",
