@@ -163,7 +163,7 @@ jobs:
         working-directory: frontend
         run: |
           npm run dev &
-          npx wait-on http://localhost:5173 --timeout 60000
+          npx --yes wait-on@8 http://localhost:5173 --timeout 60000
 
       - name: Lancer les tests E2E
         env:

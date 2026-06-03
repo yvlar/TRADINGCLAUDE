@@ -55,9 +55,9 @@
 | **Session / déconnexion / routes protégées** | 🔴 Critique | `auth/test_session.py` (5) | P0 |
 | **Mot de passe oublié / reset** | 🟠 Élevé | `auth/test_password_reset.py` (3) | P1 |
 | **Protection des routes + RBAC + CSRF + anti-énumération** | 🔴 Critique | `security/test_security.py` (5+param) | P0 |
-| **Analyse individuelle (multi-skills, stream)** | 🔴 Critique | `stock_analysis/test_analyze.py` (6) | P0 |
+| **Analyse individuelle (multi-skills, stream)** | 🔴 Critique | `stock_analysis/test_analyze.py` (8) | P0 |
 | **Screener multi-tickers** | 🟠 Élevé | `stock_analysis/test_screener.py` (3) | P1 |
-| **Watchlist (CRUD, doublon, vide)** | 🟠 Élevé | `watchlist/test_watchlist.py` (4) | P1 |
+| **Watchlist (CRUD, doublon, vide)** | 🟠 Élevé | `watchlist/test_watchlist.py` (5) | P1 |
 | **Historique + recherche sémantique** | 🟡 Moyen | `settings/test_history_and_search.py` (4) | P2 |
 | **Budgets de performance perçue** | 🟡 Moyen | `performance/test_performance.py` (3) | P2 |
 | **Non-régression (bogues ancrés)** | 🔴 Critique | `regression/test_regressions.py` (5) | P0 |
@@ -170,7 +170,7 @@ def test_BUG004_reponse_analyse_corrompue_ne_crashe_pas_react(authenticated_page
 ### Recommandations — état d'implémentation
 1. ✅ **Fait — Legacy remplacé.** `test_e2e_auth.py` (flux « Clé API » mort) + `test_e2e_analyze/screener/watchlist.py` supprimés ; coverage unique migré (`stock_analysis/test_streaming.py`, `test_autofill.py`, cas successifs/suppression intégrés aux nouvelles suites).
 2. ✅ **Fait — CI E2E.** Job `test-e2e` ajouté à `.github/workflows/ci.yml` (sur `dev` et PR le ciblant) : `playwright install --with-deps chromium` + `npm run dev` (wait-on) + `pytest -m e2e`, upload des traces en cas d'échec.
-3. ✅ **Fait — Doublon watchlist aligné.** `WatchlistService.add_entry` (DB) refuse désormais le doublon ticker+workflow via `DuplicateWatchlistError` → **409** (parité avec l'in-memory). Couvert par `tests/services/test_watchlist_duplicate.py` (5 tests, **exécutés en CI standard**).
+3. ✅ **Fait — Doublon watchlist aligné + verrou DB.** `WatchlistService.add_entry` refuse le doublon ticker+workflow via `DuplicateWatchlistError` → **409** (parité in-memory). La garantie réelle vient d'un **index unique `idx_watchlist_ticker_workflow`** (résistant aux courses TOCTOU) : ajouté à `init.sql`, créé au boot (`main.py`, non-fatal), avec migration `migration_watchlist_unique.sql` (dédup + index) ; `asyncpg.UniqueViolationError` est capté en filet. Couvert par `tests/services/test_watchlist_duplicate.py` (5 tests, **CI standard**).
 4. ✅ **Fait — Tracing.** Tracing Playwright opt-in (`E2E_TRACE=1` → trace sur échec, `=all` → toujours) dans `clean_context` + hook `pytest_runtest_makereport` ; sorties dans `tests/e2e/.traces/` (gitignored), archivées par le CI.
 5. ✅ **Fix critique — `authenticated_page`** reconstruit sur le **vrai flux cookie JWT + CSRF** (persona standard) au lieu de `api_token` qui n'authentifie plus → toutes les suites exercent enfin le chemin d'auth de production.
 6. 🔲 **Backlog — personas seedés en DB.** Données `analysis_history` réellement seedées quand un Postgres éphémère sera dispo en CI (pagination « massive » de bout en bout, aujourd'hui simulée par interception réseau).

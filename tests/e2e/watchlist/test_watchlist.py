@@ -19,8 +19,13 @@ def test_watchlist_ajout(authenticated_page):
     assert_page_clean(mon)
 
 
-def test_watchlist_doublon_refuse(authenticated_page):
-    """Ajouter deux fois le même ticker+workflow → message d'erreur (contrôle doublon)."""
+def test_watchlist_doublon_bloque_cote_client(authenticated_page):
+    """Ajouter deux fois le même ticker+workflow → la garde CLIENT affiche une erreur.
+
+    NB : le frontend (WatchlistPage) bloque le doublon avant tout appel réseau ; le
+    chemin backend 409 (DuplicateWatchlistError) est couvert par les tests unitaires
+    `tests/services/test_watchlist_duplicate.py`.
+    """
     page = WatchlistPage(authenticated_page).goto()
     page.add("RY")
     page.expect_testid_visible("watchlist-row", timeout=15_000)

@@ -39,6 +39,8 @@ CREATE TABLE watchlist (
 );
 
 CREATE INDEX idx_watchlist_ticker ON watchlist (ticker);
+-- Unicité (ticker, workflow) — verrou anti-doublon résistant aux courses TOCTOU
+CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_ticker_workflow ON watchlist (ticker, workflow);
 
 -- Historique du composite_score — Sprint 57
 CREATE TABLE IF NOT EXISTS composite_score_history (

@@ -381,18 +381,26 @@ def pytest_runtest_makereport(item, call):
 _TRACE_DIR = os.path.join(os.path.dirname(__file__), ".traces")
 
 
+@pytest.fixture(scope="session")
+def clean_browser(backend_server, playwright):
+    """Navigateur Chromium partagé pour les contextes cookie — évite un relaunch par test."""
+    browser = playwright.chromium.launch(headless=True)
+    yield browser
+    browser.close()
+
+
 @pytest.fixture
-def clean_context(backend_server, playwright, request):
+def clean_context(clean_browser, request):
     """Contexte SANS api_token en localStorage — exerce le vrai flux cookie JWT.
 
     Indispensable pour les parcours d'auth : `browser_context` injecte un Bearer
-    token qui court-circuite la session cookie et masquerait les régressions.
+    token qui court-circuite la session cookie et masquerait les régressions. Seul
+    le contexte (pas le navigateur) est recréé par test → isolation sans coût de boot.
 
     Tracing opt-in via `E2E_TRACE=1` (trace sur échec) ou `E2E_TRACE=all` (toujours)
     — les .zip Playwright atterrissent dans `tests/e2e/.traces/` pour le trace viewer.
     """
-    browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(base_url="http://localhost:5173")
+    context = clean_browser.new_context(base_url="http://localhost:5173")
     trace_mode = os.environ.get("E2E_TRACE")
     if trace_mode:
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -408,7 +416,6 @@ def clean_context(backend_server, playwright, request):
         else:
             context.tracing.stop()
     context.close()
-    browser.close()
 
 
 @pytest.fixture

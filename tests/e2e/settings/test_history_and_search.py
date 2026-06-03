@@ -31,8 +31,8 @@ def test_recherche_semantique_rendu(authenticated_page):
     """La page de recherche se charge dans un état idle/désactivé sans crash."""
     page = SearchPage(authenticated_page).goto()
     page.page.wait_for_selector("nav", timeout=10_000)
-    # search-idle ou search-rag-disabled selon la config RAG — l'un des deux.
-    assert (page.testid("search-idle").count() + page.testid("search-rag-disabled").count()) >= 0
+    # search-idle ou search-rag-disabled selon la config RAG — au moins un des deux.
+    assert (page.testid("search-idle").count() + page.testid("search-rag-disabled").count()) >= 1
 
 
 def test_historique_massif_pagination(authenticated_page):

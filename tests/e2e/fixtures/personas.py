@@ -179,13 +179,14 @@ class InMemoryUserService:
         return self._public(self._users[user_id])
 
     async def authenticate(self, email: str, password: str) -> dict | None:
-        row = self._users.get(self._by_email.get(email.lower()))  # type: ignore[arg-type]
+        user_id = self._by_email.get(email.lower())
+        row = self._users.get(user_id) if user_id else None
         dummy = "$argon2id$v=19$m=65536,t=2,p=2$dummy$dummy"
         candidate = row["hashed_password"] if row else dummy
         try:
             _ph.verify(candidate, password)
             valid = True
-        except (VerifyMismatchError, Exception):
+        except VerifyMismatchError:
             valid = False
         if not valid or row is None or not row["is_active"]:
             return None

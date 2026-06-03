@@ -61,6 +61,21 @@ async def test_service_insere_si_absent():
     pool.fetchrow.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_service_course_toctou_violation_unique():
+    """Course gagnée par une requête concurrente → l'INSERT lève UniqueViolationError
+    et le service la traduit en DuplicateWatchlistError (filet de sécurité TOCTOU)."""
+    import asyncpg
+
+    pool = AsyncMock()
+    pool.fetchval = AsyncMock(return_value=None)  # SELECT voit « absent »…
+    pool.fetchrow = AsyncMock(side_effect=asyncpg.UniqueViolationError("dup"))  # …mais l'index bloque
+    service = WatchlistService(db_pool=pool)
+
+    with pytest.raises(DuplicateWatchlistError):
+        await service.add_entry(WatchlistCreate(ticker="bns", workflow="value_graham"))
+
+
 @pytest_asyncio.fixture
 async def watchlist_client(client):
     mock_service = AsyncMock(spec=WatchlistService)

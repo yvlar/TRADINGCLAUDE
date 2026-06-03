@@ -65,7 +65,12 @@ def test_BUG004_reponse_analyse_corrompue_ne_crashe_pas_react(authenticated_page
 
 
 def test_BUG005_watchlist_doublon_message_clair(authenticated_page):
-    """BUG-005 — Ajouter un doublon affiche une erreur lisible, pas un 500 silencieux."""
+    """BUG-005 — Doublon → message lisible côté UI (garde client).
+
+    La parité backend (DB unique + 409) est verrouillée par
+    `tests/services/test_watchlist_duplicate.py` ; ici on vérifie que l'utilisateur
+    voit un message clair plutôt qu'un échec silencieux.
+    """
     page = WatchlistPage(authenticated_page).goto()
     page.add("ENB")
     page.expect_testid_visible("watchlist-row", timeout=15_000)

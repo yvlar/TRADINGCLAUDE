@@ -51,10 +51,10 @@ def test_csrf_token_cookie_present_apres_login(standard_page):
     cookies = standard_page.context.cookies()
     names = {c["name"] for c in cookies}
     assert "csrf_token" in names, "Cookie CSRF manquant après connexion"
-    # access_token doit être httpOnly (inaccessible au JS).
+    # access_token doit exister et être httpOnly (inaccessible au JS).
     access = next((c for c in cookies if c["name"] == "access_token"), None)
-    if access is not None:
-        assert access.get("httpOnly") is True, "access_token devrait être httpOnly"
+    assert access is not None, "cookie access_token manquant après connexion"
+    assert access.get("httpOnly") is True, "access_token devrait être httpOnly"
 
 
 def test_session_revoquee_bloque_navigation(standard_page):
