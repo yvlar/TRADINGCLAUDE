@@ -4,13 +4,17 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import TypeVar
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
 
+from app.api.endpoints.ratios_recon import (
+    extract_earnings_ratios,
+    extract_graham_ratios,
+    extract_valuation_ratios,
+    reconstruct_ratios_traces,
+)
 from app.services.composite_history_service import CompositeHistoryService
 from app.services.pdf_report_service import PdfReportService
 from app.utils.error_sanitization import sanitized_http_500
@@ -195,60 +199,11 @@ async def _resolve_esg_score(
     return points[0].score if points else None
 
 
-def _parse_input_data(row) -> dict | None:
-    """Parse input_data persisté (JSONB) en dict ; None si absent, illisible ou vide."""
-    raw = row["input_data"]
-    if raw is None:
-        return None
-    try:
-        data: dict = json.loads(raw) if isinstance(raw, str) else dict(raw)
-    except (ValueError, TypeError):
-        return None
-    return data or None
-
-
-def _extract_ratios(row) -> "GrahamRatios | None":
-    """Parse les ratios Graham depuis input_data ; None si absents ou non conformes."""
-    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
-
-    data = _parse_input_data(row)
-    if data is None:
-        return None
-    try:
-        return GrahamRatios.model_validate(data)
-    except Exception:
-        return None
-
-
-_RatiosT = TypeVar("_RatiosT", bound=BaseModel)
-
-
-def _extract_sub_ratios(row, key: str, model_cls: type[_RatiosT]) -> "_RatiosT | None":
-    """Valide la sous-clé `key` d'input_data en `model_cls` ; None si absente/illisible/non conforme."""
-    data = _parse_input_data(row)
-    if data is None:
-        return None
-    sous_data = data.get(key)
-    if not sous_data:
-        return None
-    try:
-        return model_cls.model_validate(sous_data)
-    except Exception:
-        return None
-
-
-def _extract_earnings_ratios(row) -> "EarningsQualityRatios | None":
-    """Parse les ratios earnings depuis la clé dédiée d'input_data ; None si absents/non conformes."""
-    from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
-
-    return _extract_sub_ratios(row, "earnings_ratios", EarningsQualityRatios)
-
-
-def _extract_valuation_ratios(row) -> "ValuationRatios | None":
-    """Parse les ratios valorisation depuis la clé dédiée d'input_data ; None si absents/non conformes."""
-    from app.skills.tier2.stock_valuation.schemas import ValuationRatios
-
-    return _extract_sub_ratios(row, "valuation_ratios", ValuationRatios)
+# Extraction des ratios depuis input_data : source partagée avec /report (ratios_recon).
+# Aliases privés conservés pour les imports de tests existants.
+_extract_ratios = extract_graham_ratios
+_extract_earnings_ratios = extract_earnings_ratios
+_extract_valuation_ratios = extract_valuation_ratios
 
 
 # Mapping clé du JSONB result → (champ AnalyzeResponse, classe Pydantic du skill)
@@ -296,12 +251,7 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
     Un skill dont le JSON ne valide pas est ignoré (pas d'échec global). Retourne None
     uniquement si le result est illisible.
     """
-    from app.orchestrator.core import (
-        AnalyzeResponse,
-        _earnings_ratios_trace,
-        _graham_ratios_trace,
-        _valuation_ratios_trace,
-    )
+    from app.orchestrator.core import AnalyzeResponse
 
     result_str = row["result"]
     try:
@@ -336,10 +286,6 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
         created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
     )
 
-    ratios_fetched_at, ratios_source = _graham_ratios_trace(_extract_ratios(row))
-    earnings_fetched_at, earnings_source = _earnings_ratios_trace(_extract_earnings_ratios(row))
-    valuation_fetched_at, valuation_source = _valuation_ratios_trace(_extract_valuation_ratios(row))
-
     return AnalyzeResponse(
         analysis_id=str(row["id"]),
         ticker=row["ticker"],
@@ -347,11 +293,6 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
         skills_applied=skills_used,
         cost_usd=float(row["cost_usd"]),
         created_at=created_at_str,
-        ratios_fetched_at=ratios_fetched_at,
-        ratios_source=ratios_source,
-        earnings_ratios_fetched_at=earnings_fetched_at,
-        earnings_ratios_source=earnings_source,
-        valuation_ratios_fetched_at=valuation_fetched_at,
-        valuation_ratios_source=valuation_source,
+        **reconstruct_ratios_traces(row),
         **parsed_fields,
     )

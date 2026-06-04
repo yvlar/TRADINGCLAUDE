@@ -1169,3 +1169,69 @@ class TestValuationRatiosTraceHelper:
         fetched, source = _valuation_ratios_trace(ValuationRatios(pe=34.2))
         assert fetched is None
         assert source is None
+
+
+class TestRequestRatiosTraces:
+    """Helper partagé par les 4 points de construction d'AnalyzeResponse (sync, stream, caches)."""
+
+    def test_requete_sans_ratios_donne_six_champs_none(self):
+        from app.orchestrator.core import AnalyzeRequest, _request_ratios_traces
+
+        traces = _request_ratios_traces(AnalyzeRequest(ticker="MSFT"))
+        assert traces == {
+            "ratios_fetched_at": None,
+            "ratios_source": None,
+            "earnings_ratios_fetched_at": None,
+            "earnings_ratios_source": None,
+            "valuation_ratios_fetched_at": None,
+            "valuation_ratios_source": None,
+        }
+
+    def test_trois_skills_horodates_remplissent_les_six_champs(self, ratios_earnings_msft):
+        from datetime import datetime, timezone
+
+        from app.orchestrator.core import AnalyzeRequest, _request_ratios_traces
+
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_fetched_at=datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        earnings = ratios_earnings_msft.model_copy(
+            update={
+                "ratios_fetched_at": datetime(2026, 5, 21, 9, 0, 0, tzinfo=timezone.utc),
+                "ratios_source": "Yahoo Finance",
+            }
+        )
+        valuation = ValuationRatios(
+            pe=34.2,
+            ratios_fetched_at=datetime(2026, 5, 22, 9, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        traces = _request_ratios_traces(
+            AnalyzeRequest(
+                ticker="MSFT", ratios=graham, earnings_ratios=earnings, valuation_ratios=valuation
+            )
+        )
+        assert traces["ratios_fetched_at"].startswith("2026-05-20")
+        assert traces["earnings_ratios_fetched_at"].startswith("2026-05-21")
+        assert traces["valuation_ratios_fetched_at"].startswith("2026-05-22")
+        assert (
+            traces["ratios_source"]
+            == traces["earnings_ratios_source"]
+            == traces["valuation_ratios_source"]
+            == "Yahoo Finance"
+        )
+
+    def test_source_presente_sans_date_donne_date_none_source_conservee(self):
+        from app.orchestrator.core import AnalyzeRequest, _request_ratios_traces
+
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_source="Yahoo Finance",
+        )
+        traces = _request_ratios_traces(AnalyzeRequest(ticker="MSFT", ratios=graham))
+        assert traces["ratios_fetched_at"] is None
+        assert traces["ratios_source"] == "Yahoo Finance"

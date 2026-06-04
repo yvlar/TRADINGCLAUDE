@@ -325,6 +325,24 @@ def _valuation_ratios_trace(
     return fetched, ratios.ratios_source
 
 
+def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | None]:
+    """Reconstruit les 6 champs de traçabilité (Graham + earnings + valuation) depuis les ratios d'une requête.
+
+    Évite la répétition du triplet d'appels aux quatre points de construction d'AnalyzeResponse.
+    """
+    graham_fetched, graham_source = _graham_ratios_trace(request.ratios)
+    earnings_fetched, earnings_source = _earnings_ratios_trace(request.earnings_ratios)
+    valuation_fetched, valuation_source = _valuation_ratios_trace(request.valuation_ratios)
+    return {
+        "ratios_fetched_at": graham_fetched,
+        "ratios_source": graham_source,
+        "earnings_ratios_fetched_at": earnings_fetched,
+        "earnings_ratios_source": earnings_source,
+        "valuation_ratios_fetched_at": valuation_fetched,
+        "valuation_ratios_source": valuation_source,
+    }
+
+
 def _build_input_data(request: AnalyzeRequest) -> str:
     """Sérialise les ratios d'entrée (JSONB) ; Graham à plat, earnings/valuation sous clés dédiées.
 
@@ -570,9 +588,6 @@ class Orchestrator:
                     "Cache composite hit pour %s — score=%.1f label=%s (depuis_cache_composite=True)",
                     request.ticker, recent.score, recent.label,
                 )
-                _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
-                _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-                _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
                 return AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -588,12 +603,7 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
-                    ratios_fetched_at=_ratios_fetched_at,
-                    ratios_source=_ratios_source,
-                    earnings_ratios_fetched_at=_earnings_fetched_at,
-                    earnings_ratios_source=_earnings_source,
-                    valuation_ratios_fetched_at=_valuation_fetched_at,
-                    valuation_ratios_source=_valuation_source,
+                    **_request_ratios_traces(request),
                 )
 
         # Résolution du workflow → ensemble des skills autorisés
@@ -1100,9 +1110,6 @@ class Orchestrator:
             except Exception:
                 logger.warning("Échec enregistrement composite_score_history pour %s", request.ticker, exc_info=True)
 
-        _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
-        _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-        _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1128,12 +1135,7 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
-            ratios_fetched_at=_ratios_fetched_at,
-            ratios_source=_ratios_source,
-            earnings_ratios_fetched_at=_earnings_fetched_at,
-            earnings_ratios_source=_earnings_source,
-            valuation_ratios_fetched_at=_valuation_fetched_at,
-            valuation_ratios_source=_valuation_source,
+            **_request_ratios_traces(request),
         )
 
         # --- Étape finale : mise en cache pour les prochains appels ---
@@ -1186,9 +1188,6 @@ class Orchestrator:
                     "Cache composite hit (stream) pour %s — score=%.1f label=%s",
                     request.ticker, recent.score, recent.label,
                 )
-                _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
-                _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-                _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
                 cached_response = AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -1204,12 +1203,7 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
-                    ratios_fetched_at=_ratios_fetched_at,
-                    ratios_source=_ratios_source,
-                    earnings_ratios_fetched_at=_earnings_fetched_at,
-                    earnings_ratios_source=_earnings_source,
-                    valuation_ratios_fetched_at=_valuation_fetched_at,
-                    valuation_ratios_source=_valuation_source,
+                    **_request_ratios_traces(request),
                 )
                 yield {"event": "cached", "data": cached_response.model_dump()}
                 return
@@ -1693,9 +1687,6 @@ class Orchestrator:
             except Exception:
                 logger.warning("Échec enregistrement composite_score_history (stream) pour %s", request.ticker, exc_info=True)
 
-        _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
-        _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-        _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1721,12 +1712,7 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
-            ratios_fetched_at=_ratios_fetched_at,
-            ratios_source=_ratios_source,
-            earnings_ratios_fetched_at=_earnings_fetched_at,
-            earnings_ratios_source=_earnings_source,
-            valuation_ratios_fetched_at=_valuation_fetched_at,
-            valuation_ratios_source=_valuation_source,
+            **_request_ratios_traces(request),
         )
 
         if cache is not None:
