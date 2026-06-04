@@ -296,7 +296,12 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
     Un skill dont le JSON ne valide pas est ignoré (pas d'échec global). Retourne None
     uniquement si le result est illisible.
     """
-    from app.orchestrator.core import AnalyzeResponse, _graham_ratios_trace
+    from app.orchestrator.core import (
+        AnalyzeResponse,
+        _earnings_ratios_trace,
+        _graham_ratios_trace,
+        _valuation_ratios_trace,
+    )
 
     result_str = row["result"]
     try:
@@ -332,6 +337,8 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
     )
 
     ratios_fetched_at, ratios_source = _graham_ratios_trace(_extract_ratios(row))
+    earnings_fetched_at, earnings_source = _earnings_ratios_trace(_extract_earnings_ratios(row))
+    valuation_fetched_at, valuation_source = _valuation_ratios_trace(_extract_valuation_ratios(row))
 
     return AnalyzeResponse(
         analysis_id=str(row["id"]),
@@ -342,5 +349,9 @@ def _reconstruct_analyze_response(row) -> "AnalyzeResponse | None":
         created_at=created_at_str,
         ratios_fetched_at=ratios_fetched_at,
         ratios_source=ratios_source,
+        earnings_ratios_fetched_at=earnings_fetched_at,
+        earnings_ratios_source=earnings_source,
+        valuation_ratios_fetched_at=valuation_fetched_at,
+        valuation_ratios_source=valuation_source,
         **parsed_fields,
     )

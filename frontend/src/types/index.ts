@@ -475,6 +475,10 @@ export interface AnalyzeResponse {
   depuis_cache_composite?: boolean
   ratios_fetched_at?: string | null
   ratios_source?: string | null
+  earnings_ratios_fetched_at?: string | null
+  earnings_ratios_source?: string | null
+  valuation_ratios_fetched_at?: string | null
+  valuation_ratios_source?: string | null
 }
 
 // ---- AnalyzeRequest ----

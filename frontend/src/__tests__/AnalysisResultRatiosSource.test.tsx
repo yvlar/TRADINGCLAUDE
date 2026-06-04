@@ -2,7 +2,12 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { AnalysisResult } from '../components/AnalysisResult'
-import type { AnalyzeResponse, GrahamAnalysisOutput } from '../types'
+import type {
+  AnalyzeResponse,
+  EarningsQualityOutput,
+  GrahamAnalysisOutput,
+  StockValuationOutput,
+} from '../types'
 
 function buildGraham(): GrahamAnalysisOutput {
   return {
@@ -41,6 +46,49 @@ function buildResponse(overrides: Partial<AnalyzeResponse>): AnalyzeResponse {
   } as AnalyzeResponse
 }
 
+function buildEarnings(): EarningsQualityOutput {
+  return {
+    ticker: 'BNS.TO',
+    is_financial: false,
+    m_score: {
+      dsri: 1.05, gmi: 0.98, aqi: 1.01, sgi: 1.03, depi: 0.97,
+      sgai: null, tata: -0.02, lvgi: 1.01, m_score: -2.45,
+      interpretation: 'Faible risque (< -1.78)',
+    },
+    z_score: {
+      variante: 'Altman classique', x1: 0.2, x2: 0.3, x3: 0.1, x4: 1.8, x5: 0.4,
+      z_score: 3.15, interpretation: 'Zone sûre (> 2.99)',
+    },
+    f_score: { criteria: [], f_score: 7, interpretation: 'Qualité élevée' },
+    c_score: { signaux: [], c_score: 1, interpretation: 'Faible risque' },
+    sloan: { accrual_ratio: -0.03, interpretation: 'Accruals négatifs' },
+    drapeaux_rouges: [],
+    verdict: 'ATTENTION',
+    verdict_detail: 'Un signal mineur.',
+    confidence_score: 1.0,
+    recommandation_prochaine_etape: [],
+    citations: [],
+    cost_usd: 0.012,
+  } as EarningsQualityOutput
+}
+
+function buildValuation(): StockValuationOutput {
+  return {
+    ticker: 'BNS.TO',
+    methodes: [],
+    fourchette_basse: 68.0,
+    fourchette_centrale: 70.5,
+    fourchette_haute: 72.5,
+    marge_securite_composite: 0.126,
+    matrice_sensibilite: { wacc_range: [], growth_range: [], values: [] },
+    verdict: 'SOUS_EVALUE',
+    verdict_detail: 'Sous la juste valeur.',
+    recommandation_prochaine_etape: [],
+    citations: [],
+    cost_usd: 0.022,
+  } as StockValuationOutput
+}
+
 describe('AnalysisResult — traçabilité source+date (Sprint 139)', () => {
   it('affiche la source et la date quand présentes', () => {
     const result = buildResponse({
@@ -56,5 +104,37 @@ describe('AnalysisResult — traçabilité source+date (Sprint 139)', () => {
   it("n'affiche rien quand la traçabilité est absente", () => {
     render(<AnalysisResult result={buildResponse({})} />)
     expect(screen.queryByTestId('result-ratios-source')).not.toBeInTheDocument()
+  })
+})
+
+describe('AnalysisResult — traçabilité earnings/valuation (Sprint 146)', () => {
+  it('affiche la source+date earnings et valuation quand présentes', () => {
+    const result = buildResponse({
+      earnings_quality: buildEarnings(),
+      valuation: buildValuation(),
+      earnings_ratios_fetched_at: '2026-05-21T09:00:00+00:00',
+      earnings_ratios_source: 'Yahoo Finance',
+      valuation_ratios_fetched_at: '2026-05-22T09:00:00+00:00',
+      valuation_ratios_source: 'Yahoo Finance',
+    })
+    render(<AnalysisResult result={result} />)
+
+    const ligneEarnings = screen.getByTestId('earnings-ratios-source')
+    expect(ligneEarnings).toHaveTextContent('Yahoo Finance')
+    expect(ligneEarnings).toHaveTextContent('2026-05-21')
+
+    const ligneValuation = screen.getByTestId('valuation-ratios-source')
+    expect(ligneValuation).toHaveTextContent('Yahoo Finance')
+    expect(ligneValuation).toHaveTextContent('2026-05-22')
+  })
+
+  it("n'affiche rien quand la traçabilité earnings/valuation est absente", () => {
+    const result = buildResponse({
+      earnings_quality: buildEarnings(),
+      valuation: buildValuation(),
+    })
+    render(<AnalysisResult result={result} />)
+    expect(screen.queryByTestId('earnings-ratios-source')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('valuation-ratios-source')).not.toBeInTheDocument()
   })
 })

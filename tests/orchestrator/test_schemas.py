@@ -32,6 +32,7 @@ from app.skills.tier2.stock_valuation.schemas import (
     SensitivityMatrix,
     StockValuationOutput,
     ValuationMethod,
+    ValuationRatios,
 )
 from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput, ThesisScenario
 
@@ -1115,5 +1116,56 @@ class TestGrahamRatiosTraceHelper:
             eps_growth_total=0.27, price=80.0, book_value=61.5,
         )
         fetched, source = _graham_ratios_trace(ratios)
+        assert fetched is None
+        assert source is None
+
+
+class TestEarningsRatiosTraceHelper:
+    def test_ratios_none_retourne_none_none(self):
+        from app.orchestrator.core import _earnings_ratios_trace
+        assert _earnings_ratios_trace(None) == (None, None)
+
+    def test_extrait_date_iso_et_source(self, ratios_earnings_msft):
+        from datetime import datetime, timezone
+
+        from app.orchestrator.core import _earnings_ratios_trace
+        ratios = ratios_earnings_msft.model_copy(
+            update={
+                "ratios_fetched_at": datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
+                "ratios_source": "Yahoo Finance",
+            }
+        )
+        fetched, source = _earnings_ratios_trace(ratios)
+        assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
+        assert source == "Yahoo Finance"
+
+    def test_sans_horodatage_retourne_none_pour_date(self, ratios_earnings_msft):
+        from app.orchestrator.core import _earnings_ratios_trace
+        fetched, source = _earnings_ratios_trace(ratios_earnings_msft)
+        assert fetched is None
+        assert source is None
+
+
+class TestValuationRatiosTraceHelper:
+    def test_ratios_none_retourne_none_none(self):
+        from app.orchestrator.core import _valuation_ratios_trace
+        assert _valuation_ratios_trace(None) == (None, None)
+
+    def test_extrait_date_iso_et_source(self):
+        from datetime import datetime, timezone
+
+        from app.orchestrator.core import _valuation_ratios_trace
+        ratios = ValuationRatios(
+            pe=34.2,
+            ratios_fetched_at=datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        fetched, source = _valuation_ratios_trace(ratios)
+        assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
+        assert source == "Yahoo Finance"
+
+    def test_sans_horodatage_retourne_none_pour_date(self):
+        from app.orchestrator.core import _valuation_ratios_trace
+        fetched, source = _valuation_ratios_trace(ValuationRatios(pe=34.2))
         assert fetched is None
         assert source is None

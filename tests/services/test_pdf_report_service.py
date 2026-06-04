@@ -459,6 +459,49 @@ class TestReconstructAnalyzeResponse:
         assert result.ratios_fetched_at is None
         assert result.ratios_source is None
 
+    def test_tracabilite_earnings_valuation_reconstruite(
+        self, graham_output_msft, ratios_msft, ratios_earnings_msft
+    ):
+        """Une analyse rechargée reconstruit la source+date earnings/valuation depuis input_data."""
+        earnings = ratios_earnings_msft.model_copy(
+            update={
+                "ratios_fetched_at": datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+                "ratios_source": "Yahoo Finance",
+            }
+        )
+        valuation = ValuationRatios(
+            pe=34.2,
+            ratios_fetched_at=datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        row = _make_analysis_row(
+            graham_output_msft,
+            ticker="MSFT",
+            ratios=ratios_msft,
+            earnings_ratios=earnings,
+            valuation_ratios=valuation,
+        )
+        result = _reconstruct_analyze_response(row)
+        assert result is not None
+        assert result.earnings_ratios_source == "Yahoo Finance"
+        assert result.earnings_ratios_fetched_at is not None
+        assert result.earnings_ratios_fetched_at.startswith("2026-05-20")
+        assert result.valuation_ratios_source == "Yahoo Finance"
+        assert result.valuation_ratios_fetched_at is not None
+        assert result.valuation_ratios_fetched_at.startswith("2026-05-20")
+
+    def test_tracabilite_earnings_valuation_none_ligne_plate(
+        self, graham_output_msft, ratios_msft
+    ):
+        """Ancien input_data plat (Graham seul, sans sous-clés) → quatre champs None, pas de crash."""
+        row = _make_analysis_row(graham_output_msft, ticker="MSFT", ratios=ratios_msft)
+        result = _reconstruct_analyze_response(row)
+        assert result is not None
+        assert result.earnings_ratios_fetched_at is None
+        assert result.earnings_ratios_source is None
+        assert result.valuation_ratios_fetched_at is None
+        assert result.valuation_ratios_source is None
+
 
 # ---------------------------------------------------------------------------
 # Tests : reconstruction earnings/valuation depuis input_data (sous-clés dédiées)

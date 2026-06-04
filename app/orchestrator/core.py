@@ -279,10 +279,46 @@ class AnalyzeResponse(BaseModel):
         default=None,
         description="Source des ratios Graham d'entrée (ex. « Yahoo Finance »). None si inconnue.",
     )
+    earnings_ratios_fetched_at: str | None = Field(
+        default=None,
+        description="Date ISO de récupération des ratios Qualité bénéfices d'entrée (traçabilité). None si analyse ancienne ou ratios saisis manuellement.",
+    )
+    earnings_ratios_source: str | None = Field(
+        default=None,
+        description="Source des ratios Qualité bénéfices d'entrée (ex. « Yahoo Finance »). None si inconnue.",
+    )
+    valuation_ratios_fetched_at: str | None = Field(
+        default=None,
+        description="Date ISO de récupération des ratios Valorisation d'entrée (traçabilité). None si analyse ancienne ou ratios saisis manuellement.",
+    )
+    valuation_ratios_source: str | None = Field(
+        default=None,
+        description="Source des ratios Valorisation d'entrée (ex. « Yahoo Finance »). None si inconnue.",
+    )
 
 
 def _graham_ratios_trace(ratios: GrahamRatios | None) -> tuple[str | None, str | None]:
     """Extrait (date ISO de récupération, source) des ratios Graham pour la traçabilité de la réponse."""
+    if ratios is None:
+        return None, None
+    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
+    return fetched, ratios.ratios_source
+
+
+def _earnings_ratios_trace(
+    ratios: EarningsQualityRatios | None,
+) -> tuple[str | None, str | None]:
+    """Extrait (date ISO de récupération, source) des ratios Qualité bénéfices — calque de _graham_ratios_trace."""
+    if ratios is None:
+        return None, None
+    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
+    return fetched, ratios.ratios_source
+
+
+def _valuation_ratios_trace(
+    ratios: ValuationRatios | None,
+) -> tuple[str | None, str | None]:
+    """Extrait (date ISO de récupération, source) des ratios Valorisation — calque de _graham_ratios_trace."""
     if ratios is None:
         return None, None
     fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
@@ -535,6 +571,8 @@ class Orchestrator:
                     request.ticker, recent.score, recent.label,
                 )
                 _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
+                _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
+                _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
                 return AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -552,6 +590,10 @@ class Orchestrator:
                     depuis_cache_composite=True,
                     ratios_fetched_at=_ratios_fetched_at,
                     ratios_source=_ratios_source,
+                    earnings_ratios_fetched_at=_earnings_fetched_at,
+                    earnings_ratios_source=_earnings_source,
+                    valuation_ratios_fetched_at=_valuation_fetched_at,
+                    valuation_ratios_source=_valuation_source,
                 )
 
         # Résolution du workflow → ensemble des skills autorisés
@@ -1059,6 +1101,8 @@ class Orchestrator:
                 logger.warning("Échec enregistrement composite_score_history pour %s", request.ticker, exc_info=True)
 
         _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
+        _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
+        _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1086,6 +1130,10 @@ class Orchestrator:
             composite_score=composite,
             ratios_fetched_at=_ratios_fetched_at,
             ratios_source=_ratios_source,
+            earnings_ratios_fetched_at=_earnings_fetched_at,
+            earnings_ratios_source=_earnings_source,
+            valuation_ratios_fetched_at=_valuation_fetched_at,
+            valuation_ratios_source=_valuation_source,
         )
 
         # --- Étape finale : mise en cache pour les prochains appels ---
@@ -1139,6 +1187,8 @@ class Orchestrator:
                     request.ticker, recent.score, recent.label,
                 )
                 _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
+                _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
+                _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
                 cached_response = AnalyzeResponse(
                     analysis_id="cached_composite",
                     ticker=request.ticker,
@@ -1156,6 +1206,10 @@ class Orchestrator:
                     depuis_cache_composite=True,
                     ratios_fetched_at=_ratios_fetched_at,
                     ratios_source=_ratios_source,
+                    earnings_ratios_fetched_at=_earnings_fetched_at,
+                    earnings_ratios_source=_earnings_source,
+                    valuation_ratios_fetched_at=_valuation_fetched_at,
+                    valuation_ratios_source=_valuation_source,
                 )
                 yield {"event": "cached", "data": cached_response.model_dump()}
                 return
@@ -1640,6 +1694,8 @@ class Orchestrator:
                 logger.warning("Échec enregistrement composite_score_history (stream) pour %s", request.ticker, exc_info=True)
 
         _ratios_fetched_at, _ratios_source = _graham_ratios_trace(request.ratios)
+        _earnings_fetched_at, _earnings_source = _earnings_ratios_trace(request.earnings_ratios)
+        _valuation_fetched_at, _valuation_source = _valuation_ratios_trace(request.valuation_ratios)
         response = AnalyzeResponse(
             analysis_id=str(analysis_id),
             ticker=request.ticker,
@@ -1667,6 +1723,10 @@ class Orchestrator:
             composite_score=composite,
             ratios_fetched_at=_ratios_fetched_at,
             ratios_source=_ratios_source,
+            earnings_ratios_fetched_at=_earnings_fetched_at,
+            earnings_ratios_source=_earnings_source,
+            valuation_ratios_fetched_at=_valuation_fetched_at,
+            valuation_ratios_source=_valuation_source,
         )
 
         if cache is not None:
