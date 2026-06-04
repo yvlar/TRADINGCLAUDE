@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from io import BytesIO
 from unittest.mock import AsyncMock
 
+import pypdf
 import pytest
 import pytest_asyncio
 
@@ -21,7 +23,12 @@ from app.api.endpoints.ticker_report import (
 )
 from app.api.main import app
 from app.services.composite_history_service import CompositeHistoryPoint
-from app.services.pdf_report_service import PdfReportService, _build_ratios_rows
+from app.services.pdf_report_service import (
+    PdfReportService,
+    _build_ratios_rows,
+    _build_ratios_source_rows,
+)
+from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
@@ -102,6 +109,67 @@ class TestRatiosRowsLabel:
         rows = _build_ratios_rows(self._ratios())
         labels = [label for label, _ in rows]
         assert "Source des ratios" not in labels
+
+
+# ---------------------------------------------------------------------------
+# Tests : _build_ratios_source_rows — source+date earnings/valuation (Sprint 145)
+# ---------------------------------------------------------------------------
+
+
+class TestRatiosSourceRows:
+    """Une ligne n'est produite que si le ratio porte une source ou une date (parité Graham None)."""
+
+    def _earnings_avec_source(
+        self, ratios_earnings_msft: EarningsQualityRatios
+    ) -> EarningsQualityRatios:
+        return ratios_earnings_msft.model_copy(
+            update={
+                "ratios_source": "Yahoo Finance",
+                "ratios_fetched_at": datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+            }
+        )
+
+    def test_ligne_earnings_rendue_quand_source_presente(self, ratios_earnings_msft):
+        rows = _build_ratios_source_rows(self._earnings_avec_source(ratios_earnings_msft), None)
+        valeurs = dict(rows)
+        assert (
+            valeurs["Source des ratios (Qualité bénéfices)"]
+            == "Yahoo Finance · récupéré le 2026-05-30"
+        )
+        assert "Source des ratios (Valorisation)" not in valeurs
+
+    def test_ligne_valuation_rendue_quand_source_presente(self):
+        valuation = ValuationRatios(
+            pe=34.2,
+            ratios_source="Yahoo Finance",
+            ratios_fetched_at=datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+        )
+        rows = _build_ratios_source_rows(None, valuation)
+        valeurs = dict(rows)
+        assert (
+            valeurs["Source des ratios (Valorisation)"]
+            == "Yahoo Finance · récupéré le 2026-05-30"
+        )
+        assert "Source des ratios (Qualité bénéfices)" not in valeurs
+
+    def test_les_deux_lignes_rendues(self, ratios_earnings_msft):
+        """Earnings + valuation présents → deux lignes ; source sans date → libellé sans « récupéré le »."""
+        valuation = ValuationRatios(ratios_source="SEDAR+", ratios_fetched_at=None)
+        rows = _build_ratios_source_rows(
+            self._earnings_avec_source(ratios_earnings_msft), valuation
+        )
+        valeurs = dict(rows)
+        assert "Source des ratios (Qualité bénéfices)" in valeurs
+        assert valeurs["Source des ratios (Valorisation)"] == "SEDAR+"
+
+    def test_ratio_sans_source_ni_date_omis(self, ratios_earnings_msft):
+        """Ratio présent mais traçabilité None → ligne omise (parité Graham None)."""
+        valuation = ValuationRatios(pe=34.2)  # aucune source ni date
+        rows = _build_ratios_source_rows(ratios_earnings_msft, valuation)
+        assert rows == []
+
+    def test_ratios_none_donne_liste_vide(self):
+        assert _build_ratios_source_rows(None, None) == []
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +609,72 @@ class TestTickerReportTargetedEndpoint:
         resp = await c.get("/ticker-report/BNS?analysis_id=pas-un-uuid")
         assert resp.status_code == 404
 
+    @pytest_asyncio.fixture
+    async def targeted_client_with_subratios(
+        self, client, graham_output_msft, ratios_earnings_msft
+    ):
+        """Comme targeted_client, mais input_data porte les sous-clés earnings/valuation horodatées."""
+        analysis_id = str(uuid.uuid4())
+        ratios = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5, eps_ttm=7.25,
+        )
+        horodatage = datetime(2026, 5, 20, 9, 0, tzinfo=timezone.utc)
+        earnings = ratios_earnings_msft.model_copy(
+            update={"ratios_source": "Yahoo Finance", "ratios_fetched_at": horodatage}
+        )
+        valuation = ValuationRatios(
+            pe=34.2, ratios_source="Yahoo Finance", ratios_fetched_at=horodatage
+        )
+        row = _make_analysis_row(
+            graham_output_msft, ticker="BNS", ratios=ratios,
+            earnings_ratios=earnings, valuation_ratios=valuation, analysis_id=analysis_id,
+        )
+
+        async def _fetchrow(query, *args):
+            if "WHERE id =" in query and len(args) == 2:
+                aid, tk = args
+                if aid == analysis_id and tk == "BNS":
+                    return row
+            return None
+
+        mock_history_svc = AsyncMock()
+        mock_history_svc.get_history = AsyncMock(return_value=_make_history(3, ticker="BNS"))
+        mock_pdf_svc = AsyncMock(spec=PdfReportService)
+        mock_pdf_svc.generate_ticker_report = AsyncMock(return_value=b"%PDF-1.4 mock")
+
+        app.state.composite_history_service = mock_history_svc
+        app.state.pdf_report_service = mock_pdf_svc
+        app.state.db_pool.fetchrow = AsyncMock(side_effect=_fetchrow)
+
+        yield client, analysis_id, mock_pdf_svc
+
+        for attr in ("composite_history_service", "pdf_report_service"):
+            if hasattr(app.state, attr):
+                delattr(app.state, attr)
+
+    @pytest.mark.asyncio
+    async def test_sous_ratios_passes_au_service_pdf(self, targeted_client_with_subratios):
+        """Les ratios earnings/valuation reconstruits sont passés au service PDF."""
+        c, analysis_id, mock_pdf_svc = targeted_client_with_subratios
+        resp = await c.get(f"/ticker-report/BNS?analysis_id={analysis_id}")
+        assert resp.status_code == 200
+        kwargs = mock_pdf_svc.generate_ticker_report.call_args.kwargs
+        assert kwargs["earnings_ratios"] is not None
+        assert kwargs["earnings_ratios"].ratios_source == "Yahoo Finance"
+        assert kwargs["valuation_ratios"] is not None
+        assert kwargs["valuation_ratios"].pe == 34.2
+
+    @pytest.mark.asyncio
+    async def test_ligne_ancienne_sans_sous_ratios_passe_none(self, targeted_client):
+        """input_data ancien (Graham à plat, sans sous-clés) → earnings/valuation None, pas de crash."""
+        c, analysis_id, mock_pdf_svc = targeted_client
+        resp = await c.get(f"/ticker-report/BNS?analysis_id={analysis_id}")
+        assert resp.status_code == 200
+        kwargs = mock_pdf_svc.generate_ticker_report.call_args.kwargs
+        assert kwargs["earnings_ratios"] is None
+        assert kwargs["valuation_ratios"] is None
+
 
 # ---------------------------------------------------------------------------
 # Tests : enrichissement PDF (ratios, annotation, ESG, verdicts)
@@ -577,3 +711,58 @@ class TestPdfReportEnrichi:
             last_analysis=analyze_response_msft,
         )
         assert pdf[:4] == b"%PDF"
+
+    @pytest.mark.asyncio
+    async def test_pdf_rend_ligne_source_earnings_valuation(
+        self, analyze_response_msft, ratios_earnings_msft
+    ):
+        """Acceptation : la source+date earnings/valuation apparaît dans le texte du PDF rendu."""
+        svc = PdfReportService()
+        earnings = ratios_earnings_msft.model_copy(
+            update={
+                "ratios_source": "Yahoo Finance",
+                "ratios_fetched_at": datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+            }
+        )
+        valuation = ValuationRatios(
+            pe=34.2,
+            ratios_source="Yahoo Finance",
+            ratios_fetched_at=datetime(2026, 5, 30, 14, 0, tzinfo=timezone.utc),
+        )
+        pdf = await svc.generate_ticker_report(
+            ticker="MSFT",
+            history=_make_history(2, ticker="MSFT"),
+            last_analysis=analyze_response_msft,
+            earnings_ratios=earnings,
+            valuation_ratios=valuation,
+        )
+        assert pdf[:4] == b"%PDF"
+        texte = "".join(
+            page.extract_text() for page in pypdf.PdfReader(BytesIO(pdf)).pages
+        )
+        # Sans param `ratios` Graham, les seules lignes « Source des ratios » sont les deux nouvelles.
+        assert texte.count("Source des ratios") == 2
+        assert "Valorisation" in texte
+        assert "2026-05-30" in texte
+
+    @pytest.mark.asyncio
+    async def test_pdf_omet_source_complementaire_sans_tracabilite(self, analyze_response_msft):
+        """earnings/valuation sans source/date → aucune ligne « Sources des ratios complémentaires »."""
+        svc = PdfReportService()
+        pdf = await svc.generate_ticker_report(
+            ticker="MSFT",
+            history=_make_history(2, ticker="MSFT"),
+            last_analysis=analyze_response_msft,
+            earnings_ratios=EarningsQualityRatios(
+                sales_t=1.0, sales_t1=1.0, cogs_t=1.0, cogs_t1=1.0,
+                net_income_t=1.0, cfo_t=1.0, receivables_t=1.0, receivables_t1=1.0,
+                current_assets_t=1.0, current_liabilities_t=1.0,
+                total_assets_t=1.0, total_assets_t1=1.0,
+            ),
+            valuation_ratios=ValuationRatios(pe=34.2),
+        )
+        assert pdf[:4] == b"%PDF"
+        texte = "".join(
+            page.extract_text() for page in pypdf.PdfReader(BytesIO(pdf)).pages
+        )
+        assert "Sources des ratios complémentaires" not in texte

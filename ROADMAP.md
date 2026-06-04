@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-02 — Sprint 144 complété**
+**Dernière mise à jour : 2026-06-04 — Sprint 145 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.30.0 |
+| **Version** | 10.31.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 145 — Affichage PDF de la source+date earnings/valuation |
-| **Dernier sprint complété** | Sprint 144 — Persistance reconstructible des ratios earnings/valuation (input_data) ✅ |
+| **Sprint actif** | Sprint 146 — Affichage earnings/valuation source+date sur l'analyse rendue (AnalysisResult) |
+| **Dernier sprint complété** | Sprint 145 — Affichage PDF de la source+date earnings/valuation ✅ |
 
 > **Sprint 137 exécuté (2026-05-31, evals Claude réelles)** — clé API temporaire fournie en session. `stock_valuation` (Sonnet, golden 5 cas) : **15 passed / 5 skipped / 0 failed** (8m50s) — la **substitution DCF déterministe (Sprint 132) survit à l'aller-retour tool-use réel** (valeur DCF + matrice = ossature Python), gate sectoriel financières/REIT correct. `earnings_quality` (Haiku, golden 20 cas) : **81 passed / 10 failed / 10 skipped** (33m45s) — **tous les scores déterministes M/Z/F/C/Sloan passent** (Sprints 128/131) et la concordance verdict globale ≥ 80 % tient ; les 10 échecs portent **uniquement sur des champs narratifs libres du LLM**, pas sur les calculs (voir « Drift earnings_quality » ci-dessous). Aucun lien avec le Sprint 140 (extraction tier1 uniquement).
 
@@ -45,7 +45,7 @@
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
 - `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
-- `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63) ; **paramètre `analysis_id` optionnel (Sprint 122)** : cible une analyse précise (404 si absente/ticker différent), reconstruction multi-skills (16 outputs tier2, skill corrompu ignoré) + PDF enrichi (verdicts skill par skill, ratios clés, annotation, score ESG) ; sans `analysis_id` = comportement inchangé (rétrocompatible)
+- `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63) ; **paramètre `analysis_id` optionnel (Sprint 122)** : cible une analyse précise (404 si absente/ticker différent), reconstruction multi-skills (16 outputs tier2, skill corrompu ignoré) + PDF enrichi (verdicts skill par skill, ratios clés, annotation, score ESG) ; sans `analysis_id` = comportement inchangé (rétrocompatible) ; **bloc « Sources des ratios complémentaires »** rendu via `_fmt_ratios_source` quand les ratios earnings/valuation reconstruits (Sprint 144) portent une source+date, ligne omise sinon — parité Graham (Sprint 145)
 - Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
 - RAG Qdrant activé si `OPENAI_API_KEY` présente (collection `investment_knowledge`)
 - Langfuse activé si `LANGFUSE_SECRET_KEY` présente
@@ -83,6 +83,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 145 — Affichage PDF de la source+date earnings/valuation ✅
+
+**Objectif :** Le rapport PDF par ticker ne rendait la ligne « Source des ratios » que pour Graham (`_build_ratios_rows(r: GrahamRatios)`). Le Sprint 144 ayant rendu les ratios `EarningsQualityRatios`/`ValuationRatios` horodatés **reconstructibles** depuis `input_data` (`_extract_earnings_ratios`/`_extract_valuation_ratios`), il restait à les **câbler dans le PDF** et rendre une ligne « Source des ratios (Qualité bénéfices) » / « Source des ratios (Valorisation) » via le helper `_fmt_ratios_source` **existant**. **Sprint backend pur** (aucun frontend, migration, ni prompt de skill).
+
+**Livrables :**
+- `app/services/pdf_report_service.py` — helper `_build_ratios_source_rows(earnings_ratios, valuation_ratios) -> list[tuple[str, str]]` (`:251`), miroir de `_build_ratios_rows` : une ligne par ratio **uniquement** si le ratio est présent ET porte une source ou une date (gate `r.ratios_fetched_at is not None or r.ratios_source is not None` — parité byte-for-byte avec le gate Graham `:246`), libellé via `_fmt_ratios_source` **réutilisé** (zéro duplication de format). `generate_ticker_report` gagne `earnings_ratios`/`valuation_ratios: … | None = None` (rétrocompat) ; bloc de rendu dédié « Sources des ratios complémentaires » inséré entre la section Graham « Ratios clés » et le bloc ESG, rendu seulement si au moins une ligne existe (`if ratios_source_rows:`).
+- `app/api/endpoints/ticker_report.py` — `get_ticker_report` reconstruit `earnings_ratios = _extract_earnings_ratios(row)` / `valuation_ratios = _extract_valuation_ratios(row)` sous le **même gate** `if row is not None` que `ratios` Graham (initialisés `None` avant), et les passe à `generate_ticker_report`.
+- **Décision de périmètre** : affichage PDF earnings/valuation **uniquement**. Affichage Graham (`_build_ratios_rows`), threading `AnalyzeResponse` (Sprints 139/143) et reconstructeurs (Sprint 144) **inchangés**. Honnêteté None : ratio absent ou sans source/date → ligne omise (parité Graham). Rétrocompat : params défaut `None` → PDF byte-for-byte identique quand earnings/valuation absents (ancien `input_data` à plat).
+- Tests : unitaires `_build_ratios_source_rows` (earnings/valuation seul, les deux, source sans date, ratio sans traçabilité omis, None → liste vide) ; **acceptation `pypdf`** (le texte du PDF rendu contient les deux lignes + la date `2026-05-30`) + omission vérifiée quand traçabilité absente ; intégration `ticker_report` (sous-clés reconstruites passées au service PDF ; ancien `input_data` sans sous-clés → earnings/valuation `None`, pas de crash).
+
+**Version** : 10.31.0
+**Tests** : 1 694 backend collectés (1 690 passés, 3 skipped, 1 xfailed — +9) ; `ruff All checks passed` ; frontend inchangé (sprint backend pur).
+
+**Note d'environnement :** session web — **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées** (rendu PDF Python pur depuis l'output persisté). `ANTHROPIC_API_KEY` absente du conteneur web. Stack Docker non démarrée ; pas de test navigateur live ; canal d'exécution vérifié (sortie des commandes rendue). **Réconciliation carte↔code** : les 5 prémisses du chemin critique vérifiées par grep/lecture avant implémentation (reconstructeurs `ticker_report.py:234/241` non câblés ; site `ratios=_extract_ratios(row)` `:111` passé `:124` ; `_fmt_ratios_source` `pdf_report_service.py:150` ; rendu Graham `_build_ratios_rows` source `:245`/section `:327`, signature `:250` ; champs source+date `earnings_quality/schemas.py:69/73`, `stock_valuation/schemas.py:32/36`) — carte exacte, aucun STOP. Revue indépendante à contexte frais (sous-agent correctness `/code-review` high, distinct de la session auteur, nourri des critères d'acceptation) : **APPROVE — aucun bug HIGH/MED/LOW** (gate honnête-None parité Graham vérifiée ; `GrahamRatios` sans `extra='forbid'` → sous-clés `input_data` ignorées, Graham intact ; params défaut None rétrocompat ; périmètre respecté). Passe qualité `/simplify` (4 axes reuse/simplification/efficacité/altitude, sous-agent dédié) : **propre — ship as-is** ; seule idée non bloquante (centraliser le gate honnête-None dupliqué `:246`/`:261` en prédicat partagé) **écartée** — toucher `_build_ratios_rows:246` (Graham) violerait le périmètre « ne pas retoucher l'affichage Graham », et un prédicat à usage unique serait de la sur-abstraction (à mutualiser dans un futur sprint de consolidation reuse).
 
 ### Sprint 144 — Persistance reconstructible des ratios earnings/valuation (input_data) ✅
 
@@ -128,21 +143,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Tests** : 1 664 backend collectés (1 660 passés, 3 skipped, 1 xfailed — +9) ; `ruff All checks passed` ; frontend inchangé (sprint backend pur).
 
 **Note d'environnement :** session web — **prompt de skill et orchestrateur NON modifiés** (substitution post-parse uniquement), mais l'output `earnings_quality` change (criteria/signaux déterministes) → **evals ciblées à relancer en local** : `ANTHROPIC_API_KEY` absente du conteneur web → evals Claude réelles non exécutées ici. Stack Docker non démarrée ; pas de test navigateur live. Réconciliation carte↔code : prémisses du chemin critique vérifiées avant implémentation (`FScoreCriterion`/`CScoreSignal` `schemas.py:132/144` ; `_injecter_scores` `skill.py:154` ; agrégés `financial_calculations.py:398/470` ; validateur `valider_comptes_cadres` exige 9/6). Revue indépendante à contexte frais (sous-agent correctness high, distinct de la session auteur, nourri des critères d'acceptation) : **APPROVE — aucun bug HIGH/MED/LOW** (9+6 conditions vérifiées byte-for-byte équivalentes à l'ancienne logique ; invariant par construction ; None-safety OK ; asymétrie financière correcte ; M/Z intacts). Passe qualité `/simplify` (4 sous-agents reuse/simplification/efficacité/altitude) : **propre** — extension fidèle du pattern Sprint 131 ; seul point relevé (dédup du bloc mock « poison » partagé par 4 tests, dont 2 préexistants) **écarté** car hors périmètre du sprint.
-
-### Sprint 141 — Propagation frontend de la provenance par ratio ✅
-
-**Objectif :** Le Sprint 140 a exposé côté backend la provenance par ratio (`GrahamRatios.ratios_provenance: dict[str, str] | None`, nom de ratio → clé yfinance effective) ; le champ transite dans le payload `/extract` mais n'était **ni typé ni affiché** côté frontend. Rendre cette provenance visible et vérifiable — sans bruit : ne signaler qu'un **repli réel** (clé effective ≠ clé primaire attendue). Suite de la file revue expert FinTech. **Sprint frontend pur** (aucun backend, aucune migration, aucun prompt de skill).
-
-**Livrables :**
-- `frontend/src/types/index.ts` — `interface GrahamRatios` gagne `ratios_provenance?: Record<string, string> | null` (snake_case, miroir exact du payload `dict[str, str] | None` ; zéro `any`, cohérent avec `ratios_source`/`ratios_fetched_at` voisins)
-- `frontend/src/components/AnalyzeForm.tsx` — affichage **signal-only** sous la carte Graham après auto-fill : helper pur `ratiosEnRepli(provenance)` qui ne retient que les ratios dont la clé effective diffère de la clé primaire attendue (`RATIO_PRIMARY_KEYS` : `pb`→`priceToBook`, `debt_equity`→`debtToEquity`, `book_value`→`bookValue`), badge discret « P/B via `clé` (repli) » avec `title` explicatif. Provenance `null`/absente ou clés toutes primaires → **rien affiché** (aucun bruit). `data-testid="ratios-provenance"`
-- **Décision de périmètre** : limité aux 3 ratios Graham instrumentés au Sprint 140, affichage sur `AnalyzeForm` (qui consomme le payload `/extract` portant `ratios_provenance`). `AnalysisResult` reconstruit depuis l'analyse/historique **n'a pas** la provenance tant qu'elle n'est pas threadée dans `AnalyzeResponse` (backend) → reporté pour préserver le caractère « frontend pur » de ce sprint (extension possible comme au Sprint 139)
-- Tests : composant `AnalyzeForm` — provenance avec une clé de repli (`pb`→`priceToBookRatio`) → badge affiché avec la clé effective, et un ratio resté sur sa clé primaire (`debt_equity`) **non** affiché (preuve du filtre par entrée) ; provenance toute-primaire → aucun badge ; provenance `null` → aucun badge
-
-**Version** : 10.27.0
-**Tests** : 1 655 backend collectés (1 651 passés, 3 skipped, 1 xfailed — inchangé, sprint frontend pur) ; 428 Vitest verts (+3) ; tsc 0 erreur ; ESLint 0 ; ruff `All checks passed`
-
-**Note d'environnement :** session web — sprint d'affichage pur, **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `node_modules` frontend absent à l'amorçage → `npm install`. Canal d'exécution vérifié (la sortie des commandes rend bien — contrairement au flush sporadique du Sprint 140). Réconciliation carte↔code : les prémisses du chemin critique vérifiées par `grep`/lecture avant implémentation (`GrahamRatios.ratios_provenance` `graham_analysis/schemas.py:42` ; clés primaires `_resolve_ratio` `yahoo_finance.py:259-264` ; interface TS `GrahamRatios` `types/index.ts:50` ; `handleAutoFill` spread `result.graham` dans `ratios` `AnalyzeForm.tsx:60` ; patterns d'affichage à cloner `AnalyzeForm.tsx:172-177` / `AnalysisResult.tsx:211-216`). Phase A : `pytest`/`ruff` complets reconstatés verts (le Sprint 140 web n'avait pu confirmer que partiellement). Revue indépendante à contexte frais (sous-agent `/code-review` high, distinct de la session auteur, nourri des critères d'acceptation) : **aucun bug HIGH/MED** ; 3 findings LOW — (1) double appel `ratiosEnRepli` **corrigé** (hoisté en `const repliRatios`) ; (2) dépendance au contrat backend (provenance = clé yfinance réelle) **vérifiée** (`yahoo_finance.py:269-273` n'émet jamais d'entrée à clé `None`) ; (3) badge potentiellement périmé si un 2ᵉ auto-fill omettait le champ **écarté** (le backend émet toujours `ratios_provenance`, et le comportement est identique aux champs `ratios_source`/`ratios_fetched_at` voisins). Stack Docker non démarrée. Pas de test navigateur live.
 
 ---
 

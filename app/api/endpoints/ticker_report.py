@@ -68,6 +68,8 @@ async def get_ticker_report(
 
     last_analysis = None
     ratios = None
+    earnings_ratios = None
+    valuation_ratios = None
     row = None
 
     if analysis_id is not None:
@@ -109,6 +111,8 @@ async def get_ticker_report(
     if row is not None:
         last_analysis = _reconstruct_analyze_response(row)
         ratios = _extract_ratios(row)
+        earnings_ratios = _extract_earnings_ratios(row)
+        valuation_ratios = _extract_valuation_ratios(row)
 
     annotation_note: str | None = None
     esg_score: float | None = None
@@ -122,6 +126,8 @@ async def get_ticker_report(
             history=history,
             last_analysis=last_analysis,
             ratios=ratios,
+            earnings_ratios=earnings_ratios,
+            valuation_ratios=valuation_ratios,
             annotation=annotation_note,
             esg_score=esg_score,
         )
