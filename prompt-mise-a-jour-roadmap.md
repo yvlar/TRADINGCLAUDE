@@ -53,11 +53,51 @@ Le Sprint 146 a threadé la source+date des ratios earnings/valuation jusqu'à `
 
 ## SPRINTS SUGGÉRÉS (non planifiés) — file issue de la revue FinTech
 
-### Sprint 148 — Mutualiser `_parse_input_data` entre `ticker_report` et `report.py`
-**Objectif** : factoriser le parsing défensif de `input_data` (raw JSONB → dict) dans un utilitaire partagé, supprimant la copie inline de `report.py`.
-**Complexité** : Faible.
-**Justification** : finding *reuse* écarté au Sprint 144 (hors périmètre alors) ; maintenant que les reconstructeurs sont actifs (câblés au PDF Sprint 145, à `AnalysisResult` Sprint 146), le bon moment pour lever le helper. Évite qu'un 3ᵉ endpoint ajoute une 4ᵉ variante du même garde.
-**Référence** : EXISTANT (vérifié cette session) — `_parse_input_data` `app/api/endpoints/ticker_report.py:198` (créé Sprint 144) ; duplication inline `_reconstruct_ratios_trace` `app/api/endpoints/report.py:123` (`GrahamRatios.model_validate(data)` `:140`). À CRÉER — module partagé (ex. `app/utils/input_data.py`) + import dans les deux endpoints + test du helper isolé.
+### Sprint 148 — Consolider la reconstruction d'`AnalyzeResponse` (`/report` vs `/ticker-report`) ⭐ prêt à lancer
+**Objectif** : fusionner la logique ~80 % dupliquée des deux reconstructeurs d'`AnalyzeResponse` depuis `analysis_history` dans un cœur partagé, **en corrigeant le bug latent** : `report.py` ne reconstruit pas `esg`.
+**Complexité** : Moyenne (transverse à 2 endpoints, contrats différents à préserver).
+**Justification** : finding *reuse* signalé par la revue PR du Sprint 146 et laissé hors périmètre. La traçabilité ratios (`reconstruct_ratios_traces`) et l'extraction `input_data` (`parse_input_data`) sont **déjà** centralisées dans `app/services/ratios_recon.py` (cette session) — il reste le squelette de reconstruction (parsing `result`/`skills_used`/`created_at` + skill-map) à mutualiser. Repousser laisse 2 copies dériver (ex. un nouveau skill ajouté à un seul mapping).
+
+**⚠️ Contrats DIFFÉRENTS à préserver (ne pas fusionner naïvement)** :
+| Aspect | `report.py::_reconstruct_response` `:123` | `ticker_report.py::_reconstruct_analyze_response` `:248` |
+|---|---|---|
+| Retour | `AnalyzeResponse` (jamais None) | `AnalyzeResponse \| None` |
+| Graham absent | **lève `ValueError`** `:187` env. | toléré (champ None) |
+| `result` illisible | laisse propager | retourne `None` + warning |
+| Mapping skills | liste **inline** (`_try_parse` `:152`, **15 skills, `esg` MANQUANT** → bug) | `_result_skill_map()` `:210` (**16 skills, esg inclus**) |
+
+**Référence** : EXISTANT (vérifié cette session) — les deux fonctions ci-dessus ; `_result_skill_map()` `app/api/endpoints/ticker_report.py:210` ; helper partagé déjà en place `reconstruct_ratios_traces` / `parse_input_data` `app/services/ratios_recon.py:100`/`:55`. Tests qui PINNENT l'API publique (doivent rester importables, ré-export si déplacement) : `tests/services/test_pdf_report_service.py:22` (`_reconstruct_analyze_response`, `_result_skill_map`), `tests/services/test_report.py` (`_reconstruct_response`). À CRÉER — `app/services/analysis_reconstruction.py` (cœur paramétrable, p. ex. `require_graham: bool`) + déplacer `_result_skill_map` là (ticker_report le ré-exporte) + réexprimer les 2 endpoints par-dessus + test de régression « `/report` reconstruit `esg` ». **Sans cycle** : le module service n'importe pas les endpoints.
+
+**Template de démarrage (copier dans une nouvelle fenêtre)** :
+```
+Tu es un développeur Python senior sur le projet TradingClaude.
+Lis d'abord CLAUDE.md, ROADMAP.md, .claude/rules/api-architecture.md et .claude/rules/tests-pyramide.md.
+
+TÂCHE : consolider la reconstruction d'AnalyzeResponse dupliquée entre
+app/api/endpoints/report.py:_reconstruct_response (:123) et
+app/api/endpoints/ticker_report.py:_reconstruct_analyze_response (:248).
+Extraire le cœur commun dans app/services/analysis_reconstruction.py (parsing
+result/skills_used/created_at + skill-map + reconstruct_ratios_traces déjà dans
+app/services/ratios_recon.py). Déplacer _result_skill_map (ticker_report:210) là,
+ticker_report le ré-exporte.
+
+PRÉSERVER les contrats divergents (paramétrer, ne pas aplatir) :
+- report.py : graham obligatoire → ValueError ; retour non-Optional ;
+- ticker_report : result illisible → None ; graham toléré.
+CORRIGER le bug latent : report.py reconstruit désormais aussi `esg`.
+GARDER importables (ré-export si déplacés) : _reconstruct_response,
+_reconstruct_analyze_response, _result_skill_map (tests les importent).
+PAS de cycle (le service n'importe pas les endpoints).
+
+TEST à ajouter : /report reconstruit `esg` (régression du bug latent).
+GATES vertes avant commit :
+  .venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q
+  .venv/bin/ruff check app/ tests/
+  (frontend non touché : tsc/vitest/eslint restent verts sans modif)
+Compteurs MESURÉS pour le ROADMAP (pas d'estimation).
+Branche dédiée (ex. claude/refactor-reconstruction), PR base = dev.
+Confirmer avant git push / ouverture de PR.
+```
 
 ### Sprint 149 — Confirmer (evals) le calibrage du drift `earnings_quality`
 **Objectif** : confirmer par un re-run d'evals que la sur-génération de `drapeaux_rouges` (10 échecs golden au Sprint 137) est résolue.
@@ -75,7 +115,7 @@ Le Sprint 146 a threadé la source+date des ratios earnings/valuation jusqu'à `
 **Objectif** : extraire le prédicat dupliqué « ratio présent ET porte source ou date » en un helper partagé, pour les rendus source+date PDF (Sprint 145) et le threading (Sprints 139/146).
 **Complexité** : Faible.
 **Justification** : finding *reuse* écarté au Sprint 145 (toucher le gate Graham violait alors le périmètre). Le motif `r.ratios_fetched_at is not None or r.ratios_source is not None` est maintenant répété (Graham + earnings + valuation côté PDF, + les helpers `_*_ratios_trace` côté core). Un sprint de consolidation dédié peut lever le prédicat sans contrainte de périmètre.
-**Référence** : EXISTANT (vérifié cette session) — gate Graham PDF `app/services/pdf_report_service.py:246` ; helpers de trace `_graham_ratios_trace` `app/orchestrator/core.py:284`, `_earnings_ratios_trace` `:308`, `_valuation_ratios_trace` `:318` (Sprint 146). À CRÉER — prédicat/helper partagé + remplacement aux sites + test isolé.
+**Référence** : EXISTANT (vérifié cette session) — gate Graham PDF `app/services/pdf_report_service.py:246` ; helpers de trace `_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace` désormais dans `app/services/ratios_recon.py:23`/`:31`/`:39` (déplacés depuis `core.py` lors de la revue PR Sprint 146 ; `core` les ré-exporte) ; côté frontend le gate est déjà unifié dans `frontend/src/components/RatiosSourceNote.tsx` (`if (!fetchedAt && !source)`). À CRÉER — prédicat/helper backend partagé (PDF + trace) + remplacement aux sites + test isolé.
 
 ---
 
