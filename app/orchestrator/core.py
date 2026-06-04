@@ -26,6 +26,11 @@ from app.orchestrator.router import WorkflowRouter
 _workflow_router = WorkflowRouter()
 
 from app.services.observability import SkillTrace
+from app.services.ratios_recon import (
+    _earnings_ratios_trace,
+    _graham_ratios_trace,
+    _valuation_ratios_trace,
+)
 from app.skills.tier2.buffett_quality.schemas import (
     BuffettQualityInput,
     BuffettQualityOutput,
@@ -295,34 +300,6 @@ class AnalyzeResponse(BaseModel):
         default=None,
         description="Source des ratios Valorisation d'entrée (ex. « Yahoo Finance »). None si inconnue.",
     )
-
-
-def _graham_ratios_trace(ratios: GrahamRatios | None) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Graham pour la traçabilité de la réponse."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
-
-
-def _earnings_ratios_trace(
-    ratios: EarningsQualityRatios | None,
-) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Qualité bénéfices — calque de _graham_ratios_trace."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
-
-
-def _valuation_ratios_trace(
-    ratios: ValuationRatios | None,
-) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Valorisation — calque de _graham_ratios_trace."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
 
 
 def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | None]:

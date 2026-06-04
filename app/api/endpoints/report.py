@@ -9,12 +9,12 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from app.api.endpoints.ratios_recon import reconstruct_ratios_traces
 from app.orchestrator.core import (
     AnalyzeRequest,
     AnalyzeResponse,
     Orchestrator,
 )
+from app.services.ratios_recon import reconstruct_ratios_traces
 from app.services.report import ReportService
 from app.utils.error_sanitization import sanitized_http_500
 

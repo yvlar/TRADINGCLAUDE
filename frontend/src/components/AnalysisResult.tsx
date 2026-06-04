@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
 import type { AnalyzeResponse, CompositeScore, GrahamCriterion } from '../types'
 import { EarningsQualitySection } from './EarningsQualitySection'
+import { RatiosSourceNote } from './RatiosSourceNote'
 import { ThesisSection } from './ThesisSection'
 import { DorseyMoatSection } from './DorseyMoatSection'
 import { BuffettQualitySection } from './BuffettQualitySection'
@@ -208,12 +209,11 @@ export function AnalysisResult({
             {g.verdict_detail && (
               <p className="text-sm text-muted-foreground border-t border-border pt-3">{g.verdict_detail}</p>
             )}
-            {result.ratios_fetched_at && (
-              <p className="text-xs text-muted-foreground border-t border-border pt-3" data-testid="result-ratios-source">
-                Source : {result.ratios_source ?? 'source n.d.'} · récupéré le{' '}
-                {result.ratios_fetched_at.slice(0, 10)}
-              </p>
-            )}
+            <RatiosSourceNote
+              fetchedAt={result.ratios_fetched_at}
+              source={result.ratios_source}
+              testId="result-ratios-source"
+            />
           </CardContent>
         </Card>
       )}

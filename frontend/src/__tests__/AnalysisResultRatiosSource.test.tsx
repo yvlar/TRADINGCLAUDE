@@ -106,6 +106,14 @@ describe('AnalysisResult — traçabilité source+date (Sprint 139)', () => {
     render(<AnalysisResult result={buildResponse({})} />)
     expect(screen.queryByTestId('result-ratios-source')).not.toBeInTheDocument()
   })
+
+  it('conserve la source quand la date est absente (source seule, sans segment date)', () => {
+    const result = buildResponse({ ratios_fetched_at: null, ratios_source: 'Yahoo Finance' })
+    render(<AnalysisResult result={result} />)
+    const ligne = screen.getByTestId('result-ratios-source')
+    expect(ligne).toHaveTextContent('Yahoo Finance')
+    expect(ligne).not.toHaveTextContent('récupéré le')
+  })
 })
 
 describe('AnalysisResult — traçabilité earnings/valuation (Sprint 146)', () => {

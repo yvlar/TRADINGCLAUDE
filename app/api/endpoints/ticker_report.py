@@ -9,14 +9,14 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from app.api.endpoints.ratios_recon import (
+from app.services.composite_history_service import CompositeHistoryService
+from app.services.pdf_report_service import PdfReportService
+from app.services.ratios_recon import (
     extract_earnings_ratios,
     extract_graham_ratios,
     extract_valuation_ratios,
     reconstruct_ratios_traces,
 )
-from app.services.composite_history_service import CompositeHistoryService
-from app.services.pdf_report_service import PdfReportService
 from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
 
