@@ -26,7 +26,9 @@ from app.services.disclaimer import build_disclaimer_flowables
 
 if TYPE_CHECKING:
     from app.orchestrator.core import AnalyzeResponse
+    from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
     from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+    from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +248,21 @@ def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
     return rows
 
 
+def _build_ratios_source_rows(
+    earnings_ratios: "EarningsQualityRatios | None",
+    valuation_ratios: "ValuationRatios | None",
+) -> list[tuple[str, str]]:
+    """Lignes « Source des ratios (…) » earnings/valuation — omises si ratio absent ou sans source/date (parité Graham)."""
+    rows: list[tuple[str, str]] = []
+    for libelle, r in (
+        ("Source des ratios (Qualité bénéfices)", earnings_ratios),
+        ("Source des ratios (Valorisation)", valuation_ratios),
+    ):
+        if r is not None and (r.ratios_fetched_at is not None or r.ratios_source is not None):
+            rows.append((libelle, _fmt_ratios_source(r.ratios_source, r.ratios_fetched_at)))
+    return rows
+
+
 class PdfReportService:
     async def generate_ticker_report(
         self,
@@ -253,6 +270,8 @@ class PdfReportService:
         history: list[CompositeHistoryPoint],
         last_analysis: "AnalyzeResponse | None",
         ratios: "GrahamRatios | None" = None,
+        earnings_ratios: "EarningsQualityRatios | None" = None,
+        valuation_ratios: "ValuationRatios | None" = None,
         annotation: str | None = None,
         esg_score: float | None = None,
     ) -> bytes:
@@ -260,6 +279,7 @@ class PdfReportService:
 
         ratios / annotation / esg_score enrichissent le rapport d'une analyse ciblée
         (verdicts skill par skill, ratios clés, note, score ESG) — None = section omise.
+        earnings_ratios / valuation_ratios n'ajoutent que la traçabilité source+date.
         """
         buffer = BytesIO()
         doc = SimpleDocTemplate(
@@ -325,6 +345,13 @@ class PdfReportService:
             story.append(Paragraph("Ratios clés", styles["titre_section"]))
             _hr(story)
             story.append(_table_deux_colonnes(_build_ratios_rows(ratios)))
+
+        ratios_source_rows = _build_ratios_source_rows(earnings_ratios, valuation_ratios)
+        if ratios_source_rows:
+            story.append(Spacer(1, 0.3 * cm))
+            story.append(Paragraph("Sources des ratios complémentaires", styles["titre_section"]))
+            _hr(story)
+            story.append(_table_deux_colonnes(ratios_source_rows))
 
         if esg_score is not None:
             story.append(Spacer(1, 0.3 * cm))
