@@ -18,7 +18,7 @@ from app.services.email_service import EmailService
 from app.services.esg_history_service import EsgHistoryService
 from app.services.report import ReportService, _composite_alerte, _composite_label
 from app.services.watchlist_pdf_service import WatchlistPdfService
-from app.services.watchlist_service import WatchlistService
+from app.services.watchlist_service import DuplicateWatchlistError, WatchlistService
 from app.utils.esg_utils import esg_verdict
 from app.workers.tasks import run_full_analysis
 
@@ -108,7 +108,10 @@ _JOB_TTL = 86400  # 24 heures
 async def add_entry(body: WatchlistCreate, request: Request) -> WatchlistEntry:
     """Ajoute un ticker à la watchlist persistante."""
     service: WatchlistService = request.app.state.watchlist_service
-    return await service.add_entry(body)
+    try:
+        return await service.add_entry(body)
+    except DuplicateWatchlistError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @router.get("", response_model=list[WatchlistEntry])

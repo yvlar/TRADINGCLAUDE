@@ -13,12 +13,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis
 import pytest
 import uvicorn
-from fastapi import HTTPException
 
 from app.api.main import app
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
+from app.services.watchlist_service import DuplicateWatchlistError
 from tests.e2e.fixtures.claude_stubs import (
     buffett_stub,
     canadian_tax_stub,
@@ -36,6 +36,7 @@ from tests.e2e.fixtures.claude_stubs import (
     thesis_stub,
     valuation_stub,
 )
+from tests.e2e.fixtures.personas import PERSONAS, InMemoryUserService
 
 # ---------------------------------------------------------------------------
 # Paths à patcher (identiques au conftest parent)
@@ -93,9 +94,9 @@ class InMemoryWatchlistService:
         t = create.ticker.upper()
         for entry in self._store.values():
             if entry.ticker == t and entry.workflow == create.workflow:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Ticker {t} déjà présent dans la watchlist pour ce workflow",
+                # Même erreur domaine que le vrai WatchlistService → 409 via l'endpoint
+                raise DuplicateWatchlistError(
+                    f"Ticker {t} déjà présent dans la watchlist pour ce workflow"
                 )
         entry = WatchlistEntry(
             id=str(uuid.uuid4()),
@@ -144,13 +145,14 @@ class InMemoryWatchlistService:
 # ---------------------------------------------------------------------------
 
 def _is_port_open(host: str, port: int, timeout: float = 1.0) -> bool:
-    with socket.socket() as s:
-        s.settimeout(timeout)
-        try:
-            s.connect((host, port))
+    # create_connection itère sur getaddrinfo (IPv4 + IPv6) : indispensable car
+    # Vite/Node lient « localhost » qui peut résoudre en ::1, alors qu'un
+    # socket.socket() brut (AF_INET) ne tente que 127.0.0.1 → faux « port fermé ».
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
             return True
-        except (ConnectionRefusedError, OSError):
-            return False
+    except OSError:
+        return False
 
 
 def _wait_for_port(host: str, port: int, retries: int = 60, delay: float = 0.2) -> bool:
@@ -215,11 +217,16 @@ def backend_server():
     Démarre FastAPI sur le port 8000 avec tous les mocks appliqués.
     Vérifie que le Vite dev server est accessible sur le port 5173.
     """
-    if not _is_port_open("localhost", 5173):
-        pytest.skip(
+    # Petite fenêtre de grâce : Vite peut finir de démarrer juste après wait-on.
+    if not _wait_for_port("localhost", 5173, retries=25, delay=0.4):
+        msg = (
             "Vite dev server non accessible sur le port 5173. "
             "Démarrer avec : cd frontend && npm run dev"
         )
+        # En CI, un skip massif masquerait un faux vert (cf. run #1) : on échoue fort.
+        if os.environ.get("CI"):
+            pytest.fail(msg)
+        pytest.skip(msg)
 
     # Port 8000 déjà utilisé → skip plutôt que crash
     if _is_port_open("localhost", 8000):
@@ -319,6 +326,10 @@ def backend_server():
         app.state.yahoo_extractor = yahoo_mock
         # Override aussi l'extractor interne du screener
         app.state.screener._extractor = yahoo_mock
+        # Service utilisateur en mémoire avec personas — rend le flux email/mot de
+        # passe + JWT cookie réellement traversable (le pool asyncpg mocké ne sait
+        # pas authentifier). auth_token_service reste réel (JWT + fakeredis).
+        app.state.user_service = InMemoryUserService.with_personas()
 
         yield
 
@@ -349,8 +360,120 @@ def page(browser_context):
 
 
 @pytest.fixture
-def authenticated_page(page):
-    """Page avec session authentifiée — navigue vers / et attend le header."""
-    page.goto("http://localhost:5173/")
-    page.wait_for_selector("nav", timeout=10_000)
-    return page
+def authenticated_page(login_as):
+    """Page authentifiée via le VRAI flux cookie JWT + CSRF (persona standard).
+
+    L'ancienne implémentation s'appuyait sur `api_token` en localStorage : ce
+    chemin n'authentifie plus depuis le passage à l'auth par cookie (authMe →
+    401 → redirection /login). On se connecte donc réellement via l'UI.
+    """
+    return login_as("standard")
+
+
+# ---------------------------------------------------------------------------
+# Fixtures auth réelle (cookie JWT) + personas + monitoring — Sprint E2E QA
+# ---------------------------------------------------------------------------
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Mémorise l'échec de la phase « call » pour déclencher la sauvegarde de trace."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call":
+        item._e2e_failed = report.failed
+
+
+_TRACE_DIR = os.path.join(os.path.dirname(__file__), ".traces")
+
+
+@pytest.fixture(scope="session")
+def clean_browser(backend_server, playwright):
+    """Navigateur Chromium partagé pour les contextes cookie — évite un relaunch par test."""
+    browser = playwright.chromium.launch(headless=True)
+    yield browser
+    browser.close()
+
+
+@pytest.fixture
+def clean_context(clean_browser, request):
+    """Contexte SANS api_token en localStorage — exerce le vrai flux cookie JWT.
+
+    Indispensable pour les parcours d'auth : `browser_context` injecte un Bearer
+    token qui court-circuite la session cookie et masquerait les régressions. Seul
+    le contexte (pas le navigateur) est recréé par test → isolation sans coût de boot.
+
+    Tracing opt-in via `E2E_TRACE=1` (trace sur échec) ou `E2E_TRACE=all` (toujours)
+    — les .zip Playwright atterrissent dans `tests/e2e/.traces/` pour le trace viewer.
+    """
+    context = clean_browser.new_context(base_url="http://localhost:5173")
+    trace_mode = os.environ.get("E2E_TRACE")
+    if trace_mode:
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+
+    yield context
+
+    if trace_mode:
+        failed = getattr(request.node, "_e2e_failed", False)
+        if failed or trace_mode == "all":
+            os.makedirs(_TRACE_DIR, exist_ok=True)
+            safe = request.node.name.replace("/", "_").replace("[", "_").replace("]", "")
+            context.tracing.stop(path=os.path.join(_TRACE_DIR, f"{safe}.zip"))
+        else:
+            context.tracing.stop()
+    context.close()
+
+
+@pytest.fixture
+def clean_page(clean_context):
+    """Page fraîche sans session — point de départ des tests de login/register."""
+    p = clean_context.new_page()
+    yield p
+    p.close()
+
+
+@pytest.fixture
+def login_as(clean_context):
+    """Factory : connecte un persona via l'UI réelle et retourne sa page authentifiée."""
+    from tests.e2e.pages.auth_pages import LoginPage
+
+    def _login(persona_key: str = "standard"):
+        persona = PERSONAS[persona_key]
+        p = clean_context.new_page()
+        login = LoginPage(p).goto()
+        login.login(persona.email, persona.password)
+        p.wait_for_url("http://localhost:5173/", timeout=10_000)
+        p.wait_for_selector("nav", timeout=10_000)
+        return p
+
+    return _login
+
+
+@pytest.fixture
+def standard_page(login_as):
+    """Page authentifiée en tant qu'utilisateur standard (cas nominal)."""
+    return login_as("standard")
+
+
+@pytest.fixture
+def admin_page(login_as):
+    """Page authentifiée en tant qu'administrateur."""
+    return login_as("admin")
+
+
+@pytest.fixture
+def monitor(page):
+    """Attache un PageMonitor à la page par défaut (console + réseau + React)."""
+    from tests.e2e.helpers.monitoring import PageMonitor
+
+    with PageMonitor(page) as mon:
+        yield mon
+
+
+@pytest.fixture(autouse=True)
+def _reset_watchlist_state(backend_server):
+    """Isole l'état watchlist entre tests — le service en mémoire est partagé (session)."""
+    svc = getattr(app.state, "watchlist_service", None)
+    if isinstance(svc, InMemoryWatchlistService):
+        svc._store.clear()
+    yield

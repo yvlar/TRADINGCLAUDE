@@ -289,6 +289,22 @@ def _graham_ratios_trace(ratios: GrahamRatios | None) -> tuple[str | None, str |
     return fetched, ratios.ratios_source
 
 
+def _build_input_data(request: AnalyzeRequest) -> str:
+    """Sérialise les ratios d'entrée (JSONB) ; Graham à plat, earnings/valuation sous clés dédiées.
+
+    Graham reste à plat car les lecteurs valident input_data comme GrahamRatios (extra='ignore'
+    ignore les sous-clés) — rétrocompat des lignes antérieures. mode='json' : datetime → ISO.
+    """
+    payload: dict = (
+        request.ratios.model_dump(mode="json") if request.ratios is not None else {}
+    )
+    if request.earnings_ratios is not None:
+        payload["earnings_ratios"] = request.earnings_ratios.model_dump(mode="json")
+    if request.valuation_ratios is not None:
+        payload["valuation_ratios"] = request.valuation_ratios.model_dump(mode="json")
+    return _json.dumps(payload)
+
+
 class HistoryEntry(BaseModel):
     analysis_id: str
     ticker: str
@@ -1715,8 +1731,7 @@ class Orchestrator:
             skills_list.append("esg_simplified")
         skills_used = _json.dumps(skills_list)
 
-        # mode="json" : sérialise ratios_fetched_at (datetime) en ISO string pour _json.dumps
-        input_data = _json.dumps(request.ratios.model_dump(mode="json") if request.ratios is not None else {})
+        input_data = _build_input_data(request)
 
         result_dict: dict = {}
         if graham_output:

@@ -19,6 +19,10 @@ _SELECT_COLS = """
 """
 
 
+class DuplicateWatchlistError(Exception):
+    """Ticker déjà présent dans la watchlist pour ce workflow (parité E2E ↔ prod)."""
+
+
 class WatchlistService:
     """CRUD sur la table watchlist PostgreSQL."""
 
@@ -26,18 +30,38 @@ class WatchlistService:
         self._db = db_pool
 
     async def add_entry(self, create: WatchlistCreate) -> WatchlistEntry:
-        ratios_json = create.ratios.model_dump_json() if create.ratios else None
-        row = await self._db.fetchrow(
-            f"""
-            INSERT INTO watchlist (ticker, workflow, ratios, score_alerte_min)
-            VALUES ($1, $2, $3::jsonb, $4)
-            RETURNING {_SELECT_COLS}
-            """,
-            create.ticker.upper(),
+        ticker = create.ticker.upper()
+        # Garde anti-doublon (ticker + workflow) — alignée sur le service en mémoire
+        # des E2E ; sans elle, la prod acceptait des doublons silencieux (BUG-005).
+        # Le SELECT est un court-circuit best-effort ; la garantie réelle vient de
+        # l'index unique idx_watchlist_ticker_workflow (résistant aux courses TOCTOU).
+        existing = await self._db.fetchval(
+            "SELECT 1 FROM watchlist WHERE ticker = $1 AND workflow = $2",
+            ticker,
             create.workflow,
-            ratios_json,
-            create.score_alerte_min,
         )
+        if existing:
+            raise DuplicateWatchlistError(
+                f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
+            )
+        ratios_json = create.ratios.model_dump_json() if create.ratios else None
+        try:
+            row = await self._db.fetchrow(
+                f"""
+                INSERT INTO watchlist (ticker, workflow, ratios, score_alerte_min)
+                VALUES ($1, $2, $3::jsonb, $4)
+                RETURNING {_SELECT_COLS}
+                """,
+                ticker,
+                create.workflow,
+                ratios_json,
+                create.score_alerte_min,
+            )
+        except asyncpg.UniqueViolationError:
+            # Course gagnée par une requête concurrente entre le SELECT et l'INSERT.
+            raise DuplicateWatchlistError(
+                f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
+            )
         return _row_to_entry(row)
 
     async def list_entries(self) -> list[WatchlistEntry]:

@@ -105,6 +105,40 @@ def _beneish_interpretation(m_score: float | None, is_financial: bool) -> str:
     return "manipulateur"
 
 
+def _piotroski_interpretation(f_score: int | None) -> str:
+    """Libellé canonique du F-Score — déterministe (parité M/Z, Sprint courant).
+
+    Seuils Piotroski (piotroski-f-score.md / system.md) : 8-9 forte_qualite |
+    7 bonne_qualite | 4-6 qualite_moyenne | 0-3 value_trap. `DONNEES_MANQUANTES`
+    (ASCII) si le score n'a pu être calculé (financière / profitabilité manquante).
+    """
+    if f_score is None:
+        return "DONNEES_MANQUANTES"
+    if f_score >= 8:
+        return "forte_qualite"
+    if f_score == 7:
+        return "bonne_qualite"
+    if f_score >= 4:
+        return "qualite_moyenne"
+    return "value_trap"
+
+
+def _montier_interpretation(c_score: int | None) -> str:
+    """Libellé canonique du C-Score — déterministe (parité M/Z, Sprint courant).
+
+    Seuils Montier (montier-c-score.md / system.md) : 0-1 propre | 2-3 signaux_mineurs |
+    4-6 signaux_multiples. `DONNEES_MANQUANTES` si le score n'a pu être calculé. Pas de
+    gate sectoriel (parité Sprint 142 : C toujours substitué, même pour une financière).
+    """
+    if c_score is None:
+        return "DONNEES_MANQUANTES"
+    if c_score <= 1:
+        return "propre"
+    if c_score <= 3:
+        return "signaux_mineurs"
+    return "signaux_multiples"
+
+
 @dataclass(frozen=True)
 class BeneishComponents:
     """Les 8 indices intermédiaires du M-Score de Beneish + le score agrégé (Sprint 131).

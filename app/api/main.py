@@ -177,6 +177,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_pool.execute(
         "CREATE INDEX IF NOT EXISTS idx_watchlist_ticker ON watchlist (ticker)"
     )
+    # Verrou d'unicité (ticker, workflow) au niveau DB — garantit la garde
+    # applicative de WatchlistService.add_entry contre les courses TOCTOU.
+    # Non-fatal : si des doublons préexistent, on log plutôt que de crasher le boot.
+    try:
+        await db_pool.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_watchlist_ticker_workflow "
+            "ON watchlist (ticker, workflow)"
+        )
+    except asyncpg.PostgresError as exc:
+        logger.warning(
+            "Index unique watchlist (ticker, workflow) non créé — doublons "
+            "préexistants à nettoyer ? : %s",
+            exc,
+        )
     await db_pool.execute(
         "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS last_composite_score FLOAT DEFAULT NULL"
     )

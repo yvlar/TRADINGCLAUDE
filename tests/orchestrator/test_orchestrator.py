@@ -1,6 +1,7 @@
 """Tests de l'Orchestrator — workflow company_analysis avec skills et DB mockés."""
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import AsyncMock
 
@@ -177,6 +178,25 @@ class TestOrchestratorRunCompanyAnalysis:
         assert args[7] == 1000   # tokens_input
         assert args[8] == 200    # tokens_output
         assert args[10] == 1500  # tokens_cache_creation
+
+    @pytest.mark.asyncio
+    async def test_persist_input_data_contient_earnings_valuation(
+        self, orchestrator, mock_db_pool, ratios_msft, ratios_earnings_msft
+    ):
+        """input_data persisté porte les sous-clés earnings/valuation fournies par la requête."""
+        from app.skills.tier2.stock_valuation.schemas import ValuationRatios
+
+        req = AnalyzeRequest(
+            ticker="MSFT",
+            ratios=ratios_msft,
+            earnings_ratios=ratios_earnings_msft,
+            valuation_ratios=ValuationRatios(ratios_source="Yahoo Finance"),
+        )
+        await orchestrator.run_company_analysis(req)
+        payload = json.loads(mock_db_pool.fetchrow.call_args[0][4])  # [4] = input_data
+        assert "earnings_ratios" in payload
+        assert "valuation_ratios" in payload
+        assert payload["valuation_ratios"]["ratios_source"] == "Yahoo Finance"
 
     @pytest.mark.asyncio
     async def test_exception_skill_se_propage(

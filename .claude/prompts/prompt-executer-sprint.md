@@ -21,6 +21,11 @@ PR est créée et la session abonnée aux événements.
 # Lecture obligatoire (avant d'écrire du code)
 > `CLAUDE.md` est DÉJÀ dans ton contexte (injecté comme *project instructions*) —
 > le consulter là, ne PAS le relire avec un outil (double chargement = tokens gaspillés).
+> ⚠️ **Branche de référence** : toujours charger le contenu depuis la branche de
+> développement désignée (sur laquelle le working tree local est déjà checkout),
+> JAMAIS `master` ni `main`. C'est là que vit l'état réel du sprint courant ;
+> lire `master`/`main` donnerait une version périmée. Voir « Contraintes » pour le
+> piège des outils GitHub MCP.
 1. `prompt-mise-a-jour-roadmap.md` — la tâche du sprint courant
 2. `ROADMAP.md` — état courant et version (court : ~état + 4 derniers sprints).
    NE PAS lire `docs/roadmap-archive.md` à l'amorçage — c'est l'historique mort.
@@ -123,6 +128,13 @@ idempotent et best-effort). Si une commande échoue faute de dépendances, relan
   ajouter les fichiers du sprint par leur nom, pas `git add -A`.
 - Développer et pousser UNIQUEMENT sur la branche désignée ; ne pas pousser
   ailleurs sans autorisation explicite.
+- Toujours charger/lire le contenu depuis la branche de développement désignée,
+  JAMAIS `master`/`main`. Le working tree local étant déjà checkout sur la branche
+  dev, les lectures via `Read`/`grep` sont correctes par défaut. ⚠️ En revanche les
+  outils GitHub MCP (`get_file_contents`, `search_code`…) ciblent la branche PAR
+  DÉFAUT du dépôt (`master`) si on ne précise pas la `ref`/branche — toujours passer
+  explicitement la branche dev pour refléter l'état réel du sprint, pas une version
+  périmée.
 - Ne pas contourner les hooks (`--no-verify`) ; corriger la cause d'un échec.
 - Pas de test navigateur live (stack Docker absente du conteneur) — le dire
   explicitement plutôt que de prétendre l'avoir testé.
@@ -148,4 +160,5 @@ et état CI initial rapporté.
 - **Chiffres vérifiables** — compteurs de tests issus d'une vraie commande, pas d'une estimation (anti-hallucination).
 - **Environnement externalisé** — setup web dans un hook `SessionStart` idempotent plutôt que recopié à chaque sprint.
 - **Contraintes négatives** — encode les pièges réels (node_modules tracké, branche désignée, hooks).
+- **Branche de référence figée sur dev** — tout chargement de contenu se fait sur la branche de développement (working tree local), jamais `master`/`main` ; rappel explicite du piège des outils GitHub MCP qui ciblent la branche par défaut faute de `ref` — évite de réconcilier le sprint contre une version périmée.
 - **Format de sortie spécifié** — titre/corps de PR, outils GitHub MCP imposés.
