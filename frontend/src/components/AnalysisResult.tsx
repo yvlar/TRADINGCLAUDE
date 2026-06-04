@@ -98,25 +98,6 @@ function CriteriaTable({ criteria }: { criteria: GrahamCriterion[] }) {
   )
 }
 
-// Ligne de traçabilité source+date affichée sous une carte de skill (parité Graham — Sprint 139).
-// Champ absent → rien affiché (honnêteté None : jamais de date factice).
-function RatiosSourceNote({
-  fetchedAt,
-  source,
-  testId,
-}: {
-  fetchedAt: string | null | undefined
-  source: string | null | undefined
-  testId: string
-}) {
-  if (!fetchedAt) return null
-  return (
-    <p className="text-xs text-muted-foreground px-1" data-testid={testId}>
-      Source : {source ?? 'source n.d.'} · récupéré le {fetchedAt.slice(0, 10)}
-    </p>
-  )
-}
-
 interface AnalysisResultProps {
   result: AnalyzeResponse
   onDownloadPdf?: () => void
@@ -239,26 +220,20 @@ export function AnalysisResult({
 
       {/* Autres skills */}
       {result.earnings_quality && (
-        <>
-          <EarningsQualitySection output={result.earnings_quality} />
-          <RatiosSourceNote
-            fetchedAt={result.earnings_ratios_fetched_at}
-            source={result.earnings_ratios_source}
-            testId="earnings-ratios-source"
-          />
-        </>
+        <EarningsQualitySection
+          output={result.earnings_quality}
+          ratiosFetchedAt={result.earnings_ratios_fetched_at}
+          ratiosSource={result.earnings_ratios_source}
+        />
       )}
       {result.dorsey && <DorseyMoatSection output={result.dorsey} />}
       {result.buffett && <BuffettQualitySection output={result.buffett} />}
       {result.valuation && (
-        <>
-          <ValuationSection output={result.valuation} />
-          <RatiosSourceNote
-            fetchedAt={result.valuation_ratios_fetched_at}
-            source={result.valuation_ratios_source}
-            testId="valuation-ratios-source"
-          />
-        </>
+        <ValuationSection
+          output={result.valuation}
+          ratiosFetchedAt={result.valuation_ratios_fetched_at}
+          ratiosSource={result.valuation_ratios_source}
+        />
       )}
       {result.lynch && <LynchCategoriesSection output={result.lynch} />}
       {result.fisher && <FisherSection output={result.fisher} />}

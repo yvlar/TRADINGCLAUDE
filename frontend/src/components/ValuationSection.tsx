@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { RatiosSourceNote } from './RatiosSourceNote'
 import type { StockValuationOutput, ValuationMethod, SensitivityMatrix } from '../types'
 
 // ---- Helpers visuels ----
@@ -75,9 +76,15 @@ function SensitivityTable({ matrix }: { matrix: SensitivityMatrix }) {
 
 interface ValuationSectionProps {
   output: StockValuationOutput
+  ratiosFetchedAt?: string | null
+  ratiosSource?: string | null
 }
 
-export function ValuationSection({ output }: ValuationSectionProps) {
+export function ValuationSection({
+  output,
+  ratiosFetchedAt,
+  ratiosSource,
+}: ValuationSectionProps) {
   const [open, setOpen] = useState(false)
   const margePct = Math.round(output.marge_securite_composite * 100)
   const margeColor = output.marge_securite_composite >= 0 ? 'text-bull' : 'text-bear'
@@ -165,6 +172,12 @@ export function ValuationSection({ output }: ValuationSectionProps) {
               </ul>
             </div>
           )}
+
+          <RatiosSourceNote
+            fetchedAt={ratiosFetchedAt}
+            source={ratiosSource}
+            testId="valuation-ratios-source"
+          />
         </CardContent>
       )}
     </Card>

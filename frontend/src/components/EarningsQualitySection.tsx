@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { RatiosSourceNote } from './RatiosSourceNote'
 import type {
   EarningsQualityOutput,
   FScoreCriterion,
@@ -208,9 +209,15 @@ function SloanCard({ sloan }: { sloan: SloanDetail }) {
 
 interface EarningsQualitySectionProps {
   output: EarningsQualityOutput
+  ratiosFetchedAt?: string | null
+  ratiosSource?: string | null
 }
 
-export function EarningsQualitySection({ output }: EarningsQualitySectionProps) {
+export function EarningsQualitySection({
+  output,
+  ratiosFetchedAt,
+  ratiosSource,
+}: EarningsQualitySectionProps) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -293,6 +300,12 @@ export function EarningsQualitySection({ output }: EarningsQualitySectionProps) 
               Institution financière — M-Score et Z-Score peuvent être inapplicables (bilan atypique).
             </p>
           )}
+
+          <RatiosSourceNote
+            fetchedAt={ratiosFetchedAt}
+            source={ratiosSource}
+            testId="earnings-ratios-source"
+          />
         </CardContent>
       )}
     </Card>

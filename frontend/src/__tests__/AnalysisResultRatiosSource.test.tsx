@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { AnalysisResult } from '../components/AnalysisResult'
@@ -108,8 +109,8 @@ describe('AnalysisResult — traçabilité source+date (Sprint 139)', () => {
 })
 
 describe('AnalysisResult — traçabilité earnings/valuation (Sprint 146)', () => {
-  it('affiche la source+date earnings et valuation quand présentes', () => {
-    const result = buildResponse({
+  function buildPresent(): AnalyzeResponse {
+    return buildResponse({
       earnings_quality: buildEarnings(),
       valuation: buildValuation(),
       earnings_ratios_fetched_at: '2026-05-21T09:00:00+00:00',
@@ -117,23 +118,41 @@ describe('AnalysisResult — traçabilité earnings/valuation (Sprint 146)', () 
       valuation_ratios_fetched_at: '2026-05-22T09:00:00+00:00',
       valuation_ratios_source: 'Yahoo Finance',
     })
-    render(<AnalysisResult result={result} />)
+  }
 
+  it('affiche la source+date earnings et valuation, dans la carte une fois ouverte', async () => {
+    const user = userEvent.setup()
+    render(<AnalysisResult result={buildPresent()} />)
+
+    await user.click(screen.getByTestId('eq-toggle'))
     const ligneEarnings = screen.getByTestId('earnings-ratios-source')
     expect(ligneEarnings).toHaveTextContent('Yahoo Finance')
     expect(ligneEarnings).toHaveTextContent('2026-05-21')
 
+    await user.click(screen.getByTestId('valuation-toggle'))
     const ligneValuation = screen.getByTestId('valuation-ratios-source')
     expect(ligneValuation).toHaveTextContent('Yahoo Finance')
     expect(ligneValuation).toHaveTextContent('2026-05-22')
   })
 
-  it("n'affiche rien quand la traçabilité earnings/valuation est absente", () => {
+  it('rend la note DANS la carte (parité Graham) — absente tant que la carte est repliée', () => {
+    // Les cartes earnings/valuation sont repliées par défaut : la note vit dans leur
+    // CardContent, donc elle n'est rendue qu'une fois la carte ouverte (pas orpheline dessous).
+    render(<AnalysisResult result={buildPresent()} />)
+    expect(screen.queryByTestId('earnings-ratios-source')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('valuation-ratios-source')).not.toBeInTheDocument()
+  })
+
+  it("n'affiche rien quand la traçabilité earnings/valuation est absente, carte ouverte", async () => {
+    const user = userEvent.setup()
     const result = buildResponse({
       earnings_quality: buildEarnings(),
       valuation: buildValuation(),
     })
     render(<AnalysisResult result={result} />)
+
+    await user.click(screen.getByTestId('eq-toggle'))
+    await user.click(screen.getByTestId('valuation-toggle'))
     expect(screen.queryByTestId('earnings-ratios-source')).not.toBeInTheDocument()
     expect(screen.queryByTestId('valuation-ratios-source')).not.toBeInTheDocument()
   })
