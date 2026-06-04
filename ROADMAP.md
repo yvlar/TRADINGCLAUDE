@@ -10,7 +10,7 @@
 |-------|--------|
 | **Version** | 10.32.0 |
 | **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 147 — Interprétation déterministe Sloan (dernier cadre LLM) |
+| **Sprint actif** | Sprint 147 — Consolider la reconstruction d'`AnalyzeResponse` (`/report` vs `/ticker-report`) |
 | **Dernier sprint complété** | Sprint 146 — Affichage earnings/valuation source+date sur l'analyse rendue (AnalysisResult) ✅ |
 
 > **Sprint 137 exécuté (2026-05-31, evals Claude réelles)** — clé API temporaire fournie en session. `stock_valuation` (Sonnet, golden 5 cas) : **15 passed / 5 skipped / 0 failed** (8m50s) — la **substitution DCF déterministe (Sprint 132) survit à l'aller-retour tool-use réel** (valeur DCF + matrice = ossature Python), gate sectoriel financières/REIT correct. `earnings_quality` (Haiku, golden 20 cas) : **81 passed / 10 failed / 10 skipped** (33m45s) — **tous les scores déterministes M/Z/F/C/Sloan passent** (Sprints 128/131) et la concordance verdict globale ≥ 80 % tient ; les 10 échecs portent **uniquement sur des champs narratifs libres du LLM**, pas sur les calculs (voir « Drift earnings_quality » ci-dessous). Aucun lien avec le Sprint 140 (extraction tier1 uniquement).
