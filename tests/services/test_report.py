@@ -383,3 +383,115 @@ def test_reconstruct_response_sous_cles_absentes_earnings_valuation_none(graham_
     assert resp.earnings_ratios_source is None
     assert resp.valuation_ratios_fetched_at is None
     assert resp.valuation_ratios_source is None
+
+
+# ---------------------------------------------------------------------------
+# Sprint 147 — cœur de reconstruction partagé (/report vs /ticker-report)
+# ---------------------------------------------------------------------------
+
+
+def _make_esg_output_dict() -> dict:
+    """Dict EsgOutput valide minimal (5E + 5S + 5G, tous passés → ESG_FORT)."""
+    criteres = [
+        {
+            "dimension": dim,
+            "nom": f"{dim}{i}",
+            "passe": True,
+            "observation": "obs proxy",
+            "proxy_utilise": "roe",
+        }
+        for dim, count in (("E", 5), ("S", 5), ("G", 5))
+        for i in range(count)
+    ]
+    return {
+        "ticker": "MSFT",
+        "esg_score": 15,
+        "e_score": 5,
+        "s_score": 5,
+        "g_score": 5,
+        "criteres": criteres,
+        "verdict": "ESG_FORT",
+        "verdict_detail": "Tous les proxies passent.",
+        "limites": ["Proxies imparfaits."],
+        "citations": [],
+        "cost_usd": 0.0,
+    }
+
+
+def _make_result_row(result: dict) -> dict:
+    """Ligne analysis_history simulée portant un `result` arbitraire (sans input_data)."""
+    import json
+    from datetime import datetime, timezone
+
+    return {
+        "id": uuid.UUID("dddddddd-0000-0000-0000-000000000004"),
+        "ticker": "MSFT",
+        "workflow_name": "value_graham",
+        "skills_used": json.dumps(list(result.keys())),
+        "input_data": None,
+        "result": json.dumps(result),
+        "cost_usd": 0.0021,
+        "created_at": datetime(2026, 5, 20, 10, 0, 0, tzinfo=timezone.utc),
+    }
+
+
+def test_reconstruct_response_reconstruit_esg(graham_output_msft):
+    """Régression du bug latent : /report reconstruit désormais `esg` (manquant avant Sprint 147)."""
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_result_row(
+        {"graham": graham_output_msft.model_dump(), "esg_simplified": _make_esg_output_dict()}
+    )
+    resp = _reconstruct_response(row)
+    assert resp.esg is not None
+    assert resp.esg.verdict == "ESG_FORT"
+
+
+def test_reconstruct_response_graham_absent_leve_valueerror():
+    """Contrat /report préservé : graham absent → ValueError."""
+    import pytest
+
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_result_row({"esg_simplified": _make_esg_output_dict()})
+    with pytest.raises(ValueError):
+        _reconstruct_response(row)
+
+
+def test_reconstruct_analyze_response_result_illisible_donne_none():
+    """Contrat /ticker-report préservé : result illisible → None (jamais d'exception)."""
+    from app.api.endpoints.ticker_report import _reconstruct_analyze_response
+
+    row = _make_result_row({"graham": {}})
+    row["result"] = "{ ceci n'est pas du JSON"
+    assert _reconstruct_analyze_response(row) is None
+
+
+def test_reconstruct_analyze_response_graham_absent_tolere(earnings_output_msft):
+    """Contrat /ticker-report préservé : graham absent toléré (champ None, pas d'échec)."""
+    from app.api.endpoints.ticker_report import _reconstruct_analyze_response
+
+    row = _make_result_row({"earnings_quality": earnings_output_msft.model_dump()})
+    resp = _reconstruct_analyze_response(row)
+    assert resp is not None
+    assert resp.graham is None
+    assert resp.earnings_quality is not None
+
+
+def test_skill_map_parite_des_deux_reconstructeurs(graham_output_msft, earnings_output_msft):
+    """Parité : /report et /ticker-report reconstruisent les mêmes skills (esg + optionnel non-graham)."""
+    from app.api.endpoints.report import _reconstruct_response
+    from app.api.endpoints.ticker_report import _reconstruct_analyze_response
+
+    row = _make_result_row(
+        {
+            "graham": graham_output_msft.model_dump(),
+            "earnings_quality": earnings_output_msft.model_dump(),
+            "esg_simplified": _make_esg_output_dict(),
+        }
+    )
+    resp_a = _reconstruct_response(row)
+    resp_b = _reconstruct_analyze_response(row)
+    assert resp_b is not None
+    assert resp_a.earnings_quality is not None and resp_b.earnings_quality is not None
+    assert resp_a.esg is not None and resp_b.esg is not None
