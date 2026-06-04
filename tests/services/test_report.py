@@ -330,3 +330,56 @@ def test_reconstruct_response_input_data_absent_donne_none(graham_output_msft):
     resp = _reconstruct_response(row)
     assert resp.ratios_fetched_at is None
     assert resp.ratios_source is None
+
+
+def test_reconstruct_response_reconstruit_earnings_valuation(
+    graham_output_msft, ratios_earnings_msft
+):
+    """Sous-clés earnings_ratios/valuation_ratios horodatées → traçabilité des trois skills rechargée."""
+    from datetime import datetime, timezone
+
+    from app.api.endpoints.report import _reconstruct_response
+    from app.skills.tier2.stock_valuation.schemas import ValuationRatios
+
+    earnings = ratios_earnings_msft.model_copy(
+        update={
+            "ratios_fetched_at": datetime(2026, 5, 21, 9, 0, 0, tzinfo=timezone.utc),
+            "ratios_source": "Yahoo Finance",
+        }
+    )
+    valuation = ValuationRatios(
+        pe=34.2,
+        ratios_fetched_at=datetime(2026, 5, 22, 9, 0, 0, tzinfo=timezone.utc),
+        ratios_source="Yahoo Finance",
+    )
+    row = _make_history_row(
+        graham_output_msft,
+        input_data={
+            "eps_growth_total": 0.27,
+            "price": 245.0,
+            "ratios_fetched_at": "2026-05-20T09:00:00+00:00",
+            "ratios_source": "Yahoo Finance",
+            "earnings_ratios": earnings.model_dump(mode="json"),
+            "valuation_ratios": valuation.model_dump(mode="json"),
+        },
+    )
+    resp = _reconstruct_response(row)
+    assert resp.ratios_fetched_at is not None and resp.ratios_fetched_at.startswith("2026-05-20")
+    assert resp.earnings_ratios_source == "Yahoo Finance"
+    assert resp.earnings_ratios_fetched_at is not None
+    assert resp.earnings_ratios_fetched_at.startswith("2026-05-21")
+    assert resp.valuation_ratios_source == "Yahoo Finance"
+    assert resp.valuation_ratios_fetched_at is not None
+    assert resp.valuation_ratios_fetched_at.startswith("2026-05-22")
+
+
+def test_reconstruct_response_sous_cles_absentes_earnings_valuation_none(graham_output_msft):
+    """Ligne plate (Graham seul, sans sous-clés) → earnings/valuation None, pas de crash."""
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_history_row(graham_output_msft, input_data={"eps_growth_total": 0.27})
+    resp = _reconstruct_response(row)
+    assert resp.earnings_ratios_fetched_at is None
+    assert resp.earnings_ratios_source is None
+    assert resp.valuation_ratios_fetched_at is None
+    assert resp.valuation_ratios_source is None
