@@ -1,88 +1,81 @@
-# Sprint 148 — Interprétation déterministe `sloan.interpretation` (parité finale M/Z/F/C/Sloan)
+# Sprint 154 — Provenance par ratio (clé yfinance de repli) dans le rapport PDF par ticker
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.33.0 — Sprint 147 complété)
+## État du projet (v10.39.0 — Sprints 148→153 complétés)
 
-Le Sprint 147 a consolidé les deux reconstructeurs d'`AnalyzeResponse` (`/report` et `/ticker-report`) dans un cœur partagé `app/services/analysis_reconstruction.py` (`reconstruct(row, *, require_graham)`), corrigeant au passage le bug latent où `/report` ne reconstruisait pas `esg`.
+Le lot 148→153 a fermé la parité déterministe des 5 cadres `earnings_quality` (Sloan, Sprint 148), mesuré hors-ligne le déterminisme contre le golden + verrouillé la cause racine `drapeaux_rouges` (Sprint 149), étendu la provenance par ratio à l'analyse rendue `AnalysisResult` (Sprint 150), et consolidé la réutilisation (`has_ratios_source` Sprint 151, couverture endpoint `/report/{id}` Sprint 152, fusion des clones `_ratios_trace` Sprint 153).
 
-> **État courant complet** (version, fonctionnalités actives, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
+> **État courant complet** (version, fonctionnalités, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
 
-> **Sprint touchant un skill tier2** (`earnings_quality`) — substitution post-parse uniquement (prompt et orchestrateur **non modifiés**), mais l'output `earnings_quality` change (`sloan.interpretation` déterministe) → **evals ciblées à relancer en local** (`ANTHROPIC_API_KEY` absente du conteneur web → non exécutables ici). Stack Docker non démarrée ; pas de test navigateur live.
+> **Sprint backend pur** (rendu PDF Python depuis l'output persisté) — **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `ANTHROPIC_API_KEY` absente du conteneur web ; stack Docker non démarrée ; pas de test navigateur live. `frontend/node_modules` peut être absent → `npm install` dans `frontend/` avant tout gate frontend (mais ce sprint ne touche pas le frontend).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (déjà injecté comme *project instructions* — ne pas le relire avec un outil)
-2. `ROADMAP.md` — état courant v10.33.0, Sprint 147 ✅
-3. `.claude/rules/api-skills-tier2.md` — cœur du sprint : pattern `SkillBase`, schemas Pydantic font foi, substitution post-parse, `cost_usd`.
-4. `.claude/rules/base-connaissances-skills.md` — protocole obligatoire avant de toucher un skill : lire `.claude/skills/earnings-quality-fraud-detection/SKILL.md` + `references/*.md` (formules/seuils Sloan).
+2. `ROADMAP.md` — état courant v10.39.0, Sprints 148→153 ✅
+3. `.claude/rules/donnees-financieres.md` — cœur du sprint : traçabilité obligatoire (source + date), honnêteté None (ratio absent ≠ 0.0).
+4. `.claude/rules/gotchas-operationnels.md` — si le rendu PDF / services sont touchés.
 
 ---
 
-## TÂCHE — Sprint 148 : rendre `sloan.interpretation` déterministe
+## TÂCHE — Sprint 154 : afficher la provenance par ratio dans le PDF par ticker
 
-**Objectif** : `sloan.interpretation` est le **dernier libellé d'interprétation encore produit par le LLM**. Les interprétations M/Z (Sprint 131) puis F/C (Sprint 143) sont déjà dérivées du score déterministe et substituées post-parse. Dériver l'interprétation Sloan de l'`accrual_ratio` **déjà calculé en Python** et la substituer post-parse — même remède, ferme la parité des 5 cadres. **Sprint backend pur** (le frontend rend déjà le libellé verbatim ; aucun prompt de skill, aucune migration).
+**Objectif** : Le badge signal-only « P/B via `clé` (repli) » (clé yfinance effective ≠ clé primaire attendue) est affiché sur `AnalyzeForm` (Sprint 141) **et** sur l'analyse rendue/rechargée `AnalysisResult` (Sprint 150). Le **rapport PDF par ticker** n'en porte aucune trace, alors que la source+date des ratios y est déjà rendue (Sprint 145). Compléter la parité : rendre une ligne « Provenance des ratios (repli) » dans le PDF, sous le **même filtre signal-only** que le frontend. **Sprint backend pur** (aucun frontend, migration, ni prompt de skill).
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Champ LLM à écraser** — `SloanDetail.interpretation: str` `app/skills/tier2/earnings_quality/schemas.py:158` (jamais substitué à ce jour ; le LLM le produit).
-2. **`accrual_ratio` déjà déterministe** — `_ScoresDeterministes.accrual_ratio: float | None` `app/skills/tier2/earnings_quality/skill.py:61`, peuplé via `sloan_accrual_ratio(...)` `skill.py:155` dans `_scores_depuis_ratios` `skill.py:68`.
-3. **Site de substitution** — `_injecter_scores(data, scores)` `skill.py:175` pose déjà `data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio` `skill.py:190` (mais **pas** l'interprétation).
-4. **Clones à calquer** — `_beneish_interpretation` `app/services/financial_calculations.py:91`, `_piotroski_interpretation` `:108`, `_montier_interpretation` `:126` (même forme : `None → "DONNEES_MANQUANTES"` ASCII, sinon libellé par seuil).
-5. **Seuils canoniques Sloan** — `app/skills/tier2/earnings_quality/prompts/system.md:163-165` : `≤ −0.05` → `qualite_elevee` ; `−0.05 à 0.05` → `neutre` ; `> 0.05` → `qualite_degradee`. Libellés valides aussi listés `system.md:292`.
+1. **Champ déjà persisté + reconstructible** — `GrahamRatios.ratios_provenance: dict[str, str] | None` `app/skills/tier2/graham_analysis/schemas.py:42` (exclu de la clé de cache). Persisté dans `input_data` (`_build_input_data` `model_dump(mode="json")`, Sprint 144) et reconstruit par `extract_graham_ratios(row)` `app/services/ratios_recon.py:78`.
+2. **Le PDF a déjà l'objet ratios reconstruit** — `get_ticker_report` fait `ratios = _extract_ratios(row)` `app/api/endpoints/ticker_report.py:116` (un `GrahamRatios`, donc `ratios.ratios_provenance` est disponible) et le passe à `generate_ticker_report`.
+3. **Site de rendu Graham** — `_build_ratios_rows(r: GrahamRatios)` `app/services/pdf_report_service.py:231` rend les ratios + (via `has_ratios_source(r)` `:247`) la ligne « Source des ratios » avec `_fmt_ratios_source`. C'est là (ou dans un helper voisin) qu'une ligne provenance s'insère.
+4. **Filtre signal-only — UNIQUEMENT en frontend pour l'instant** — `RATIO_PRIMARY_KEYS` + `ratiosEnRepli` `frontend/src/components/RatiosProvenanceNote.tsx:3/19` (`pb→priceToBook`, `debt_equity→debtToEquity`, `book_value→bookValue` ; repli = clé effective ≠ primaire). **Le backend n'a aucun équivalent** → à porter en Python (constante + fonction pure) pour ne montrer que les vrais replis (pas tout le dict).
 
 ### Spécification
 
-1. **`app/services/financial_calculations.py`** : ajouter la fonction pure `_sloan_interpretation(accrual_ratio: float | None) -> str`, calquée sur `_piotroski_interpretation`/`_montier_interpretation` :
-   ```python
-   if accrual_ratio is None: return "DONNEES_MANQUANTES"
-   if accrual_ratio <= -0.05: return "qualite_elevee"
-   if accrual_ratio <= 0.05:  return "neutre"
-   return "qualite_degradee"
-   ```
-   Pas de gate sectoriel (le gate None est porté par `accrual_ratio`, comme pour les signaux F/C Sprint 142/143).
-2. **`app/skills/tier2/earnings_quality/skill.py`** : `_ScoresDeterministes` gagne `sloan_interpretation: str | None` ; `_scores_depuis_ratios` le dérive de l'`accrual_ratio` **déjà calculé** (`None` quand l'accrual l'est) ; `_injecter_scores` écrit `data.setdefault("sloan", {})["interpretation"]` sous le **même gate** que `accrual_ratio` (parité avec M/Z/F/C). Sous le gate, accrual non-None ⟹ interprétation non-None (le schéma exige `str`).
-3. **Périmètre** : `sloan.interpretation` **uniquement**. M/Z (Sprint 131), F/C (Sprint 143), signaux détaillés (Sprint 142) et le calcul `accrual_ratio` lui-même intacts. Prompt de skill et `_build_user_message` **inchangés** (le LLM produit toujours l'interprétation, écrasée post-parse comme les 4 autres cadres).
+1. **`app/services/ratios_recon.py`** (ou un module dédié) : porter le filtre signal-only en Python — constante `_RATIO_PRIMARY_KEYS: dict[str, str]` (miroir EXACT du frontend `RatiosProvenanceNote.tsx:3`) + fonction pure `ratios_en_repli(provenance: dict[str, str] | None) -> list[tuple[str, str]]` (clé instrumentée ET effective ≠ primaire ; `None`/clés primaires → `[]`). **Réconcilier les deux maps** (frontend ↔ backend) — toute divergence ferait diverger l'affichage écran vs PDF.
+2. **`app/services/pdf_report_service.py`** : helper `_build_ratios_provenance_rows(provenance) -> list[tuple[str, str]]` (libellé « <ratio> » → « via `<clé>` (repli) », réutiliser `RATIO_LABELS` portés en Python) ; ligne(s) rendues seulement si `ratios_en_repli(...)` non vide (honnêteté None : aucune ligne sinon). Inséré près du bloc « Source des ratios » Graham. `generate_ticker_report` lit `ratios.ratios_provenance`.
+3. **Périmètre** : PDF par ticker **uniquement**. Affichage écran (`AnalysisResult`/`AnalyzeForm`), threading `AnalyzeResponse` et reconstruction (Sprint 150) **inchangés**. Rétrocompat : `ratios_provenance` absent/None → aucune ligne (PDF byte-for-byte identique).
 
 ### Tests obligatoires (pyramide)
-- **Unitaires** `financial_calculations` : `_sloan_interpretation` par seuil (`-0.10 → qualite_elevee`, `0.0 → neutre`, `0.10 → qualite_degradee`, bornes `-0.05`/`0.05`) + `None → DONNEES_MANQUANTES`.
-- **Intégration** `skill.py` : un `interpretation` Sloan empoisonné par le LLM est **écrasé** par le libellé dérivé de l'`accrual_ratio` (réutiliser le helper `_earnings_tool_use_response(data=…)` ajouté au Sprint 143 pour injecter un payload empoisonné).
-- **Non-régression** : `pytest` (hors e2e/evals) + `ruff` + `mypy app/ --ignore-missing-imports` verts (le CI lance mypy — `ruff` ne typecheck pas) ; frontend inchangé → `tsc`/`vitest`/ESLint restent verts **sans modification**.
+- **Unitaires** `ratios_en_repli` : repli détecté (clé ≠ primaire) ; clés primaires → `[]` ; `None` → `[]` ; clé non instrumentée ignorée. **Test de parité** : `_RATIO_PRIMARY_KEYS` (Python) == la map du frontend (assert sur les paires connues).
+- **Unitaires** `_build_ratios_provenance_rows` : repli → ligne formatée ; pas de repli → `[]`.
+- **Acceptation `pypdf`** : le texte du PDF rendu contient « (repli) » + la clé effective quand un repli existe ; omission vérifiée sinon.
+- **Non-régression** : `pytest` (hors e2e/evals) + `ruff` + `mypy app/ --ignore-missing-imports` verts.
 
 ### Note d'environnement (session web)
-Substitution post-parse → l'output `earnings_quality` change → **evals ciblées à relancer en local** (non exécutables ici, `ANTHROPIC_API_KEY` absente). **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
+Rendu PDF Python pur → evals non concernées. **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
 
 ---
 
 ## SPRINTS SUGGÉRÉS (non planifiés)
 
-### Sprint 149 — Confirmer (evals) le calibrage du drift `earnings_quality`
-**Objectif** : confirmer par un re-run d'evals que la sur-génération de `drapeaux_rouges` (10 échecs golden au Sprint 137) est résolue, maintenant que la cardinalité est encadrée par le prompt et que **tous** les libellés d'interprétation sont déterministes (M/Z/F/C + Sloan au Sprint 148).
-**Complexité** : Faible en code / coûteuse en exécution (re-run evals).
-**Justification** : ferme la boucle ouverte au Sprint 137 — reste à **mesurer** que `drapeaux_rouges_cardinalite` passe sous le golden.
-**Référence** : EXISTANT (vérifié cette session) — golden `tests/evals/fixtures/earnings_golden.json` ; `EarningsQualityOutput.drapeaux_rouges: list[str]` `app/skills/tier2/earnings_quality/schemas.py:169`. **Contrainte** : re-run exige `ANTHROPIC_API_KEY` (~100 appels Haiku, ~33 min) → hors conteneur web.
-
-### Sprint 150 — Provenance par ratio (`ratios_provenance`) jusqu'à `AnalysisResult`
-**Objectif** : étendre l'affichage signal-only de la provenance par ratio (clé yfinance de repli) — posé sur `AnalyzeForm` au Sprint 141 — à l'analyse rendue/rechargée `AnalysisResult`, en threadant `ratios_provenance` jusqu'à `AnalyzeResponse`.
-**Complexité** : Moyenne (threading backend + reconstruction historique + affichage).
-**Justification** : le Sprint 141 a explicitement **différé** la provenance sur `AnalysisResult` « tant qu'elle n'est pas threadée dans `AnalyzeResponse` ». Même mécanique que le Sprint 146 (threading + reconstruction), désormais centralisée dans `analysis_reconstruction`/`ratios_recon`.
-**Référence** : EXISTANT (vérifié cette session) — `GrahamRatios.ratios_provenance: dict[str, str] | None` `app/skills/tier2/graham_analysis/schemas.py:42` ; affichage existant sur `AnalyzeForm` (`ratiosEnRepli` `frontend/src/components/AnalyzeForm.tsx:50`, badge `data-testid="ratios-provenance"` `:206`). À CRÉER — champ `ratios_provenance` sur `AnalyzeResponse` (backend + TS) + peuplage aux sites de construction + reconstruction historique + bloc d'affichage sur `AnalysisResult`.
-
-### Sprint 151 — Centraliser le gate « honnête-None » des lignes source+date (consolidation reuse)
-**Objectif** : extraire le prédicat dupliqué « ratio présent ET porte source ou date » en un helper backend partagé, pour les rendus source+date PDF (Sprint 145) et le threading (Sprints 139/146).
+### Sprint 155 — Consolidation TS du formatage « source + date » (RatiosSourceNote ↔ AnalyzeForm)
+**Objectif** : éliminer la duplication frontend du rendu « Source : … · récupéré le … » entre `RatiosSourceNote` et la ligne inline d'`AnalyzeForm` (gates et styles différents à réconcilier).
 **Complexité** : Faible.
-**Justification** : finding *reuse* écarté au Sprint 145 (sur-abstraction à usage unique alors). Le motif est désormais répété (Graham + earnings + valuation côté PDF). Côté frontend, le gate est déjà unifié (`RatiosSourceNote`).
-**Référence** : EXISTANT (vérifié cette session) — gate Graham PDF `app/services/pdf_report_service.py:246`, gate earnings/valuation PDF `:261` ; helpers de trace `_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace` dans `app/services/ratios_recon.py:22`/`:30`/`:40` ; côté frontend gate déjà unifié dans `frontend/src/components/RatiosSourceNote.tsx:11` (`if (!fetchedAt && !source)`). À CRÉER — prédicat/helper backend partagé (PDF + trace) + remplacement aux sites + test isolé.
+**Justification** : pendant TS de la consolidation backend Sprint 153 ; relevé en [LOW] par la revue indépendante du Sprint 153.
+**Référence** : EXISTANT (vérifié cette session) — `RatiosSourceNote.tsx:13-16` (rend « Source : {source} · récupéré le {date} ») ; ligne inline d'`AnalyzeForm.tsx` (rend le même motif, gate `ratios.ratios_fetched_at &&` = date-only, classe `mt-3`, `data-testid="ratios-source"`). À CRÉER — réconcilier les deux gates (date-only vs source-or-date) avant extraction ; **attention** : un changement de gate modifie l'UX (afficher source sans date).
 
-### Sprint 152 — Test d'intégration de l'endpoint `GET /report/{analysis_id}` (couverture du cœur consolidé)
-**Objectif** : ajouter un test d'intégration HTTP qui exerce `GET /report/{analysis_id}` de bout en bout (DB mockée → `reconstruct(require_graham=True)` → PDF), vérifiant le 200 + `application/pdf` et le 404 sur id inconnu — le cœur consolidé au Sprint 147 n'est couvert qu'au niveau unité (`_reconstruct_response`).
+### Sprint 156 — Re-run des evals `earnings_quality` (mesure live de `drapeaux_rouges`)
+**Objectif** : exécuter en local (clé requise) `tests/evals/test_earnings_evals.py -m evals` pour mesurer enfin la cardinalité `drapeaux_rouges` que le Sprint 149 a verrouillée hors-ligne, et reporter le résultat dans `ROADMAP.md` (note de drift).
+**Complexité** : Faible en code / coûteuse en exécution (~100 appels Haiku, ~33 min).
+**Justification** : ferme la boucle ouverte au Sprint 137/149 — la précondition (5 cadres déterministes + consigne de cardinalité) est en place et verrouillée ; reste à **mesurer le live**.
+**Référence** : EXISTANT (vérifié cette session) — `test_earnings_drapeaux_rouges_cardinalite` `tests/evals/test_earnings_evals.py:146` (marqueur `evals`, skip si pas de clé) ; golden `tests/evals/fixtures/earnings_golden.json` (12 cas avec `drapeaux_rouges_max`). **Contrainte** : `ANTHROPIC_API_KEY` requise → hors conteneur web.
+
+### Sprint 157 — Tooltip de provenance enrichi sur `AnalysisResult` (clé primaire attendue)
+**Objectif** : au survol d'un badge de repli, afficher la clé **primaire attendue** (déjà dans le `title` côté `AnalyzeForm`) — uniformiser l'expérience entre le formulaire et l'analyse rendue.
 **Complexité** : Faible.
-**Justification** : `reconstruct` est désormais le chemin partagé des deux endpoints PDF ; un test d'intégration sur `/report/{id}` (le seul des deux sans test d'intégration de reconstruction) verrouille la régression au niveau endpoint, pas seulement fonction.
-**Référence** : EXISTANT (vérifié cette session) — endpoint `get_report` `app/api/endpoints/report.py:81` appelle `_reconstruct_response(row)` `:106` ; cœur `reconstruct` `app/services/analysis_reconstruction.py` ; le test existant `test_get_report_analysis_inconnu_404` `tests/services/test_report.py:179` couvre déjà le 404 mais **pas** le chemin 200 reconstruit. À CRÉER — test d'intégration `client.get("/report/{id}")` avec `db_pool.fetchrow` mocké renvoyant une ligne valide (graham + ≥1 skill) → 200 + `application/pdf`.
+**Justification** : le composant partagé `RatiosProvenanceNote` (Sprint 150) porte déjà le `title` ; vérifier qu'il s'affiche identiquement sur les deux surfaces (parité d'info-bulle).
+**Référence** : EXISTANT (vérifié cette session) — `RatiosProvenanceNote.tsx` (badge + `title` « Clé yfinance de repli — la clé primaire « … » était absente ») utilisé par `AnalyzeForm` ET `AnalysisResult` (Sprint 150). À VÉRIFIER/AJUSTER — couverture de test du `title` sur `AnalysisResult`.
+
+### Sprint 158 — Endpoint `GET /ticker-report/{ticker}` : test d'intégration du chemin 200 multi-skills
+**Objectif** : étendre la couverture d'intégration faite pour `/report/{id}` (Sprint 152) au second endpoint PDF `/ticker-report/{ticker}` (200 + `application/pdf`, reconstruction `require_graham=False`).
+**Complexité** : Faible.
+**Justification** : `reconstruct(require_graham=False)` est le chemin de `/ticker-report` ; symétrie de couverture avec `/report/{id}`.
+**Référence** : EXISTANT (vérifié cette session) — `_reconstruct_analyze_response` `app/api/endpoints/ticker_report.py:208` → `reconstruct(row, require_graham=False)` `:213`. À CRÉER — test `client.get("/ticker-report/{ticker}")` avec `db_pool` mocké (réutiliser `_make_result_row`).
 
 ---
 
@@ -90,27 +83,24 @@ Substitution post-parse → l'output `earnings_quality` change → **evals cibl�
 
 ```
 Tu es un développeur Python senior sur le projet TradingClaude.
-Lis d'abord CLAUDE.md, ROADMAP.md (v10.33.0), .claude/rules/api-skills-tier2.md et .claude/rules/base-connaissances-skills.md
-(+ .claude/skills/earnings-quality-fraud-detection/SKILL.md et references pour les seuils Sloan).
-Sprint actif : 148 — Interprétation déterministe sloan.interpretation (parité finale M/Z/F/C/Sloan).
+Lis d'abord CLAUDE.md, ROADMAP.md (v10.39.0), .claude/rules/donnees-financieres.md.
+Sprint actif : 154 — Provenance par ratio (clé yfinance de repli) dans le rapport PDF par ticker.
 
-TÂCHE : dériver sloan.interpretation de l'accrual_ratio déjà calculé en Python et la substituer
-post-parse (parité avec M/Z Sprint 131, F/C Sprint 143).
-- app/services/financial_calculations.py : _sloan_interpretation(accrual_ratio) clone de
-  _piotroski_interpretation (:108)/_montier_interpretation (:126) — None → "DONNEES_MANQUANTES" ;
-  ≤ -0.05 → qualite_elevee ; -0.05..0.05 → neutre ; > 0.05 → qualite_degradee (system.md:163-165).
-- app/skills/tier2/earnings_quality/skill.py : _ScoresDeterministes.sloan_interpretation (:61 voisin),
-  dérivé dans _scores_depuis_ratios (:68), substitué dans _injecter_scores (:175/:190) sous le gate accrual_ratio.
-PÉRIMÈTRE : sloan.interpretation uniquement ; accrual_ratio, M/Z/F/C, signaux détaillés intacts ;
-prompt et _build_user_message inchangés.
-TESTS : unitaires _sloan_interpretation par seuil + None ; intégration skill.py (interpretation LLM
-empoisonnée écrasée, helper _earnings_tool_use_response(data=…)).
+TÂCHE : rendre une ligne « Provenance des ratios (repli) » dans le PDF par ticker, sous le
+même filtre signal-only que le frontend (clé effective ≠ clé primaire).
+- ratios_recon.py : porter _RATIO_PRIMARY_KEYS (miroir EXACT de RatiosProvenanceNote.tsx:3) +
+  ratios_en_repli(provenance) -> list[(ratio, clé)] (clés primaires/None → []).
+- pdf_report_service.py : _build_ratios_provenance_rows(provenance) ; ligne rendue seulement
+  si repli (honnêteté None) ; generate_ticker_report lit ratios.ratios_provenance
+  (reconstruit via _extract_ratios(row) ticker_report.py:116, GrahamRatios.ratios_provenance:42).
+PÉRIMÈTRE : PDF par ticker uniquement ; affichage écran / threading / reconstruction (Sprint 150) intacts.
+TESTS : unitaires ratios_en_repli (+ parité de map avec le frontend) + _build_ratios_provenance_rows ;
+acceptation pypdf (« (repli) » présent quand repli, omis sinon).
 GATES vertes avant commit :
   .venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q
   .venv/bin/ruff check app/ tests/
   .venv/bin/mypy app/ --ignore-missing-imports   # le CI le lance — ruff ne typecheck PAS
   (frontend non touché : tsc/vitest/eslint restent verts sans modif)
-Evals earnings_quality à relancer EN LOCAL (output change) — non exécutables ici (clé absente).
 Compteurs MESURÉS pour le ROADMAP (pas d'estimation).
 Branche dédiée, PR base = dev. Confirmer avant git push / ouverture de PR.
 ```
