@@ -23,6 +23,7 @@ from reportlab.platypus import (
 
 from app.services.composite_history_service import CompositeHistoryPoint
 from app.services.disclaimer import build_disclaimer_flowables
+from app.services.ratios_recon import has_ratios_source
 
 if TYPE_CHECKING:
     from app.orchestrator.core import AnalyzeResponse
@@ -243,7 +244,7 @@ def _build_ratios_rows(r: "GrahamRatios") -> list[tuple[str, str]]:
         ("Ratio de liquidité", _fmt_num(r.current_ratio)),
     ]
     # Traçabilité : omise proprement pour les analyses persistées avant ce champ (tout None)
-    if r.ratios_fetched_at is not None or r.ratios_source is not None:
+    if has_ratios_source(r):
         rows.append(("Source des ratios", _fmt_ratios_source(r.ratios_source, r.ratios_fetched_at)))
     return rows
 
@@ -258,7 +259,7 @@ def _build_ratios_source_rows(
         ("Source des ratios (Qualité bénéfices)", earnings_ratios),
         ("Source des ratios (Valorisation)", valuation_ratios),
     ):
-        if r is not None and (r.ratios_fetched_at is not None or r.ratios_source is not None):
+        if has_ratios_source(r):
             rows.append((libelle, _fmt_ratios_source(r.ratios_source, r.ratios_fetched_at)))
     return rows
 

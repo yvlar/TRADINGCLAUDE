@@ -88,6 +88,44 @@ def test_reconstruct_provenance_graham_depuis_input_data():
     assert traces["ratios_provenance"] == {"pb": "priceToBook", "debt_equity": "totalDebt"}
 
 
+def test_has_ratios_source_predicat_source_ou_date():
+    """Prédicat partagé « ratio possède une source OU une date » — parité des gates PDF (Sprint 151)."""
+    from app.services.ratios_recon import has_ratios_source
+    from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+
+    base = {"eps_growth_total": 0.27, "price": 80.0}
+    horodatage = datetime(2026, 5, 20, 9, 0, 0, tzinfo=timezone.utc)
+
+    assert has_ratios_source(GrahamRatios(**base, ratios_source="Yahoo Finance")) is True
+    assert has_ratios_source(GrahamRatios(**base, ratios_fetched_at=horodatage)) is True
+    assert (
+        has_ratios_source(
+            GrahamRatios(**base, ratios_source="Yahoo Finance", ratios_fetched_at=horodatage)
+        )
+        is True
+    )
+    # Ni source ni date → False (la ligne « Source des ratios » est alors omise du PDF).
+    assert has_ratios_source(GrahamRatios(**base)) is False
+    # None → False (jamais d'AttributeError).
+    assert has_ratios_source(None) is False
+
+
+def test_has_ratios_source_transverse_aux_trois_types(ratios_earnings_msft):
+    """Le prédicat s'applique uniformément aux trois schémas ratios (Graham/earnings/valuation)."""
+    from app.services.ratios_recon import has_ratios_source
+    from app.skills.tier2.stock_valuation.schemas import ValuationRatios
+
+    earnings = ratios_earnings_msft.model_copy(update={"ratios_source": "Yahoo Finance"})
+    assert has_ratios_source(earnings) is True
+    assert has_ratios_source(ValuationRatios(pe=34.2)) is False
+    assert (
+        has_ratios_source(
+            ValuationRatios(pe=34.2, ratios_fetched_at=datetime(2026, 5, 22, tzinfo=timezone.utc))
+        )
+        is True
+    )
+
+
 def test_cles_de_tracabilite_disjointes_des_champs_skill():
     """Invariant protégeant le `**reconstruct_ratios_traces(row), **parsed_fields` des endpoints PDF.
 
