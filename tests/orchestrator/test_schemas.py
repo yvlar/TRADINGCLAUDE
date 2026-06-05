@@ -1,6 +1,8 @@
 """Tests des modèles Pydantic — validation des inputs et outputs (0 appel réseau)."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from pydantic import ValidationError
 
@@ -1090,85 +1092,65 @@ class TestAnalyzeResponseTracabilite:
         assert resp.ratios_source == "Yahoo Finance"
 
 
-class TestGrahamRatiosTraceHelper:
+class TestRatiosTraceHelper:
+    """Helper unifié _ratios_trace — identique pour les trois schémas ratios (Sprint 153)."""
+
+    _HORODATAGE = datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc)
+
     def test_ratios_none_retourne_none_none(self):
-        from app.orchestrator.core import _graham_ratios_trace
-        assert _graham_ratios_trace(None) == (None, None)
+        from app.orchestrator.core import _ratios_trace
+        assert _ratios_trace(None) == (None, None)
 
-    def test_extrait_date_iso_et_source(self):
-        from datetime import datetime, timezone
-
-        from app.orchestrator.core import _graham_ratios_trace
+    def test_graham_extrait_date_iso_et_source(self):
+        from app.orchestrator.core import _ratios_trace
         ratios = GrahamRatios(
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
             eps_growth_total=0.27, price=80.0, book_value=61.5,
-            ratios_fetched_at=datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
-            ratios_source="Yahoo Finance",
+            ratios_fetched_at=self._HORODATAGE, ratios_source="Yahoo Finance",
         )
-        fetched, source = _graham_ratios_trace(ratios)
+        fetched, source = _ratios_trace(ratios)
         assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
         assert source == "Yahoo Finance"
 
-    def test_sans_horodatage_retourne_none_pour_date(self):
-        from app.orchestrator.core import _graham_ratios_trace
+    def test_graham_sans_horodatage_retourne_none_none(self):
+        from app.orchestrator.core import _ratios_trace
         ratios = GrahamRatios(
             pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
             eps_growth_total=0.27, price=80.0, book_value=61.5,
         )
-        fetched, source = _graham_ratios_trace(ratios)
-        assert fetched is None
-        assert source is None
+        assert _ratios_trace(ratios) == (None, None)
 
-
-class TestEarningsRatiosTraceHelper:
-    def test_ratios_none_retourne_none_none(self):
-        from app.orchestrator.core import _earnings_ratios_trace
-        assert _earnings_ratios_trace(None) == (None, None)
-
-    def test_extrait_date_iso_et_source(self, ratios_earnings_msft):
-        from datetime import datetime, timezone
-
-        from app.orchestrator.core import _earnings_ratios_trace
+    def test_earnings_extrait_date_iso_et_source(self, ratios_earnings_msft):
+        from app.orchestrator.core import _ratios_trace
         ratios = ratios_earnings_msft.model_copy(
-            update={
-                "ratios_fetched_at": datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
-                "ratios_source": "Yahoo Finance",
-            }
+            update={"ratios_fetched_at": self._HORODATAGE, "ratios_source": "Yahoo Finance"}
         )
-        fetched, source = _earnings_ratios_trace(ratios)
+        fetched, source = _ratios_trace(ratios)
         assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
         assert source == "Yahoo Finance"
 
-    def test_sans_horodatage_retourne_none_pour_date(self, ratios_earnings_msft):
-        from app.orchestrator.core import _earnings_ratios_trace
-        fetched, source = _earnings_ratios_trace(ratios_earnings_msft)
-        assert fetched is None
-        assert source is None
+    def test_earnings_sans_horodatage_retourne_none_none(self, ratios_earnings_msft):
+        from app.orchestrator.core import _ratios_trace
+        assert _ratios_trace(ratios_earnings_msft) == (None, None)
 
-
-class TestValuationRatiosTraceHelper:
-    def test_ratios_none_retourne_none_none(self):
-        from app.orchestrator.core import _valuation_ratios_trace
-        assert _valuation_ratios_trace(None) == (None, None)
-
-    def test_extrait_date_iso_et_source(self):
-        from datetime import datetime, timezone
-
-        from app.orchestrator.core import _valuation_ratios_trace
+    def test_valuation_extrait_date_iso_et_source(self):
+        from app.orchestrator.core import _ratios_trace
         ratios = ValuationRatios(
-            pe=34.2,
-            ratios_fetched_at=datetime(2026, 5, 30, 12, 0, 0, tzinfo=timezone.utc),
-            ratios_source="Yahoo Finance",
+            pe=34.2, ratios_fetched_at=self._HORODATAGE, ratios_source="Yahoo Finance",
         )
-        fetched, source = _valuation_ratios_trace(ratios)
+        fetched, source = _ratios_trace(ratios)
         assert fetched is not None and fetched.startswith("2026-05-30T12:00:00")
         assert source == "Yahoo Finance"
 
-    def test_sans_horodatage_retourne_none_pour_date(self):
-        from app.orchestrator.core import _valuation_ratios_trace
-        fetched, source = _valuation_ratios_trace(ValuationRatios(pe=34.2))
-        assert fetched is None
-        assert source is None
+    def test_valuation_sans_horodatage_retourne_none_none(self):
+        from app.orchestrator.core import _ratios_trace
+        assert _ratios_trace(ValuationRatios(pe=34.2)) == (None, None)
+
+    def test_source_sans_date_conserve_la_source(self):
+        """Honnêteté None : source présente sans date → (None, source) — jamais de date factice."""
+        from app.orchestrator.core import _ratios_trace
+        ratios = ValuationRatios(pe=34.2, ratios_source="Yahoo Finance")
+        assert _ratios_trace(ratios) == (None, "Yahoo Finance")
 
 
 class TestRequestRatiosTraces:
