@@ -496,6 +496,24 @@ def test_reconstruct_response_reconstruit_esg(graham_output_msft):
     assert resp.esg.verdict == "ESG_FORT"
 
 
+def test_reconstruct_response_reconstruit_ratios_provenance(graham_output_msft):
+    """Sprint 150 : reconstruct(require_graham=True) reconstruit ratios_provenance depuis input_data.
+
+    Verrou de bout en bout (ligne → AnalyzeResponse.ratios_provenance) : jusqu'ici seul le helper
+    reconstruct_ratios_traces était testé directement ; ce test exerce le chemin endpoint complet.
+    """
+    import json
+
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_result_row({"graham": graham_output_msft.model_dump()})
+    row["input_data"] = json.dumps(
+        {"eps_growth_total": 0.27, "price": 245.0, "ratios_provenance": {"pb": "priceToBookRatio"}}
+    )
+    resp = _reconstruct_response(row)
+    assert resp.ratios_provenance == {"pb": "priceToBookRatio"}
+
+
 def test_reconstruct_response_graham_absent_leve_valueerror():
     """Contrat /report préservé : graham absent → ValueError."""
     import pytest
