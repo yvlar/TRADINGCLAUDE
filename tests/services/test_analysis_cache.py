@@ -180,6 +180,24 @@ async def test_cache_key_ignore_horodatage_recuperation(
     assert cache._cache_key("BNS", "value_graham", t1) == cache._cache_key("BNS", "value_graham", t2)
 
 
+async def test_cache_key_ignore_provenance_par_ratio(
+    cache: AnalysisCacheService, ratios_bns: GrahamRatios
+):
+    """Deux extractions identiques mais via des clés yfinance différentes (repli) → même clé.
+
+    `ratios_provenance` est exclu du hash (`analysis_cache._cache_key` :74) : la provenance est
+    une métadonnée de lignage, pas l'identité financière. Verrou contre une ré-inclusion
+    accidentelle qui ferait cache-miss à chaque changement de clé de récupération (Sprint 150).
+    """
+    primaire = ratios_bns.model_copy(update={"ratios_provenance": {"pb": "priceToBook"}})
+    repli = ratios_bns.model_copy(update={"ratios_provenance": {"pb": "priceToBookRatio"}})
+    sans = ratios_bns.model_copy(update={"ratios_provenance": None})
+    cle_primaire = cache._cache_key("BNS", "value_graham", primaire)
+    cle_repli = cache._cache_key("BNS", "value_graham", repli)
+    cle_sans = cache._cache_key("BNS", "value_graham", sans)
+    assert cle_primaire == cle_repli == cle_sans
+
+
 async def test_cache_ttl_transmis(
     mock_redis: AsyncMock,
     ratios_bns: GrahamRatios,
