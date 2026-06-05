@@ -116,6 +116,33 @@ describe('AnalysisResult — traçabilité source+date (Sprint 139)', () => {
   })
 })
 
+describe('AnalysisResult — provenance par ratio sur l’analyse rendue (Sprint 150)', () => {
+  it('affiche un badge de repli sur l’analyse rendue/rechargée quand la clé yfinance diffère', () => {
+    const result = buildResponse({
+      ratios_provenance: { pb: 'priceToBookRatio', debt_equity: 'debtToEquity' },
+    })
+    render(<AnalysisResult result={result} />)
+    const prov = screen.getByTestId('result-ratios-provenance')
+    // pb sur une clé de repli (≠ priceToBook) → badge ; debt_equity sur sa clé primaire → omis.
+    expect(prov).toHaveTextContent('P/B')
+    expect(prov).toHaveTextContent('priceToBookRatio')
+    expect(prov).not.toHaveTextContent('Dette/Capitaux')
+  })
+
+  it('n’affiche aucun badge quand ratios_provenance est null', () => {
+    render(<AnalysisResult result={buildResponse({ ratios_provenance: null })} />)
+    expect(screen.queryByTestId('result-ratios-provenance')).not.toBeInTheDocument()
+  })
+
+  it('n’affiche aucun badge quand toutes les clés sont primaires (aucun repli)', () => {
+    const result = buildResponse({
+      ratios_provenance: { pb: 'priceToBook', debt_equity: 'debtToEquity', book_value: 'bookValue' },
+    })
+    render(<AnalysisResult result={result} />)
+    expect(screen.queryByTestId('result-ratios-provenance')).not.toBeInTheDocument()
+  })
+})
+
 describe('AnalysisResult — traçabilité earnings/valuation (Sprint 146)', () => {
   function buildPresent(): AnalyzeResponse {
     return buildResponse({
