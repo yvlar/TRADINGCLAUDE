@@ -479,6 +479,8 @@ export interface AnalyzeResponse {
   earnings_ratios_source?: string | null
   valuation_ratios_fetched_at?: string | null
   valuation_ratios_source?: string | null
+  // Provenance par ratio Graham (clé yfinance de repli) — signal-only sur l'analyse rendue (Sprint 150)
+  ratios_provenance?: Record<string, string> | null
 }
 
 // ---- AnalyzeRequest ----

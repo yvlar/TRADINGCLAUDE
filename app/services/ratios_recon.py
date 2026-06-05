@@ -97,9 +97,10 @@ def extract_valuation_ratios(row) -> "ValuationRatios | None":
     return _validate(ValuationRatios, data.get("valuation_ratios") if data else None)
 
 
-def reconstruct_ratios_traces(row) -> dict[str, str | None]:
-    """Reconstruit les 6 champs de traçabilité (Graham + earnings + valuation) depuis input_data.
+def reconstruct_ratios_traces(row) -> dict[str, str | dict[str, str] | None]:
+    """Reconstruit les champs de traçabilité d'AnalyzeResponse depuis input_data.
 
+    Six champs source+date (Graham + earnings + valuation) + la provenance par ratio Graham.
     Source unique partagée par les endpoints `/report` et `/ticker-report` : sans elle, chaque
     chemin de reconstruction PDF dérive (cf. earnings/valuation oubliés côté `/report`).
     Parse `input_data` une seule fois pour les trois skills.
@@ -109,7 +110,8 @@ def reconstruct_ratios_traces(row) -> dict[str, str | None]:
     from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
     data = parse_input_data(row)
-    graham_fetched, graham_source = _graham_ratios_trace(_validate(GrahamRatios, data))
+    graham = _validate(GrahamRatios, data)
+    graham_fetched, graham_source = _graham_ratios_trace(graham)
     earnings_fetched, earnings_source = _earnings_ratios_trace(
         _validate(EarningsQualityRatios, data.get("earnings_ratios") if data else None)
     )
@@ -123,4 +125,5 @@ def reconstruct_ratios_traces(row) -> dict[str, str | None]:
         "earnings_ratios_source": earnings_source,
         "valuation_ratios_fetched_at": valuation_fetched,
         "valuation_ratios_source": valuation_source,
+        "ratios_provenance": graham.ratios_provenance if graham is not None else None,
     }

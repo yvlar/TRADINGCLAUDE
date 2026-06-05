@@ -3,6 +3,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { WorkflowSelector } from './WorkflowSelector'
+import { RatiosProvenanceNote } from './RatiosProvenanceNote'
 import { getExtract } from '../api/analyze'
 import { ApiError } from '../api/client'
 import type { AnalyzeRequest, EarningsQualityRatios, GrahamRatios } from '../types'
@@ -29,31 +30,6 @@ const DEFAULT_RATIOS: GrahamRatios = {
   eps_ttm: 7.25,
   revenue_bn: 38,
   dividend_years: 190,
-}
-
-// Ratios Graham instrumentés au Sprint 140 : clé yfinance primaire attendue par ratio.
-// Un repli réel = clé effective de ratios_provenance ≠ cette clé primaire (signal-only).
-const RATIO_PRIMARY_KEYS: Record<string, string> = {
-  pb: 'priceToBook',
-  debt_equity: 'debtToEquity',
-  book_value: 'bookValue',
-}
-
-const RATIO_LABELS: Record<string, string> = {
-  pb: 'P/B',
-  debt_equity: 'Dette/Capitaux',
-  book_value: 'Valeur comptable',
-}
-
-// Ne retient que les ratios dont la provenance révèle un repli (clé effective ≠ clé primaire).
-// Provenance null/absente ou clés toutes primaires → liste vide (aucun bruit affiché).
-function ratiosEnRepli(
-  provenance: Record<string, string> | null | undefined,
-): [string, string][] {
-  if (!provenance) return []
-  return Object.entries(provenance).filter(
-    ([name, key]) => RATIO_PRIMARY_KEYS[name] !== undefined && key !== RATIO_PRIMARY_KEYS[name],
-  )
 }
 
 function numField(v: number | null | undefined): string {
@@ -98,8 +74,6 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
   function setRatio(key: NumericRatioKey, val: string) {
     setRatios((prev) => ({ ...prev, [key]: parseNum(val) }))
   }
-
-  const repliRatios = ratiosEnRepli(ratios.ratios_provenance)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -202,19 +176,7 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
               {ratios.ratios_fetched_at.slice(0, 10)}
             </p>
           )}
-          {repliRatios.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2" data-testid="ratios-provenance">
-              {repliRatios.map(([name, key]) => (
-                <span
-                  key={name}
-                  className="text-xs text-muted-foreground border border-border rounded px-2 py-0.5"
-                  title={`Clé yfinance de repli — la clé primaire « ${RATIO_PRIMARY_KEYS[name]} » était absente de la source`}
-                >
-                  {RATIO_LABELS[name] ?? name} via <code>{key}</code> (repli)
-                </span>
-              ))}
-            </div>
-          )}
+          <RatiosProvenanceNote provenance={ratios.ratios_provenance} />
         </CardContent>
       </Card>
 

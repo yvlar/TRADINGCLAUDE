@@ -1174,7 +1174,7 @@ class TestValuationRatiosTraceHelper:
 class TestRequestRatiosTraces:
     """Helper partagé par les 4 points de construction d'AnalyzeResponse (sync, stream, caches)."""
 
-    def test_requete_sans_ratios_donne_six_champs_none(self):
+    def test_requete_sans_ratios_donne_tous_champs_none(self):
         from app.orchestrator.core import AnalyzeRequest, _request_ratios_traces
 
         traces = _request_ratios_traces(AnalyzeRequest(ticker="MSFT"))
@@ -1185,7 +1185,20 @@ class TestRequestRatiosTraces:
             "earnings_ratios_source": None,
             "valuation_ratios_fetched_at": None,
             "valuation_ratios_source": None,
+            "ratios_provenance": None,
         }
+
+    def test_provenance_graham_threadee_dans_la_reponse(self):
+        """La provenance par ratio Graham (repli yfinance) est threadée jusqu'à AnalyzeResponse (Sprint 150)."""
+        from app.orchestrator.core import AnalyzeRequest, _request_ratios_traces
+
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_provenance={"pb": "priceToBook", "debt_equity": "totalDebt"},
+        )
+        traces = _request_ratios_traces(AnalyzeRequest(ticker="MSFT", ratios=graham))
+        assert traces["ratios_provenance"] == {"pb": "priceToBook", "debt_equity": "totalDebt"}
 
     def test_trois_skills_horodates_remplissent_les_six_champs(self, ratios_earnings_msft):
         from datetime import datetime, timezone
