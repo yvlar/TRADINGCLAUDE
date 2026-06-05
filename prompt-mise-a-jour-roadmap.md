@@ -51,7 +51,7 @@ Le Sprint 147 a consolidé les deux reconstructeurs d'`AnalyzeResponse` (`/repor
 ### Tests obligatoires (pyramide)
 - **Unitaires** `financial_calculations` : `_sloan_interpretation` par seuil (`-0.10 → qualite_elevee`, `0.0 → neutre`, `0.10 → qualite_degradee`, bornes `-0.05`/`0.05`) + `None → DONNEES_MANQUANTES`.
 - **Intégration** `skill.py` : un `interpretation` Sloan empoisonné par le LLM est **écrasé** par le libellé dérivé de l'`accrual_ratio` (réutiliser le helper `_earnings_tool_use_response(data=…)` ajouté au Sprint 143 pour injecter un payload empoisonné).
-- **Non-régression** : `pytest` (hors e2e/evals) + `ruff` verts ; frontend inchangé → `tsc`/`vitest`/ESLint restent verts **sans modification**.
+- **Non-régression** : `pytest` (hors e2e/evals) + `ruff` + `mypy app/ --ignore-missing-imports` verts (le CI lance mypy — `ruff` ne typecheck pas) ; frontend inchangé → `tsc`/`vitest`/ESLint restent verts **sans modification**.
 
 ### Note d'environnement (session web)
 Substitution post-parse → l'output `earnings_quality` change → **evals ciblées à relancer en local** (non exécutables ici, `ANTHROPIC_API_KEY` absente). **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
@@ -108,6 +108,7 @@ empoisonnée écrasée, helper _earnings_tool_use_response(data=…)).
 GATES vertes avant commit :
   .venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q
   .venv/bin/ruff check app/ tests/
+  .venv/bin/mypy app/ --ignore-missing-imports   # le CI le lance — ruff ne typecheck PAS
   (frontend non touché : tsc/vitest/eslint restent verts sans modif)
 Evals earnings_quality à relancer EN LOCAL (output change) — non exécutables ici (clé absente).
 Compteurs MESURÉS pour le ROADMAP (pas d'estimation).
