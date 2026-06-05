@@ -296,74 +296,116 @@ Jalons investisseur : **M3** (multi-tenance + sécurité), **M6** (3 clients pay
 
 # 7. Sprint Backlog détaillé
 
-> Style projet respecté : 1 sprint = incrément testable unique, sur branche `claude/sprintNN-<nom>`, PR vers `dev`, mise à jour `ROADMAP.md` + `prompt-mise-a-jour-roadmap.md` + commit (cf. `workflow-sprint.md`). Numérotation à partir du prochain sprint réel (**154**). Chaque sprint : Objectif · Fichiers · Tests · CA.
+> **Numérotation par piste de transformation** (`E#-S#`) — *volontairement distincte* de la cadence linéaire du projet : le **sprint 154 réel est déjà planifié** (`prompt-mise-a-jour-roadmap.md` — « Provenance par ratio dans le PDF par ticker »). Cette piste B2B/SaaS s'**interleave** avec ou **remplace** la cadence courante (arbitrage du propriétaire — voir note de fin). Chaque sprint suit le workflow projet : branche `claude/<id>-<nom>` → PR base `dev` → maj `ROADMAP.md` + commit (`workflow-sprint.md`) ; gates `pytest`/`ruff`/`mypy` (+ `tsc`/`vitest` si frontend) vertes avant commit ; compteurs MESURÉS.
 
-## Épic E1 — Sécurité fail-closed (P0, ~1 sprint)
-| Sprint | Objectif | Fichiers clés | CA / Tests |
+## Épic E1 — Sécurité fail-closed (P0 · 4 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
 |---|---|---|---|
-| **154** | CSRF fail-closed + timing-safe + CORS fail-fast + trust-proxy | `app/middleware/csrf.py`, `rate_limit.py`, `api/main.py` | prod sans `API_KEY`→CSRF actif ; `hmac.compare_digest` ; boot prod refusé si CORS vide ; tests négatifs |
+| **E1-S1** | CSRF fail-closed + compare timing-safe + CORS fail-fast | `app/middleware/csrf.py` (bypass `:64-66`, compare `:77`), `app/api/main.py` (`:599-612`), `app/utils/jwt_secret.py` (patron fail-fast) | `APP_ENV=prod` sans `API_KEY` → CSRF **actif** (403) ; `hmac.compare_digest` ; boot prod **refusé** si `CORS_ORIGINS` vide ; tests négatifs verts |
+| **E1-S2** | Durcir identité de requête + brute-force | `app/middleware/rate_limit.py` (X-Forwarded-For), `app/services/api_key_service.py` (`validate_key`), `docker-compose.yml` (secret PG) | X-Forwarded-For lu seulement derrière proxy de confiance ; rate-limit Redis sur `validate_key` ; secret PG généré obligatoire (≠ `copilote`) ; test de spoof |
+| **E1-S3** | Confidentialité au repos & en logs | `app/observability/`, `app/utils/error_sanitization.py`, infra (volumes/DB chiffrés, Redis TLS) | Assainisseur regex (tokens/clés/emails) ; `exc_info` complet banni en prod ; chiffrement at-rest activé ; test « aucun secret dans les logs » |
+| **E1-S4** | Dette crypto JWT | `requirements.txt` (`python-jose`→`PyJWT`), `app/services/auth_token_service.py`, CI | Migration `PyJWT` + pin `cryptography` ; `pip-audit`+`bandit` au CI verts ; non-régression auth (login/refresh/logout) |
 
-## Épic E2 — Migrations & socle DB (P0, ~2 sprints)
-| **155** | Introduire **Alembic**, extraire les `CREATE TABLE` du lifespan | `infra/postgres/`, `app/api/main.py`, `alembic/` | `alembic upgrade head` idempotent en CI ; lifespan ne crée plus de table |
-| **156** | `audit_log` append-only + branchement sur mutations | `app/services/*`, migration | toute mutation tracée (watchlist/annotation/clé) ; test |
+## Épic E2 — Migrations & socle DB (P0 · 3 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E2-S1** | Introduire **Alembic** | `alembic/` (nouveau), `alembic.ini`, `app/api/main.py`, CI | `alembic upgrade head`/`downgrade` idempotents en CI ; env async asyncpg ; baseline = schéma actuel |
+| **E2-S2** | Sortir les `CREATE TABLE` du lifespan | `app/api/main.py` (`:159-313`), `infra/postgres/init.sql`, `alembic/versions/` | Lifespan ne crée **plus** de table ; 10 tables versionnées ; boot read-only ; rollback testé |
+| **E2-S3** | `audit_log` append-only | migration Alembic, `app/services/*`, `app/api/endpoints/*` | `audit_log(tenant, user, action, cible, ts)` ; chaque mutation (watchlist/annotation/clé) tracée ; consultable admin ; test |
 
-## Épic E3 — Multi-tenance + RLS (P0, ~3-4 sprints) *(bloqueur)*
-| **157** | Table `tenants` + `users.tenant_id` + backfill « legacy » | migration, `user_service.py` | users rattachés ; rétrocompat |
-| **158** | `tenant_id` sur les 6 tables globales + index | migration | colonnes NOT NULL backfillées |
-| **159** | **RLS** + `SET app.tenant_id` par requête (middleware) | `middleware/`, DB policies | isolation rouge→vert ; aucun cross-tenant |
-| **160** | Threader `current_user`/tenant jusqu'à l'orchestrateur + clé cache préfixée | `analyze_stream.py`, `core.py`, `analysis_cache.py` | analyses/watchlist sc
-opées au tenant ; tests d'isolation |
+## Épic E3 — Multi-tenance + RLS (P0 · 5 sprints) *(bloqueur n°1)*
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E3-S1** | Socle tenant | migration, `app/services/user_service.py`, `app/models/auth*` | Table `tenants` + `users.tenant_id` (FK) ; backfill tenant « legacy » ; rétrocompat auth |
+| **E3-S2** | Rattacher les données | migration des 6 tables (`analysis_history`, `watchlist`, `composite_score_history`, `esg_score_history`, `alert_history`, `annotations`) | `tenant_id UUID NOT NULL` + index par table ; backfill « legacy » ; FK cohérentes |
+| **E3-S3** | **RLS PostgreSQL** | migration (policies), `app/middleware/` (contexte), `app/api/main.py` (pool) | `ENABLE ROW LEVEL SECURITY` + policy `tenant_id = current_setting('app.tenant_id')` ; `SET app.tenant_id` injecté par requête |
+| **E3-S4** | Threading tenant bout-en-bout | `app/api/endpoints/analyze_stream.py`, `app/orchestrator/core.py`, `app/services/analysis_cache.py`, screener | `current_user`/tenant threadé endpoints→orchestrateur→services ; clé cache **préfixée tenant** ; quotas screener par tenant |
+| **E3-S5** | Preuve d'isolation | `tests/api/`, `tests/services/`, revue sécurité | Test cross-tenant **rouge→vert** (A ne lit jamais B) sur les 6 tables ; revue OWASP de la policy |
 
-## Épic E4 — Metering & quotas (P0/P1, ~2 sprints)
-| **161** | `usage_events` (append-only) + attribution coût/tenant | `services/`, migration | chaque analyse attribuée ; base facturation |
-| **162** | `plan_limits` + quotas Redis + `429` clair | `middleware/rate_limit.py`, `services/` | quota respecté ; override admin |
+## Épic E4 — Metering & quotas (P0 · 2 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E4-S1** | Metering | migration (`usage_events` append-only), `app/orchestrator/core.py`, `app/services/` | Chaque analyse → `usage_event(tenant, skill, workflow, cost_usd, tokens, ts)` ; base de facturation prête ; test |
+| **E4-S2** | Quotas par plan | migration (`plan_limits`), `app/middleware/rate_limit.py`, `app/services/` | Compteur Redis ; `429` clair au dépassement ; override admin ; test quota |
 
-## Épic E5 — Couche données multi-fournisseurs (P1, ~4 sprints)
-| **163** | Interface `FinancialDataProvider` + refactor yfinance | `app/skills/tier1/`, `services/` | parité comportementale ; tests |
-| **164** | Provider fallback (FMP/Polygon) + résolution + provenance/champ | tier1, `ratios_recon.py` | yfinance down→fallback ; provenance exposée |
-| **165** | **ROIC** déterministe + substitution | `financial_calculations.py`, skills | ROIC ≥90 % tickers ; golden |
-| **166** | **Bêta** réel + **macro vivante** (Rf/ERP/impôt) | `valuation_calculations.py`, `services/macro_*` | WACC = taux du jour ; source+date |
+## Épic E5 — Couche données multi-fournisseurs (P1 · 5 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E5-S1** | Abstraction fournisseur | `app/skills/tier1/` (interface `FinancialDataProvider`, `YFinanceProvider`), `app/services/` | Refactor yfinance derrière l'interface ; **parité comportementale** (golden inchangés) |
+| **E5-S2** | Fallback + provenance | `app/skills/tier1/` (`FmpProvider`/`PolygonProvider`), `app/services/ratios_recon.py`, `.env.example` | yfinance KO → fallback transparent ; provenance **par champ** ; clé API fournisseur en env |
+| **E5-S3** | **ROIC déterministe** | `app/services/financial_calculations.py`, skills `buffett_quality`/`dorsey_moat`/`damodaran_narrative` | `roic()` = NOPAT/(dette+CP) depuis bilan ; substitution post-parse ; ROIC ≥ 90 % tickers non-financiers ; golden |
+| **E5-S4** | **Bêta réel** | `app/skills/tier1/yahoo_finance.py`, `app/services/valuation_calculations.py` (`:17`) | `info['beta']` extrait + fallback sectoriel avant 1.0 ; propagé au CAPM ; golden |
+| **E5-S5** | **Macro vivante** | `app/services/macro_provider.py` (nouveau), `valuation_calculations.py` | Rf (10 ans CA/US), ERP, impôt effectif courants, cache 24 h ; WACC = taux du jour ; source+date |
 
-## Épic E6 — Fiabilité IA (P1, ~3 sprints)
-| **167** | **Eval-gate CI** (replays déterministes) + evals nocturnes | `tests/evals/`, CI | régression verdict bloque PR |
-| **168** | Garde-fous narratifs (cohérence narrative↔chiffres) | skills, `services/` | violations rejetées ; golden |
-| **169** | Budget breaker + fuzzing entrées aberrantes | `orchestrator/core.py`, `utils/` | dépassement stoppe ; entrées folles→None |
+## Épic E6 — Fiabilité IA (P1 · 3 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E6-S1** | **Eval-gate CI** | `tests/evals/`, `.github/workflows/ci.yml` | Replays déterministes hors-ligne en CI (régression verdict **bloque la PR**) ; evals Claude réelles nocturnes hors-CI (budget) |
+| **E6-S2** | Garde-fous narratifs | `app/skills/tier2/*/skill.py`, `app/services/` | Règles narrative↔chiffres (ex. interdire « faillite » si Altman Z > 2,99 ; `drapeau_rouge` cite un champ chiffré) ; violations rejetées ; golden |
+| **E6-S3** | Budget & robustesse entrées | `app/orchestrator/core.py`, `app/utils/`, `tests/` | Court-circuit si `cost_usd` workflow > seuil (résultat partiel) ; validateurs de plausibilité ; fuzzing → `None`/erreur, jamais de score fantaisiste |
 
-## Épic E7 — Monétisation (P1, ~3 sprints)
-| **170** | Intégration **Stripe Billing** (abonnement + usage) | `services/billing_*`, endpoints | souscription→facture ; webhook |
-| **171** | Portail facturation (UI) + dunning | `frontend/src/pages/Billing*` | client gère son plan |
-| **172** | Conformité B2B : CGU/disclaimer renforcés, registre Loi 25 | `docs/legal/`, frontend | avis juridique intégré |
+## Épic E7 — Monétisation (P1 · 4 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E7-S1** | **Stripe Billing** | `app/services/billing_service.py` (nouveau), `app/api/endpoints/billing.py`, `.env.example` (`STRIPE_*`) | Souscription → facture ; webhook signé ; usage poussé depuis `usage_events` ; test sandbox |
+| **E7-S2** | Plans & pricing | `app/services/billing_*`, `plan_limits` | Mapping `plan_limits` ↔ produits Stripe (white-label/conseiller/API/retail) ; changement de plan + proration |
+| **E7-S3** | Portail & recouvrement | `frontend/src/pages/BillingPage.tsx`, `app/api/endpoints/billing.py` | Client gère plan/CB/factures ; dunning (échec paiement) ; tests UI |
+| **E7-S4** | Conformité B2B | `docs/legal/`, `frontend/` (CGU/disclaimer), `app/` (registre) | CGU B2B + disclaimer renforcé ; registre **Loi 25** + EFVP ; positionnement « fournisseur d'outil » ; avis juridique intégré |
 
-## Épic E8 — Secteurs financiers & profondeur (P1/P2, ~2 sprints)
-| **173** | Ratios banques (Tier1/CET1) déterministes | `financial_calculations.py` | verdict bancaire reproductible |
-| **174** | Ratios REIT (FFO/P-NAV) déterministes + détection sectorielle robuste | idem, `stock_valuation` | REIT non-LLM ; faux positifs « real » corrigés |
+## Épic E8 — Secteurs financiers & profondeur (P1 · 3 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E8-S1** | Banques déterministes | `app/services/financial_calculations.py`, skills `earnings_quality`/`stock_valuation` | Tier 1/CET1, Texas Ratio calculés ; verdict bancaire **reproductible** (hors 100 % LLM) ; golden banque CA |
+| **E8-S2** | REIT déterministes | idem, `stock_valuation` | FFO, P/NAV calculés ; valorisation REIT non-LLM ; golden REIT |
+| **E8-S3** | Détection sectorielle + owner earnings | `app/skills/tier2/stock_valuation/skill.py` (`_SECTEURS_NON_DCF`), `financial_calculations.py` | Détection robuste (fin du faux positif « real » dans « RE/MAX ») ; owner earnings calculé en Python (Buffett) ; tests |
 
-## Épic E9 — UX conformité & décomplexification (P0→P2, ~4 sprints)
-| **175** | **Disclaimer inline** sur chaque verdict (P0) | `frontend/src/components/VerdictDisclaimer` | aucun verdict sans avertissement |
-| **176** | Score composite en tête + bandeau verdict synthétique | `AnalysisResult`, `pages/Analyze` | LA reco visible <5 s |
-| **177** | Mode simple/expert + tooltips ratios | composants, `user_preferences` | mode persisté/compte |
-| **178** | Refonte responsive mobile + chart de prix | `frontend/src/**`, lib charts | Lighthouse mobile >85 ; E2E 375/768/1920 |
+## Épic E9 — UX conformité & décomplexification (P0→P2 · 5 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E9-S1** | **Disclaimer inline** *(P0 — tiré en avant)* | `frontend/src/components/VerdictDisclaimer.tsx` (nouveau), `AnalysisResult.tsx`, sections skill | **Aucun** verdict rendu sans avertissement adjacent ; test sur chaque carte verdict |
+| **E9-S2** | Verdict synthétique | `frontend/src/components/AnalysisResult.tsx`, `pages/AnalyzePage.tsx` | Score composite **en tête** + bandeau ACHAT/CONSERVER/ÉVITER ; LA reco visible < 5 s (test) |
+| **E9-S3** | Mode simple/expert | composants, `app/services/user_preferences_service.py` | Mode « Simple » (3-4 cadres) vs « Expert » (16) persisté/compte ; tooltips ratios (P/E, ROIC…) |
+| **E9-S4** | Mobile | `frontend/src/**` (grilles, tables, `AnalyzeForm`) | Grilles `1-col < 768px`, tables `reflow`, formulaire collapsible ; Lighthouse mobile > 85 ; E2E 375/768/1920 |
+| **E9-S5** | Chart prix + finitions | `frontend/` (lib `lightweight-charts`/recharts), thème, a11y | Chandelier 1-5 ans ; bascule clair/sombre ; `aria-live` sur streaming ; nav clavier tables |
 
-## Épic E10 — API produit & onboarding (P2, ~3 sprints)
-| **179** | OpenAPI publique versionnée + clés self-serve tenant | `api/`, docs | dev autonome <10 min |
-| **180** | SDK Python/TS + webhooks | `sdk/`, `services/webhook_service.py` | exemples testés |
-| **181** | Landing + onboarding 3 écrans + provisioning self-serve | `frontend/`, `auth` | signup→1ʳᵉ analyse sans support |
+## Épic E10 — API produit & onboarding (P2 · 3 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E10-S1** | API publique | `app/api/` (OpenAPI `/v1` versionnée), `app/services/api_key_service.py` (self-serve), quotas | Clés self-serve par tenant ; OpenAPI publiée ; quotas appliqués ; test contractuel |
+| **E10-S2** | SDK & webhooks | `sdk/python/`, `sdk/ts/`, `app/services/webhook_service.py` | SDK Python/TS publiés ; webhooks signés ; exemples testés en CI |
+| **E10-S3** | Onboarding self-serve | `frontend/` (landing + onboarding 3 écrans), `auth`, provisioning tenant | Signup → tenant provisionné → 1ʳᵉ analyse **sans support** < 10 min (E2E) |
 
-## Épic E11 — Échelle & infra (P2/P3, ~3 sprints)
-| **182** | pgbouncer + pool sizing + Redis HA managé | infra, compose/prod | pool ≥20 ; bascule Redis OK |
-| **183** | Celery time-limit + DLQ + autoscaling ; cache invalidation O(log n) | `workers/`, `analysis_cache.py` | zombie tuée ; invalidation ciblée |
-| **184** | Load tests SLO (1000 analyses/j, p95<120s) + Prometheus/Grafana | `tests/load/`, monitoring | SLO tenu à 3× charge |
+## Épic E11 — Échelle & infra (P2/P3 · 3 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E11-S1** | Connexions & HA | `docker-compose.prod.yml`, `app/api/main.py` (pool), infra | pgbouncer ; pool effectif ≥ 20 ; Redis HA managé ; bascule sans perte de session |
+| **E11-S2** | Workers & cache | `app/workers/celery_app.py`, `app/services/analysis_cache.py` | `task_time_limit`/`soft` + DLQ + autoscaling ; invalidation cache **O(log n)** (fin du `KEYS`) ; tests |
+| **E11-S3** | SLO & observabilité | `tests/load/`, `infra/monitoring/`, `app/observability/` | Load test 1000 analyses/j, **p95 < 120 s** à 3× charge ; Prometheus/Grafana (latence/coût/skill) ; Langfuse **obligatoire** en prod |
 
-## Épic E12 — Différenciation (P3, ~3+ sprints)
-| **185+** | Parallélisation skills (latence <90s) ; portefeuille/positions ; grounding factuel filings ; alt-data | orchestrateur, data, RAG | latence cible ; portefeuille consolidé |
+## Épic E12 — Différenciation (P3 · 4 sprints)
+| ID | Objectif | Fichiers à toucher | Tests + Critères d'acceptation |
+|---|---|---|---|
+| **E12-S1** | Latence | `app/orchestrator/core.py` (graphe de dépendances, `asyncio.gather` borné) | Skills indépendants (Graham∥Lynch∥ESG) en parallèle ; compounder < 90 s p50 ; déterminisme/ordre inchangés |
+| **E12-S2** | Portefeuille | `app/` (positions, PBR/ACB), `frontend/` (import CSV read-only) | Import positions ; suivi PBR/ACB (atout fiscal CA) ; scores agrégés portefeuille ; test conseiller |
+| **E12-S3** | Grounding factuel | `app/rag/`, `app/skills/tier1/sedar_plus.py`, `scripts/ingest_rag.py` | Ingestion filings SEDAR/EDGAR ; citations factuelles entreprise (au-delà de la méthode) ; pertinence mesurée |
+| **E12-S4** | Données alt & retail | `app/skills/`, `frontend/` (freemium) | Short interest / insider auto ; option SaaS retail (freemium) après conformité B2C |
 
-*Total indicatif : ~32 sprints sur 12 mois (P0 ≈ 7, P1 ≈ 12, P2 ≈ 8, P3 ≈ 5+).*
+### Ordre d'exécution recommandé (par priorité, pas par épic)
+
+| Phase | Fenêtre | Sprints | Volume |
+|---|---|---|---|
+| **P0** | M0-M2 | E1-S1→S4 · E2-S1→S3 · E3-S1→S5 · E4-S1→S2 · **E9-S1** (disclaimer tiré en avant) | ~15 |
+| **P1** | M2-M5 | E5-S1→S5 · E6-S1→S3 · E7-S1→S4 · E8-S1→S3 | ~15 |
+| **P2** | M5-M9 | E9-S2→S4 · E10-S1→S3 · E11-S1→S2 | ~8 |
+| **P3** | M9-M12+ | E9-S5 · E11-S3 · E12-S1→S4 | ~6 |
+
+**Total : ~44 sprints granulaires** (style projet — incréments testables courts). **Chemin critique revenu** : E1 → E2 → E3 → E4 → E7-S1/S4 → E10 (le reste augmente la valeur sans bloquer les 3 premiers clients conseillers). **Quick wins immédiats** (jours) : **E1-S1, E9-S1, E5-S3 (ROIC), E5-S4 (bêta)** — ROI 16-25.
 
 ---
 
 # 8. Plan de monétisation détaillé
 
-**Principe de séquençage (insight central)** : monétiser **d'abord là où la willingness-to-pay est haute, le volume requis faible et le risque réglementaire porté par le client** (conseillers enregistrés), **avant** le retail (coût de service et charge réglementaire les plus élevés). Socle commun : `usage_events` (metering, sprint 161) + Stripe (sprint 170).
+**Principe de séquençage (insight central)** : monétiser **d'abord là où la willingness-to-pay est haute, le volume requis faible et le risque réglementaire porté par le client** (conseillers enregistrés), **avant** le retail (coût de service et charge réglementaire les plus élevés). Socle commun : `usage_events` (metering, E4-S1) + Stripe (E7-S1).
 
 | Modèle | Segment cible | Tarification | ACV indicatif | Pré-requis | Charge réglementaire | Marge brute | Séquence |
 |---|---|---|---|---|---|---|---|
@@ -400,8 +442,8 @@ opées au tenant ; tests d'isolation |
 - **Dépendances** : abstractions modèle+données ; budget multi-fournisseur.
 
 ## Réglementaires *(Québec/Canada d'abord, US ensuite)*
-- **AMF / CIRO** : positionnement **« fournisseur d'outil »** ; le **conseiller enregistré** porte la recommandation → TradingClaude évite le statut de « conseiller en valeurs ». Pas de conseil personnalisé/discrétionnaire ; disclaimers inline (E9-175). **Avis juridique fintech requis avant le 1ᵉʳ client payant.**
-- **Loi 25 (Québec) / PIPEDA** : responsable de la protection des renseignements, **évaluation des facteurs relatifs à la vie privée (EFVP)**, consentement, notification de brèche, **résidence des données au Canada** (choisir région cloud CA), registre. (E7-172)
+- **AMF / CIRO** : positionnement **« fournisseur d'outil »** ; le **conseiller enregistré** porte la recommandation → TradingClaude évite le statut de « conseiller en valeurs ». Pas de conseil personnalisé/discrétionnaire ; disclaimers inline (E9-S1). **Avis juridique fintech requis avant le 1ᵉʳ client payant.**
+- **Loi 25 (Québec) / PIPEDA** : responsable de la protection des renseignements, **évaluation des facteurs relatifs à la vie privée (EFVP)**, consentement, notification de brèche, **résidence des données au Canada** (choisir région cloud CA), registre. (E7-S4)
 - **US (si RIA US)** : Investment Advisers Act — rester *tool-vendor* ; SEC Marketing Rule si claims de performance. **GDPR/MiCA** seulement si expansion EU/crypto (hors périmètre actuel — ne pas sur-investir).
 - **IA** : disclosure « contenu généré par IA, sans garantie » ; l'**auditabilité déterministe + audit_log** est un atout de conformité (traçabilité).
 
@@ -443,7 +485,7 @@ Top initiatives par `ROI = Impact² ÷ Effort` (P0/P1 priorisés ; les « quick 
 | 21 | Data layer multi-fournisseurs (D4) | Données | 5 | 4 | **6** | P1 |
 | 23 | Secteurs financiers (D6), Eval-gate (AI4), Mode simple/expert (U5), Mobile (U2), Point-in-time (D9), Scale (SC2/3) | divers | — | — | **5** | P1/P2 |
 
-**Lecture VC** : les **4 premiers (ROI 16-25) sont des quick wins sécurité/données/conformité** (jours, pas mois) — à exécuter **immédiatement** (sprints 154-155). Les **fondations multi-tenance (ROI 6-8, P0)** sont moins « rentables » au ratio mais **stratégiquement non négociables** (sans elles, aucun revenu). C'est la nuance clé : **ROI ≠ priorité absolue** quand un item est un *bloqueur*.
+**Lecture VC** : les **4 premiers (ROI 16-25) sont des quick wins sécurité/données/conformité** (jours, pas mois) — à exécuter **immédiatement** (E1-S1 + E9-S1). Les **fondations multi-tenance (ROI 6-8, P0)** sont moins « rentables » au ratio mais **stratégiquement non négociables** (sans elles, aucun revenu). C'est la nuance clé : **ROI ≠ priorité absolue** quand un item est un *bloqueur*.
 
 ---
 
@@ -471,4 +513,4 @@ Top initiatives par `ROI = Impact² ÷ Effort` (P0/P1 priorisés ; les « quick 
 
 ---
 
-*Toutes les faiblesses de l'audit sont couvertes (Architecture, Multi-tenance, Sécurité, Données, IA, UX/UI, Scalabilité, Produit, Business) avec Impact·Risque·Solution·ROI·Effort·Priorité·CA. Le backlog (sprints 154→185+) est aligné sur le workflow de sprint du projet et directement exécutable.*
+*Toutes les faiblesses de l'audit sont couvertes (Architecture, Multi-tenance, Sécurité, Données, IA, UX/UI, Scalabilité, Produit, Business) avec Impact·Risque·Solution·ROI·Effort·Priorité·CA. Le backlog (E1-S1→E12-S4, ~44 sprints) est aligné sur le workflow de sprint du projet et directement exécutable.*
