@@ -191,6 +191,55 @@ async def test_get_report_analysis_inconnu_404(client) -> None:
     assert response.status_code == 404
 
 
+async def test_get_report_200_pdf_reconstruit_depuis_historique(
+    client, graham_output_msft, earnings_output_msft
+) -> None:
+    """GET /report/{id} reconstruit l'analyse (cœur consolidé Sprint 147) et renvoie un PDF.
+
+    Couvre le chemin 200 de bout en bout (DB mockée → reconstruct(require_graham=True) →
+    PDF multi-skills), jusqu'ici couvert seulement au niveau unité (_reconstruct_response).
+    Réutilise `_make_result_row` (helper des tests de reconstruction Sprint 147).
+    """
+    from unittest.mock import AsyncMock
+
+    from app.api.main import app
+
+    row = _make_result_row(
+        {
+            "graham": graham_output_msft.model_dump(),
+            "earnings_quality": earnings_output_msft.model_dump(),
+        }
+    )
+    app.state.db_pool.fetchrow = AsyncMock(return_value=row)
+
+    response = await client.get(f"/report/{row['id']}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment" in response.headers.get("content-disposition", "")
+    # Le PDF a réellement été produit depuis l'analyse reconstruite (magic number %PDF).
+    assert response.content[:4] == b"%PDF"
+    assert len(response.content) > 0
+
+
+async def test_get_report_graham_absent_du_result_500(client, earnings_output_msft) -> None:
+    """Contrat require_graham=True au niveau endpoint : `result` sans clé graham → 500 assaini.
+
+    Le cœur consolidé lève ValueError (graham obligatoire) ; l'endpoint l'assainit en 500.
+    Verrouille la validation au niveau endpoint (le test unité Sprint 147 ne couvre que la fonction).
+    """
+    from unittest.mock import AsyncMock
+
+    from app.api.main import app
+
+    row = _make_result_row({"earnings_quality": earnings_output_msft.model_dump()})
+    app.state.db_pool.fetchrow = AsyncMock(return_value=row)
+
+    response = await client.get(f"/report/{row['id']}")
+
+    assert response.status_code == 500
+
+
 # ---------------------------------------------------------------------------
 # Tests Sprint 53 — generate_watchlist_summary_pdf() avec composite_score
 # ---------------------------------------------------------------------------
