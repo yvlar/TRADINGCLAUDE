@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeGuard, TypeVar
 
 from pydantic import BaseModel
 
@@ -19,32 +19,33 @@ _RatiosT = TypeVar("_RatiosT", bound=BaseModel)
 # ---------------------------------------------------------------------------
 
 
-def _graham_ratios_trace(ratios: "GrahamRatios | None") -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Graham pour la traçabilité de la réponse."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
-
-
-def _earnings_ratios_trace(
-    ratios: "EarningsQualityRatios | None",
+def _ratios_trace(
+    ratios: "GrahamRatios | EarningsQualityRatios | ValuationRatios | None",
 ) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Qualité bénéfices — calque de _graham_ratios_trace."""
+    """Extrait (date ISO de récupération, source) d'un objet ratios pour la traçabilité de la réponse.
+
+    Source unique des trois schémas ratios (Graham/earnings/valuation portent les mêmes champs
+    `ratios_fetched_at`/`ratios_source` — Sprint 153, fin de la triplication). `None` → `(None, None)` ;
+    source conservée même si la date manque (honnêteté None).
+    """
     if ratios is None:
         return None, None
     fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
     return fetched, ratios.ratios_source
 
 
-def _valuation_ratios_trace(
-    ratios: "ValuationRatios | None",
-) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Valorisation — calque de _graham_ratios_trace."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
+def has_ratios_source(
+    ratios: "GrahamRatios | EarningsQualityRatios | ValuationRatios | None",
+) -> "TypeGuard[GrahamRatios | EarningsQualityRatios | ValuationRatios]":
+    """True si l'objet ratios porte une source OU une date de récupération (traçabilité affichable).
+
+    Prédicat partagé : le rendu PDF n'ajoute une ligne « Source des ratios » que sous cette
+    condition (honnêteté None — parité Graham/earnings/valuation). `None` → False. `TypeGuard`
+    pour restreindre l'objet en non-None au site d'appel (accès ratios_source/ratios_fetched_at).
+    """
+    return ratios is not None and (
+        ratios.ratios_fetched_at is not None or ratios.ratios_source is not None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +98,10 @@ def extract_valuation_ratios(row) -> "ValuationRatios | None":
     return _validate(ValuationRatios, data.get("valuation_ratios") if data else None)
 
 
-def reconstruct_ratios_traces(row) -> dict[str, str | None]:
-    """Reconstruit les 6 champs de traçabilité (Graham + earnings + valuation) depuis input_data.
+def reconstruct_ratios_traces(row) -> dict[str, str | dict[str, str] | None]:
+    """Reconstruit les champs de traçabilité d'AnalyzeResponse depuis input_data.
 
+    Six champs source+date (Graham + earnings + valuation) + la provenance par ratio Graham.
     Source unique partagée par les endpoints `/report` et `/ticker-report` : sans elle, chaque
     chemin de reconstruction PDF dérive (cf. earnings/valuation oubliés côté `/report`).
     Parse `input_data` une seule fois pour les trois skills.
@@ -109,11 +111,12 @@ def reconstruct_ratios_traces(row) -> dict[str, str | None]:
     from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
     data = parse_input_data(row)
-    graham_fetched, graham_source = _graham_ratios_trace(_validate(GrahamRatios, data))
-    earnings_fetched, earnings_source = _earnings_ratios_trace(
+    graham = _validate(GrahamRatios, data)
+    graham_fetched, graham_source = _ratios_trace(graham)
+    earnings_fetched, earnings_source = _ratios_trace(
         _validate(EarningsQualityRatios, data.get("earnings_ratios") if data else None)
     )
-    valuation_fetched, valuation_source = _valuation_ratios_trace(
+    valuation_fetched, valuation_source = _ratios_trace(
         _validate(ValuationRatios, data.get("valuation_ratios") if data else None)
     )
     return {
@@ -123,4 +126,5 @@ def reconstruct_ratios_traces(row) -> dict[str, str | None]:
         "earnings_ratios_source": earnings_source,
         "valuation_ratios_fetched_at": valuation_fetched,
         "valuation_ratios_source": valuation_source,
+        "ratios_provenance": graham.ratios_provenance if graham is not None else None,
     }

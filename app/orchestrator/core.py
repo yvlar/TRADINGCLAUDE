@@ -26,11 +26,7 @@ from app.orchestrator.router import WorkflowRouter
 _workflow_router = WorkflowRouter()
 
 from app.services.observability import SkillTrace
-from app.services.ratios_recon import (
-    _earnings_ratios_trace,
-    _graham_ratios_trace,
-    _valuation_ratios_trace,
-)
+from app.services.ratios_recon import _ratios_trace
 from app.skills.tier2.buffett_quality.schemas import (
     BuffettQualityInput,
     BuffettQualityOutput,
@@ -300,16 +296,21 @@ class AnalyzeResponse(BaseModel):
         default=None,
         description="Source des ratios Valorisation d'entrée (ex. « Yahoo Finance »). None si inconnue.",
     )
+    ratios_provenance: dict[str, str] | None = Field(
+        default=None,
+        description="Clé yfinance effectivement retenue par ratio Graham à repli (pb/debt_equity/book_value) — affichée en signal-only sur l'analyse rendue/rechargée. None si saisie manuelle ou analyse antérieure au champ.",
+    )
 
 
-def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | None]:
-    """Reconstruit les 6 champs de traçabilité (Graham + earnings + valuation) depuis les ratios d'une requête.
+def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | dict[str, str] | None]:
+    """Reconstruit les champs de traçabilité d'AnalyzeResponse depuis les ratios d'une requête.
 
-    Évite la répétition du triplet d'appels aux quatre points de construction d'AnalyzeResponse.
+    Six champs source+date (Graham + earnings + valuation) + la provenance par ratio Graham.
+    Évite la répétition de ces accès aux quatre points de construction d'AnalyzeResponse.
     """
-    graham_fetched, graham_source = _graham_ratios_trace(request.ratios)
-    earnings_fetched, earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-    valuation_fetched, valuation_source = _valuation_ratios_trace(request.valuation_ratios)
+    graham_fetched, graham_source = _ratios_trace(request.ratios)
+    earnings_fetched, earnings_source = _ratios_trace(request.earnings_ratios)
+    valuation_fetched, valuation_source = _ratios_trace(request.valuation_ratios)
     return {
         "ratios_fetched_at": graham_fetched,
         "ratios_source": graham_source,
@@ -317,6 +318,9 @@ def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | None]:
         "earnings_ratios_source": earnings_source,
         "valuation_ratios_fetched_at": valuation_fetched,
         "valuation_ratios_source": valuation_source,
+        "ratios_provenance": (
+            request.ratios.ratios_provenance if request.ratios is not None else None
+        ),
     }
 
 

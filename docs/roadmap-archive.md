@@ -10,6 +10,80 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 149 — Mesure hors-ligne du déterminisme earnings + verrou anti-régression ✅
+
+**Objectif :** Confirmer que la sur-génération de `drapeaux_rouges` (10 échecs golden au Sprint 137) est corrigée maintenant que les 5 cadres d'interprétation sont déterministes (Sloan fermé au Sprint 148). **Blocage environnement assumé** : la mesure *live* exige `ANTHROPIC_API_KEY` (~100 appels Haiku, ~33 min — absente du conteneur web, `tests/evals` exclu du CI). Livrable = la part **mesurable hors-ligne** + verrou de la cause racine.
+
+**Livrables :**
+- `tests/skills/test_earnings_deterministic_replay.py` (nouveau) — rejoue les 20 cas golden via le moteur déterministe `_scores_depuis_ratios` (sans Claude) : Z 20/20, M 13/13 cohérents avec le golden, F 17/17 dans les bornes (tolérance ±1 de l'eval live), Sloan label valide 20/20.
+- `tests/skills/test_earnings_quality.py` — (a) les 5 interprétations (M/Z/F/C/Sloan) écrasées post-parse (poison → substitution, zéro surface LLM) ; (b) verrou : la consigne de cardinalité du prompt (`system.md` Cadre 6, cause racine) reste présente.
+- **Mesure live différée** documentée (commande exacte : `ANTHROPIC_API_KEY=… pytest tests/evals/test_earnings_evals.py -m evals`).
+
+**Version** : 10.35.0
+**Tests** : +84 backend collectés (80 paramétrés golden-replay + 2 standalone + 2 skill) ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante (sous-agent fresh-context) : **CLEAN** — replay honnête (réutilise `_scores_depuis_ratios`, `is_financial` golden inoffensif vérifié), ±1 aligné sur l'eval live, prompt-lock substrings exacts, aucun overclaim.
+
+### Sprint 148 — Interprétation déterministe `sloan.interpretation` (parité finale M/Z/F/C/Sloan) ✅
+
+**Objectif :** `sloan.interpretation` était le **dernier libellé d'interprétation encore produit par le LLM**. Le dériver de l'`accrual_ratio` déjà calculé en Python et le substituer post-parse — même remède que M/Z (Sprint 131) et F/C (Sprint 143). **Sprint backend pur** (prompt et orchestrateur inchangés).
+
+**Livrables :**
+- `app/services/financial_calculations.py` — fonction pure `_sloan_interpretation(accrual_ratio)`, calquée sur `_piotroski`/`_montier` (None → `"DONNEES_MANQUANTES"` ASCII ; ≤ −0.05 `qualite_elevee` · −0.05..0.05 `neutre` · > 0.05 `qualite_degradee`, seuils `system.md:163-165`).
+- `app/skills/tier2/earnings_quality/skill.py` — `_ScoresDeterministes.sloan_interpretation: str | None` dérivé de l'`accrual_ratio` calculé **une seule fois** (source unique) ; `_injecter_scores` écrit `sloan.interpretation` sous gate non-None (parité F/C — accrual non-None ⟹ interprétation non-None).
+- **Périmètre** : `sloan.interpretation` uniquement ; `accrual_ratio`, M/Z/F/C, signaux détaillés intacts.
+- Tests : unitaire seuils + bornes ; intégration overwrite du libellé LLM empoisonné.
+
+**Version** : 10.34.0
+**Tests** : +2 backend ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante (sous-agent fresh-context) : **CLEAN** — bornes exactes, gate non-None sain, `str | None`+gate = bon choix (parité F/C). **Evals earnings_quality** : à relancer en local (output change ; clé absente du conteneur).
+
+### Sprint 147 — Consolidation de la reconstruction d'AnalyzeResponse (/report vs /ticker-report) ✅
+
+**Objectif :** Deux fonctions reconstruisaient une `AnalyzeResponse` depuis une ligne `analysis_history` avec ~80 % de logique commune (parsing `result`/`skills_used`/`created_at` + skill-map + traçabilité ratios). Extraire le cœur partagé dans `app/services/analysis_reconstruction.py` **en corrigeant le bug latent** : `/report` ne reconstruisait pas `esg` (skill-map inline à 15 entrées, `esg` manquant). **Sprint backend pur** (frontend non touché ; aucun prompt de skill, aucune migration).
+
+**Livrables :**
+- `app/services/analysis_reconstruction.py` (nouveau) — `_result_skill_map()` (source unique, 16 skills `esg` inclus) déplacé depuis `ticker_report.py` ; cœur paramétrable `reconstruct(row, *, require_graham: bool) -> AnalyzeResponse | None` qui parse `result`/`skills_used`/`created_at`, applique le skill-map + `reconstruct_ratios_traces`, et construit l'`AnalyzeResponse`. **Pas de cycle** : importe `app.orchestrator.core` (`AnalyzeResponse`) + les schémas skill en lazy (comme `ratios_recon`), jamais les endpoints. Contrats divergents **paramétrés** : `require_graham=True` → `result` illisible propage, `graham` absent lève `ValueError`, graham validé strictement, jamais None ; `require_graham=False` → `result` illisible retourne `None`+warning, `graham` toléré, skill invalide ignoré (warning).
+- `app/api/endpoints/report.py` — `_reconstruct_response` réexprimé sur `reconstruct(row, require_graham=True)` (`assert` non-None pour le contrat de retour non-Optional) ; **gagne `esg`** via le skill-map partagé (correctif du bug latent).
+- `app/api/endpoints/ticker_report.py` — `_reconstruct_analyze_response` réexprimé sur `reconstruct(row, require_graham=False)` ; `_result_skill_map` ré-exporté pour préserver les imports de tests.
+- **Décision de périmètre** : reconstruction depuis `analysis_history` uniquement. Aucun changement d'API HTTP, de schéma, ni de frontend. Seul changement observable : `/report` reconstruit désormais `esg`.
+
+**Version** : 10.33.0
+**Tests** : 1 716 backend collectés (1 712 passés, 3 skipped, 1 xfailed — +5) ; `ruff All checks passed` ; frontend inchangé. Revue indépendante : **CLEAN — aucun bug HIGH/MED/LOW** (contrats divergents préservés, correctif `esg` correct, pas de cycle). Passe qualité `/simplify` : try/except unique de parse `result` **appliqué**.
+
+### Sprint 146 — Affichage earnings/valuation source+date sur l'analyse rendue (AnalysisResult) ✅
+
+**Objectif :** Parité d'affichage avec Graham. Threader la source+date earnings/valuation jusqu'à `AnalyzeResponse` (analyse live **et** reconstruction historique) et l'afficher sous leurs cartes respectives sur `AnalysisResult`. **Sprint backend (threading) + frontend (affichage)**.
+
+**Livrables :**
+- `app/orchestrator/core.py` — helpers `_earnings_ratios_trace`/`_valuation_ratios_trace`, clones de `_graham_ratios_trace`. Quatre champs `str | None` additifs sur `AnalyzeResponse` (défaut `None` → rétrocompat), peuplés aux **4 sites** de construction (la réconciliation a révélé 4 sites là où la carte n'en citait qu'un).
+- `frontend/src/components/RatiosSourceNote.tsx` — composant présentationnel partagé par les trois cartes (Graham/earnings/valuation). Gate `if (!fetchedAt && !source) return null` (honnêteté None : source conservée même sans date).
+- **Correctifs post-revue** : extraction `input_data` + helpers `_*_ratios_trace` centralisés dans `app/services/ratios_recon.py` ; triplet des 4 sites factorisé dans `_request_ratios_traces(request)`.
+
+**Version** : 10.32.0
+**Tests** : 1 711 backend collectés (+17) ; 432 Vitest verts (+6) ; `tsc`/ESLint 0/0. Revue indépendante : **APPROVE** ; `/simplify` : 3 helpers `_*_ratios_trace` quasi-identiques **conservés** (clone-pas-généralise, à mutualiser dans un futur sprint de consolidation).
+
+### Sprint 145 — Affichage PDF de la source+date earnings/valuation ✅
+
+**Objectif :** Le rapport PDF par ticker ne rendait la ligne « Source des ratios » que pour Graham. La câbler pour `EarningsQualityRatios`/`ValuationRatios` (reconstructibles depuis `input_data` au Sprint 144) via le helper `_fmt_ratios_source` **existant**. **Sprint backend pur**.
+
+**Livrables :**
+- `app/services/pdf_report_service.py` — helper `_build_ratios_source_rows(earnings_ratios, valuation_ratios)`, miroir de `_build_ratios_rows` : une ligne par ratio uniquement si présent ET avec source ou date (gate `r.ratios_fetched_at is not None or r.ratios_source is not None`, parité byte-for-byte avec le gate Graham), libellé via `_fmt_ratios_source` **réutilisé** (zéro duplication de format). Bloc « Sources des ratios complémentaires » inséré entre Graham et ESG.
+- `app/api/endpoints/ticker_report.py` — `get_ticker_report` reconstruit earnings/valuation sous le même gate que Graham et les passe au service PDF.
+- **Décision de périmètre** : affichage PDF earnings/valuation uniquement (Graham inchangé). Rétrocompat : params défaut `None` → PDF byte-for-byte identique.
+
+**Version** : 10.31.0
+**Tests** : 1 694 backend collectés (+9) ; frontend inchangé. Revue indépendante : **APPROVE — aucun bug** ; `/simplify` : centraliser le gate honnête-None dupliqué (`:246`/`:261`) **écarté** alors (périmètre Graham interdit, sur-abstraction à usage unique) — *à mutualiser dans un futur sprint de consolidation reuse* (devenu Sprint 151).
+
+### Sprint 144 — Persistance reconstructible des ratios earnings/valuation (input_data) ✅
+
+**Objectif :** Affichage PDF source+date earnings/valuation exigeait d'abord de **persister** leur source+date — or la réconciliation a révélé que la prémisse « ratios earnings/valuation reconstructibles » était **fausse** (`input_data` ne stockait que `request.ratios` Graham ; les sorties de skills n'échoent pas les ratios d'entrée). Périmètre **re-cadré (décision Yves) en sprint de persistance pure**, sans changement PDF visible (l'affichage devient le Sprint 145). **Sprint backend pur**.
+
+**Livrables :**
+- `app/orchestrator/core.py` — helper `_build_input_data(request)` : Graham à plat (rétrocompat via `extra='ignore'`), `earnings_ratios`/`valuation_ratios` sous **clés dédiées** (`model_dump(mode="json")`), gardés par None.
+- `app/api/endpoints/ticker_report.py` — reconstructeurs `_extract_earnings_ratios`/`_extract_valuation_ratios` via un cœur générique typé `_extract_sub_ratios(row, key, model_cls)` (`TypeVar` borné `BaseModel`). Honnêteté None partout (sous-clé absente / `input_data` illisible → `None`).
+- **Décision de périmètre** : persistance + reconstruction uniquement. Cache **non affecté** (`_cache_key` hashe `request.ratios`, jamais `input_data`). Graham byte-for-byte inchangé.
+
+**Version** : 10.30.0
+**Tests** : 1 680 backend collectés (+12) ; frontend inchangé. Réconciliation carte↔code : **STOP avant implémentation** (prémisse fausse → re-cadrage validé par Yves). Revue indépendante : **APPROVE — aucun bug** ; `/simplify` : collapse des deux reconstructeurs en cœur générique **appliqué**.
+
 ### Sprint 143 — Interprétations déterministes F-Score / C-Score (parité M-Score / Z-Score) ✅
 
 **Objectif :** Le Sprint 142 a rendu déterministes les *signaux* F/C (`criteria[].passe`, `signaux[].present`), mais les **libellés d'interprétation au niveau cadre** — `f_score.interpretation` et `c_score.interpretation` — restaient **produits par le LLM**, alors que les interprétations M/Z étaient déjà déterministes (Python, Sprint 131). Compléter la parité : dériver l'interprétation F/C du **score agrégé déjà déterministe** selon les seuils des références, et la substituer post-parse — même remède qui a éliminé la dérive de vocabulaire des golden M/Z. **Sprint backend pur** (frontend rend déjà le libellé verbatim, aucun changement requis).

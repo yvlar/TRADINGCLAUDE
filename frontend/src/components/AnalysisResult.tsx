@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import type { AnalyzeResponse, CompositeScore, GrahamCriterion } from '../types'
 import { EarningsQualitySection } from './EarningsQualitySection'
 import { RatiosSourceNote } from './RatiosSourceNote'
+import { RatiosProvenanceNote } from './RatiosProvenanceNote'
 import { ThesisSection } from './ThesisSection'
 import { DorseyMoatSection } from './DorseyMoatSection'
 import { BuffettQualitySection } from './BuffettQualitySection'
@@ -213,6 +214,10 @@ export function AnalysisResult({
               fetchedAt={result.ratios_fetched_at}
               source={result.ratios_source}
               testId="result-ratios-source"
+            />
+            <RatiosProvenanceNote
+              provenance={result.ratios_provenance}
+              testId="result-ratios-provenance"
             />
           </CardContent>
         </Card>
