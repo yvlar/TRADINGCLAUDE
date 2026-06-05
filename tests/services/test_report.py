@@ -495,3 +495,29 @@ def test_skill_map_parite_des_deux_reconstructeurs(graham_output_msft, earnings_
     assert resp_b is not None
     assert resp_a.earnings_quality is not None and resp_b.earnings_quality is not None
     assert resp_a.esg is not None and resp_b.esg is not None
+
+
+def test_reconstruct_response_result_illisible_propage():
+    """Contrat /report : un result illisible propage (ne renvoie jamais None, à l'inverse de /ticker-report)."""
+    import pytest
+
+    from app.api.endpoints.report import _reconstruct_response
+
+    row = _make_result_row({"graham": {}})
+    row["result"] = "{ ceci n'est pas du JSON"
+    with pytest.raises((ValueError, TypeError)):
+        _reconstruct_response(row)
+
+
+def test_reconstruct_response_graham_invalide_leve(graham_output_msft):
+    """Contrat /report : graham présent mais malformé est validé strictement → lève (pas d'avalement)."""
+    import pytest
+
+    from app.api.endpoints.report import _reconstruct_response
+
+    # graham présent mais non conforme au schéma (un optionnel invalide serait avalé, pas graham).
+    row = _make_result_row(
+        {"graham": {"champ_invalide": 1}, "esg_simplified": _make_esg_output_dict()}
+    )
+    with pytest.raises(ValueError):
+        _reconstruct_response(row)

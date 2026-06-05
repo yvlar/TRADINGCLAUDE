@@ -8,7 +8,7 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from app.services.analysis_reconstruction import _result_skill_map, reconstruct
+from app.services.analysis_reconstruction import reconstruct
 from app.services.composite_history_service import CompositeHistoryService
 from app.services.pdf_report_service import PdfReportService
 from app.services.ratios_recon import (
@@ -18,10 +18,6 @@ from app.services.ratios_recon import (
 )
 from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
-
-# _result_skill_map déplacé dans le service ; ré-exporté ici car il était importable depuis
-# ce module (compat de surface). __all__ marque le ré-export intentionnel (sinon F401).
-__all__ = ["_result_skill_map"]
 
 logger = logging.getLogger(__name__)
 
