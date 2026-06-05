@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, TypeGuard, TypeVar
 
 from pydantic import BaseModel
 
@@ -45,6 +45,20 @@ def _valuation_ratios_trace(
         return None, None
     fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
     return fetched, ratios.ratios_source
+
+
+def has_ratios_source(
+    ratios: "GrahamRatios | EarningsQualityRatios | ValuationRatios | None",
+) -> "TypeGuard[GrahamRatios | EarningsQualityRatios | ValuationRatios]":
+    """True si l'objet ratios porte une source OU une date de récupération (traçabilité affichable).
+
+    Prédicat partagé : le rendu PDF n'ajoute une ligne « Source des ratios » que sous cette
+    condition (honnêteté None — parité Graham/earnings/valuation). `None` → False. `TypeGuard`
+    pour restreindre l'objet en non-None au site d'appel (accès ratios_source/ratios_fetched_at).
+    """
+    return ratios is not None and (
+        ratios.ratios_fetched_at is not None or ratios.ratios_source is not None
+    )
 
 
 # ---------------------------------------------------------------------------
