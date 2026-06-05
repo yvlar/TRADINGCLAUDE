@@ -373,3 +373,16 @@ class TestInterpretationsDeterministes:
         assert _montier_interpretation(4) == "signaux_multiples"
         assert _montier_interpretation(6) == "signaux_multiples"
         assert _montier_interpretation(None) == "DONNEES_MANQUANTES"
+
+    def test_sloan_libelle_par_seuil(self):
+        # Seuils Sloan (system.md:163-165) : ≤ −0.05 qualite_elevee, −0.05..0.05 neutre,
+        # > 0.05 qualite_degradee. Bornes incluses côté qualite_elevee/neutre.
+        from app.services.financial_calculations import _sloan_interpretation
+        assert _sloan_interpretation(-0.10) == "qualite_elevee"
+        assert _sloan_interpretation(-0.05) == "qualite_elevee"
+        assert _sloan_interpretation(-0.049) == "neutre"
+        assert _sloan_interpretation(0.0) == "neutre"
+        assert _sloan_interpretation(0.05) == "neutre"
+        assert _sloan_interpretation(0.051) == "qualite_degradee"
+        assert _sloan_interpretation(0.10) == "qualite_degradee"
+        assert _sloan_interpretation(None) == "DONNEES_MANQUANTES"

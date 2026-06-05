@@ -652,6 +652,34 @@ class TestEarningsQualitySkill:
         assert output.c_score.interpretation == _montier_interpretation(output.c_score.c_score)
 
     @pytest.mark.asyncio
+    async def test_interpretation_sloan_python_prime_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 148 : l'interprétation Sloan dérivée de l'accrual_ratio déterministe
+        écrase le libellé du bloc LLM (parité finale M/Z/F/C/Sloan)."""
+        from app.skills.tier2.earnings_quality.skill import _scores_depuis_ratios
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        # Le LLM « hallucine » un libellé Sloan incohérent — il doit être écrasé.
+        data["sloan"]["interpretation"] = "POISON_SLOAN_LLM"
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        attendus = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        assert output.sloan.interpretation == attendus.sloan_interpretation
+        assert output.sloan.interpretation != "POISON_SLOAN_LLM"
+        # Cohérence libellé ↔ ratio : l'interprétation correspond au seuil de l'accrual.
+        from app.services.financial_calculations import _sloan_interpretation
+        assert output.sloan.interpretation == _sloan_interpretation(output.sloan.accrual_ratio)
+
+    @pytest.mark.asyncio
     async def test_financiere_garde_interpretation_f_llm_mais_substitue_c(
         self,
         ratios_earnings_msft: EarningsQualityRatios,
