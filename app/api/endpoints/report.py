@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -14,7 +13,7 @@ from app.orchestrator.core import (
     AnalyzeResponse,
     Orchestrator,
 )
-from app.services.ratios_recon import reconstruct_ratios_traces
+from app.services.analysis_reconstruction import reconstruct
 from app.services.report import ReportService
 from app.utils.error_sanitization import sanitized_http_500
 
@@ -122,69 +121,10 @@ async def get_report(request: Request, analysis_id: str) -> Response:
 
 def _reconstruct_response(row) -> AnalyzeResponse:
     """
-    Reconstruit une AnalyzeResponse minimale depuis une ligne analysis_history.
-    Seul le champ graham est obligatoire — les autres skills sont optionnels.
+    Reconstruit une AnalyzeResponse depuis une ligne analysis_history.
+    Seul le champ graham est obligatoire (ValueError sinon) — les autres skills sont optionnels.
     """
-    result_str = row["result"]
-    result: dict = json.loads(result_str) if isinstance(result_str, str) else dict(result_str)
-    skills_used: list[str] = json.loads(row["skills_used"]) if isinstance(row["skills_used"], str) else list(row["skills_used"])
-
-    created_at = row["created_at"]
-    created_at_str = created_at.isoformat() if isinstance(created_at, datetime) else str(created_at)
-
-    # Import ici pour éviter les imports circulaires au niveau module
-    from app.skills.tier2.buffett_quality.schemas import BuffettQualityOutput
-    from app.skills.tier2.canadian_tax.schemas import CanadianTaxOutput
-    from app.skills.tier2.damodaran_narrative.schemas import DamodararOutput
-    from app.skills.tier2.dorsey_moat.schemas import DorseyMoatOutput
-    from app.skills.tier2.earnings_quality.schemas import EarningsQualityOutput
-    from app.skills.tier2.fisher_scuttlebutt.schemas import FisherOutput
-    from app.skills.tier2.graham_analysis.schemas import GrahamAnalysisOutput
-    from app.skills.tier2.greenblatt.schemas import GreenblattOutput
-    from app.skills.tier2.klarman_margin.schemas import KlarmanOutput
-    from app.skills.tier2.lynch_categories.schemas import LynchOutput
-    from app.skills.tier2.marks_cycles.schemas import MarksOutput
-    from app.skills.tier2.munger_mental.schemas import MungerOutput
-    from app.skills.tier2.pabrai_dhandho.schemas import PabraiOutput
-    from app.skills.tier2.stock_valuation.schemas import StockValuationOutput
-    from app.skills.tier2.thesis_builder.schemas import ThesisBuilderOutput
-
-    def _try_parse(model_cls, key: str):
-        data = result.get(key)
-        if data is None:
-            return None
-        try:
-            return model_cls.model_validate(data)
-        except Exception:
-            logger.warning("Impossible de parser %s depuis result[%s]", model_cls.__name__, key)
-            return None
-
-    graham_data = result.get("graham")
-    if graham_data is None:
-        raise ValueError("Clé 'graham' absente dans result — analyse corrompue")
-    graham = GrahamAnalysisOutput.model_validate(graham_data)
-
-    return AnalyzeResponse(
-        analysis_id=str(row["id"]),
-        ticker=row["ticker"],
-        workflow=row["workflow_name"],
-        skills_applied=skills_used,
-        graham=graham,
-        **reconstruct_ratios_traces(row),
-        earnings_quality=_try_parse(EarningsQualityOutput, "earnings_quality"),
-        dorsey=_try_parse(DorseyMoatOutput, "dorsey_moat"),
-        buffett=_try_parse(BuffettQualityOutput, "buffett_quality"),
-        valuation=_try_parse(StockValuationOutput, "stock_valuation"),
-        thesis=_try_parse(ThesisBuilderOutput, "investment_thesis_builder"),
-        munger=_try_parse(MungerOutput, "munger_mental_models"),
-        canadian_tax=_try_parse(CanadianTaxOutput, "canadian_tax_considerations"),
-        lynch=_try_parse(LynchOutput, "lynch_categories"),
-        fisher=_try_parse(FisherOutput, "fisher_scuttlebutt"),
-        klarman=_try_parse(KlarmanOutput, "klarman_margin"),
-        greenblatt=_try_parse(GreenblattOutput, "greenblatt_magic_formula"),
-        damodaran=_try_parse(DamodararOutput, "damodaran_narrative"),
-        marks=_try_parse(MarksOutput, "marks_cycles_risk"),
-        pabrai=_try_parse(PabraiOutput, "pabrai_dhandho"),
-        cost_usd=float(row["cost_usd"]),
-        created_at=created_at_str,
-    )
+    response = reconstruct(row, require_graham=True)
+    # require_graham=True ne retourne jamais None (result illisible propage) — invariant.
+    assert response is not None
+    return response
