@@ -5,6 +5,8 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
+
 from app.services.ratios_recon import reconstruct_ratios_traces
 
 if TYPE_CHECKING:
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Mapping clé du JSONB result → (champ AnalyzeResponse, classe Pydantic du skill).
 # Source unique des 16 skills tier2 (esg inclus) partagée par /report et /ticker-report.
-def _result_skill_map() -> list[tuple[str, str, type]]:
+def _result_skill_map() -> list[tuple[str, str, type[BaseModel]]]:
     from app.skills.tier2.buffett_quality.schemas import BuffettQualityOutput
     from app.skills.tier2.canadian_tax.schemas import CanadianTaxOutput
     from app.skills.tier2.damodaran_narrative.schemas import DamodararOutput
