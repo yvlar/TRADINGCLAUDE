@@ -19,28 +19,15 @@ _RatiosT = TypeVar("_RatiosT", bound=BaseModel)
 # ---------------------------------------------------------------------------
 
 
-def _graham_ratios_trace(ratios: "GrahamRatios | None") -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Graham pour la traçabilité de la réponse."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
-
-
-def _earnings_ratios_trace(
-    ratios: "EarningsQualityRatios | None",
+def _ratios_trace(
+    ratios: "GrahamRatios | EarningsQualityRatios | ValuationRatios | None",
 ) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Qualité bénéfices — calque de _graham_ratios_trace."""
-    if ratios is None:
-        return None, None
-    fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
-    return fetched, ratios.ratios_source
+    """Extrait (date ISO de récupération, source) d'un objet ratios pour la traçabilité de la réponse.
 
-
-def _valuation_ratios_trace(
-    ratios: "ValuationRatios | None",
-) -> tuple[str | None, str | None]:
-    """Extrait (date ISO de récupération, source) des ratios Valorisation — calque de _graham_ratios_trace."""
+    Source unique des trois schémas ratios (Graham/earnings/valuation portent les mêmes champs
+    `ratios_fetched_at`/`ratios_source` — Sprint 153, fin de la triplication). `None` → `(None, None)` ;
+    source conservée même si la date manque (honnêteté None).
+    """
     if ratios is None:
         return None, None
     fetched = ratios.ratios_fetched_at.isoformat() if ratios.ratios_fetched_at is not None else None
@@ -125,11 +112,11 @@ def reconstruct_ratios_traces(row) -> dict[str, str | dict[str, str] | None]:
 
     data = parse_input_data(row)
     graham = _validate(GrahamRatios, data)
-    graham_fetched, graham_source = _graham_ratios_trace(graham)
-    earnings_fetched, earnings_source = _earnings_ratios_trace(
+    graham_fetched, graham_source = _ratios_trace(graham)
+    earnings_fetched, earnings_source = _ratios_trace(
         _validate(EarningsQualityRatios, data.get("earnings_ratios") if data else None)
     )
-    valuation_fetched, valuation_source = _valuation_ratios_trace(
+    valuation_fetched, valuation_source = _ratios_trace(
         _validate(ValuationRatios, data.get("valuation_ratios") if data else None)
     )
     return {

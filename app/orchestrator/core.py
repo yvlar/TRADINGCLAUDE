@@ -26,11 +26,7 @@ from app.orchestrator.router import WorkflowRouter
 _workflow_router = WorkflowRouter()
 
 from app.services.observability import SkillTrace
-from app.services.ratios_recon import (
-    _earnings_ratios_trace,
-    _graham_ratios_trace,
-    _valuation_ratios_trace,
-)
+from app.services.ratios_recon import _ratios_trace
 from app.skills.tier2.buffett_quality.schemas import (
     BuffettQualityInput,
     BuffettQualityOutput,
@@ -312,9 +308,9 @@ def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | dict[str,
     Six champs source+date (Graham + earnings + valuation) + la provenance par ratio Graham.
     Évite la répétition de ces accès aux quatre points de construction d'AnalyzeResponse.
     """
-    graham_fetched, graham_source = _graham_ratios_trace(request.ratios)
-    earnings_fetched, earnings_source = _earnings_ratios_trace(request.earnings_ratios)
-    valuation_fetched, valuation_source = _valuation_ratios_trace(request.valuation_ratios)
+    graham_fetched, graham_source = _ratios_trace(request.ratios)
+    earnings_fetched, earnings_source = _ratios_trace(request.earnings_ratios)
+    valuation_fetched, valuation_source = _ratios_trace(request.valuation_ratios)
     return {
         "ratios_fetched_at": graham_fetched,
         "ratios_source": graham_source,
