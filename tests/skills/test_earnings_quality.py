@@ -711,6 +711,57 @@ class TestEarningsQualitySkill:
         assert output.sloan.interpretation == _sloan_interpretation(output.sloan.accrual_ratio)
 
     @pytest.mark.asyncio
+    async def test_interpretation_sloan_donnees_manquantes_ecrase_aussi(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 148 — branche no-gate : accrual None → 'DONNEES_MANQUANTES' substitué malgré tout
+        (écrase le libellé LLM). Verrouille la décision « substitution inconditionnelle »."""
+        from app.skills.tier2.earnings_quality.skill import _scores_depuis_ratios
+
+        # cfo_t None → sloan_accrual_ratio renvoie None (donnée manquante).
+        ratios = ratios_earnings_msft.model_copy(update={"cfo_t": None})
+        assert _scores_depuis_ratios(ratios, is_financial=False).accrual_ratio is None
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["sloan"]["interpretation"] = "POISON_SLOAN_LLM"
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        output, _ = await skill.execute(EarningsQualityInput(ticker="MSFT", ratios=ratios))
+
+        assert output.sloan.accrual_ratio is None
+        assert output.sloan.interpretation == "DONNEES_MANQUANTES"
+
+    @pytest.mark.asyncio
+    async def test_interpretation_sloan_substituee_meme_pour_financiere(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 148 : Sloan n'a pas de gate sectoriel (contrairement à F) → l'interprétation reste
+        substituée même pour une financière (accrual_ratio ignore is_financial)."""
+        from app.services.financial_calculations import _sloan_interpretation
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["is_financial"] = True
+        data["sloan"]["interpretation"] = "POISON_SLOAN_LLM"
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        output, _ = await skill.execute(
+            EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        )
+
+        assert output.sloan.interpretation != "POISON_SLOAN_LLM"
+        assert output.sloan.interpretation == _sloan_interpretation(output.sloan.accrual_ratio)
+
+    @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
         self,
         ratios_earnings_msft: EarningsQualityRatios,
