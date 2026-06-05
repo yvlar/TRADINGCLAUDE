@@ -18,6 +18,7 @@ from app.services.financial_calculations import (
     PiotroskiCriterion,
     _montier_interpretation,
     _piotroski_interpretation,
+    _sloan_interpretation,
     altman_z_score_detail,
     beneish_m_score_detail,
     montier_c_signaux,
@@ -52,6 +53,8 @@ class _ScoresDeterministes:
     (Sprint 142) ; None dans les mêmes cas que le score agrégé correspondant.
     `f_interpretation`/`c_interpretation` portent le libellé au niveau cadre dérivé
     du score agrégé déterministe (Sprint 143, parité M/Z) ; None quand le score l'est.
+    `sloan_interpretation` est le libellé du ratio d'accruals dérivé de `accrual_ratio`
+    (Sprint 148, parité M/Z/F/C) ; toujours une str (None → "DONNEES_MANQUANTES").
     """
 
     m: BeneishComponents
@@ -63,6 +66,7 @@ class _ScoresDeterministes:
     c_signaux: list[MontierSignal] | None
     f_interpretation: str | None
     c_interpretation: str | None
+    sloan_interpretation: str
 
 
 def _scores_depuis_ratios(
@@ -111,6 +115,13 @@ def _scores_depuis_ratios(
     # Score agrégé dérivé une fois (source unique) → l'interprétation cadre s'en déduit.
     f_score = None if f_criteria is None else sum(1 for c in f_criteria if c.passe)
     c_score = None if c_signaux is None else sum(1 for s in c_signaux if s.present)
+    # accrual_ratio dérivé une fois (source unique) → l'interprétation Sloan s'en déduit.
+    accrual_ratio = sloan_accrual_ratio(
+        net_income_t=ratios.net_income_t,
+        cfo_t=ratios.cfo_t,
+        total_assets_t=ratios.total_assets_t,
+        total_assets_t1=ratios.total_assets_t1,
+    )
     return _ScoresDeterministes(
         m=beneish_m_score_detail(
             receivables_t=ratios.receivables_t,
@@ -152,16 +163,12 @@ def _scores_depuis_ratios(
         ),
         f_score=f_score,
         c_score=c_score,
-        accrual_ratio=sloan_accrual_ratio(
-            net_income_t=ratios.net_income_t,
-            cfo_t=ratios.cfo_t,
-            total_assets_t=ratios.total_assets_t,
-            total_assets_t1=ratios.total_assets_t1,
-        ),
+        accrual_ratio=accrual_ratio,
         f_criteria=f_criteria,
         c_signaux=c_signaux,
         f_interpretation=None if f_score is None else _piotroski_interpretation(f_score),
         c_interpretation=None if c_score is None else _montier_interpretation(c_score),
+        sloan_interpretation=_sloan_interpretation(accrual_ratio),
     )
 
 
@@ -187,7 +194,12 @@ def _injecter_scores(data: dict[str, Any], scores: _ScoresDeterministes) -> None
     # is_financial) et écrase le libellé du LLM — élimine la dérive de vocabulaire (golden).
     data.setdefault("m_score", {}).update(asdict(scores.m))
     data.setdefault("z_score", {}).update(asdict(scores.z))
-    data.setdefault("sloan", {})["accrual_ratio"] = scores.accrual_ratio
+    # accrual_ratio (nullable) ET son interprétation (toujours str) substitués sans gate :
+    # _sloan_interpretation rend "DONNEES_MANQUANTES" si l'accrual est None (Sprint 148,
+    # parité M/Z/F/C — élimine la dérive de vocabulaire du libellé LLM).
+    bloc_sloan = data.setdefault("sloan", {})
+    bloc_sloan["accrual_ratio"] = scores.accrual_ratio
+    bloc_sloan["interpretation"] = scores.sloan_interpretation
     # f_score/f_criteria (resp. c_score/c_signaux) sont None ensemble : sous le gate
     # non-None, l'entier et la liste détaillée sont cohérents (sum(passe) == f_score).
     # PiotroskiCriterion/MontierSignal sont nommés comme FScoreCriterion/CScoreSignal

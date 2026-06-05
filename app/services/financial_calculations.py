@@ -139,6 +139,22 @@ def _montier_interpretation(c_score: int | None) -> str:
     return "signaux_multiples"
 
 
+def _sloan_interpretation(accrual_ratio: float | None) -> str:
+    """Libellé canonique du ratio d'accruals de Sloan — déterministe (parité M/Z/F/C, Sprint courant).
+
+    Seuils (sloan-accruals.md / system.md) : ≤ −0.05 qualite_elevee | −0.05 < r ≤ 0.05 neutre |
+    > 0.05 qualite_degradee. `DONNEES_MANQUANTES` (ASCII) si l'accrual n'a pu être calculé. Pas
+    de gate sectoriel (le gate None est porté par l'accrual_ratio lui-même, parité Sprint 142/143).
+    """
+    if accrual_ratio is None:
+        return "DONNEES_MANQUANTES"
+    if accrual_ratio <= -0.05:
+        return "qualite_elevee"
+    if accrual_ratio <= 0.05:
+        return "neutre"
+    return "qualite_degradee"
+
+
 @dataclass(frozen=True)
 class BeneishComponents:
     """Les 8 indices intermédiaires du M-Score de Beneish + le score agrégé (Sprint 131).

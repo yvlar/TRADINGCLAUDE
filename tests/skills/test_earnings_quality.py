@@ -683,6 +683,34 @@ class TestEarningsQualitySkill:
         assert output.c_score.interpretation != "POISON_C_LLM"
 
     @pytest.mark.asyncio
+    async def test_interpretation_sloan_python_prime_sur_bloc_llm(
+        self,
+        ratios_earnings_msft: EarningsQualityRatios,
+        earnings_output_msft: EarningsQualityOutput,
+    ):
+        """Sprint 148 : l'interprétation Sloan dérivée de l'accrual_ratio Python écrase le libellé
+        LLM (parité M/Z/F/C). Substitution inconditionnelle — toujours une str."""
+        from app.services.financial_calculations import _sloan_interpretation
+        from app.skills.tier2.earnings_quality.skill import _scores_depuis_ratios
+
+        data = earnings_output_msft.model_dump(exclude={"confidence_score"})
+        data["sloan"]["interpretation"] = "POISON_SLOAN_LLM"
+        mock_client = MagicMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create.return_value = _earnings_tool_use_response(data=data)
+
+        skill = EarningsQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = EarningsQualityInput(ticker="MSFT", ratios=ratios_earnings_msft)
+        output, _ = await skill.execute(inp)
+
+        attendus = _scores_depuis_ratios(ratios_earnings_msft, is_financial=False)
+        # Le poison LLM est écrasé par le libellé dérivé de l'accrual_ratio déterministe.
+        assert output.sloan.interpretation == attendus.sloan_interpretation
+        assert output.sloan.interpretation != "POISON_SLOAN_LLM"
+        # Cohérence libellé ↔ accrual : l'interprétation correspond au seuil de l'accrual substitué.
+        assert output.sloan.interpretation == _sloan_interpretation(output.sloan.accrual_ratio)
+
+    @pytest.mark.asyncio
     async def test_message_utilisateur_contient_scores_deterministes(
         self,
         ratios_earnings_msft: EarningsQualityRatios,
