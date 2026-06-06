@@ -65,6 +65,8 @@ tmp_replacements.txt
 # Revues internes / audits / due diligence (non destinés à la publication)
 revue-*.md
 docs/revues/
+# Exception : revue d'audit FinTech versionnée volontairement (demande explicite)
+!docs/revue-expert-fintech-2026-06.md
 
 # Configuration locale Claude Code (permissions + chemins locaux)
 .claude/settings.local.json
