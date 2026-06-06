@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.44.0 |
+| **Version** | 10.45.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 158 — E2-S1 introduire Alembic (socle migrations) |
-| **Dernier sprint complété** | Sprint 168 — E9-S1 disclaimer inline adjacent au verdict (P0 tiré en avant) ✅ |
+| **Sprint actif** | Sprint 159 — E2-S2 sortir les `CREATE TABLE` du lifespan |
+| **Dernier sprint complété** | Sprint 158 — E2-S1 socle Alembic (baseline fidèle, upgrade/downgrade validés sur Postgres réel) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
