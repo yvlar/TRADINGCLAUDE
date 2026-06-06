@@ -49,7 +49,14 @@ class AuthTokenService:
     def decode_access_token(self, token: str) -> dict | None:
         """Décode et valide un JWT. Retourne None si invalide ou expiré."""
         try:
-            payload = jwt.decode(token, self._secret, algorithms=[_ALGORITHM])
+            # require exp/sub : un token valide ne peut être accepté sans expiration
+            # ni sujet (défense en profondeur — revue E1-S4).
+            payload = jwt.decode(
+                token,
+                self._secret,
+                algorithms=[_ALGORITHM],
+                options={"require": ["exp", "sub"]},
+            )
             return payload
         except jwt.PyJWTError:
             return None
