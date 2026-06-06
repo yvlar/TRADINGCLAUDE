@@ -67,6 +67,8 @@ revue-*.md
 docs/revues/
 # Exception : revue d'audit FinTech versionnée volontairement (demande explicite)
 !docs/revue-expert-fintech-2026-06.md
+# Exception : revue OWASP de la policy RLS — livrable du Sprint 165 (E3-S5)
+!docs/revue-owasp-rls-2026-06.md
 
 # Configuration locale Claude Code (permissions + chemins locaux)
 .claude/settings.local.json
