@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 164 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 165 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.51.0 |
+| **Version** | 10.52.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 165 — E3-S5 preuve d'isolation rouge→vert (matrice cross-tenant sur les 6 tables + revue OWASP de la policy RLS) |
-| **Dernier sprint complété** | Sprint 164 — E3-S4 threading tenant bout-en-bout (ContextVar résolu par middleware → GUC RLS + colonne `tenant_id` + clé cache préfixée tenant ; tenant authentifié threadé via claim JWT) ✅ |
+| **Sprint actif** | Sprint 166 — E4-S1 metering (`usage_events` append-only par skill, source de vérité facturation) |
+| **Dernier sprint complété** | Sprint 165 — E3-S5 preuve d'isolation rouge→vert (matrice cross-tenant paramétrée sur les 6 tables : lecture isolée + `WITH CHECK` + fail-closed, NOSUPERUSER ; gate CI étendu aux 6 tables ; revue OWASP de la policy RLS) ✅ — **clôt l'épic E3** |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -55,7 +55,7 @@
 - Retry exponentiel sur erreurs 429/529 (`app/utils/retry.py`)
 - Prompt caching activé sur tous les system prompts
 - **Sécurité auth durcie (Sprint 125)** — secret JWT fail-fast (`RuntimeError` au boot hors dev/test si `JWT_SECRET_KEY` absent), blacklist JTI fail-closed (panne Redis → token refusé), réponses 500 assainies (body générique + `correlation_id`, `str(exc)` jamais exposé — global handler + tous les endpoints + flux SSE), CORS durci (`CORS_ORIGINS` CSV via env, méthodes explicites)
-- **Isolation RLS multi-tenant (Sprint 163)** — Row-Level Security PostgreSQL active (`ENABLE` + `FORCE`) sur les 6 tables métier avec policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK) ; GUC `app.tenant_id` posé par connexion au pool asyncpg (`app/db/tenant_context.py`, défaut `LEGACY_TENANT_ID` tant que le threading n'est pas câblé — E3-S4). Fail-closed : sans contexte tenant, 0 ligne visible. Isolation cross-tenant prouvée en CI (rôle NOSUPERUSER)
+- **Isolation RLS multi-tenant (Sprints 163-165)** — Row-Level Security PostgreSQL active (`ENABLE` + `FORCE`) sur les 6 tables métier avec policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK) ; GUC `app.tenant_id` posé par connexion au pool asyncpg (`app/db/tenant_context.py`), threadé depuis le claim JWT (Sprint 164). Fail-closed : sans contexte tenant, 0 ligne visible. **Isolation prouvée table par table en rouge→vert** (matrice paramétrée `tests/integration/test_rls_isolation.py`, rôle NOSUPERUSER, gate CI sur les 6 tables — Sprint 165) ; revue OWASP de la policy : `docs/revue-owasp-rls-2026-06.md` (2 risques résiduels suivis hors code : rôle runtime `NOSUPERUSER`/`NOBYPASSRLS`, scoping tenant de `/report`)
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
@@ -87,6 +87,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 165 — E3-S5 : preuve d'isolation rouge→vert (clôt E3) ✅
+
+**Objectif :** Transformer la preuve d'isolation minimale (1 table, E3-S3) en **matrice cross-tenant exhaustive sur les 6 tables métier**, en rouge→vert, + revue OWASP de la policy RLS. Clôt l'épic E3 (bloqueur n°1, isolation au niveau base).
+
+**Livrables :**
+- `tests/integration/test_rls_isolation.py` — la preuve 1-table devient une **matrice paramétrée** sur les 6 tables (`@pytest.mark.parametrize` sur `_TABLES`, parité verrouillée ↔ migration `0005_business_rls._TABLES`). Pour chaque table, sous rôle **NOSUPERUSER** : (a) **lecture isolée** — A ne voit que A (`USING`) ; (b) **`WITH CHECK`** — A ne peut pas écrire une ligne de B ; (c) **fail-closed** — GUC vide → `NULLIF`→`NULL::uuid` → 0 ligne. Fabrique de payload par table (`_PAYLOADS` + `_build_insert`) gérant les contraintes propres : `watchlist` (index unique **global** `(ticker, workflow)` → marqueurs distincts par tenant), `annotations` (`analysis_id` UNIQUE global → UUID neuf par insertion ; `note` NOT NULL), `analysis_history` (`input_data`/`result` JSONB NOT NULL). Le test E3-S4 (ContextVar→pool→GUC) est conservé.
+- **Aspect rouge→vert prouvé empiriquement** : même requête de lecture → `{A}` sous GUC=A et `{B}` sous GUC=B (les deux lignes existent ; seule la policy masque celle de l'autre). Désactiver la RLS sur une table fait virer le cas au rouge ; la réactiver, au vert — vérifié en session.
+- **Gate CI étendu** (`.github/workflows/ci.yml`) — le `GRANT` du rôle `rls_tester` couvre désormais les **6 tables + `tenants`** + `USAGE ON ALL SEQUENCES` (les BIGSERIAL `esg_score_history`/`alert_history` en dépendent) ; la matrice tourne en gate, pas seulement en local.
+- **Revue OWASP** (`docs/revue-owasp-rls-2026-06.md`, nouveau) — policy passée au crible : injection GUC **non exploitable** (`set_config` en paramètres liés + `UUID(...)` fail-safe legacy), **aucune** fonction `SECURITY DEFINER`, `FORCE RLS` couvre le propriétaire (les 6 tables `ENABLE`+`FORCE` vérifiées runtime). **2 risques résiduels hors code, suivis** : (1) le rôle runtime doit être `NOSUPERUSER`/`NOBYPASSRLS`/non-propriétaire (sinon RLS inerte — `copilote` est superuser+BYPASSRLS) ; (2) `/report` auth-exempté → GUC legacy : **décision = documenter legacy-only**, scoping tenant du token de rapport reporté à un sprint dédié.
+
+**Validation runtime (Postgres 16 local + rôle NOSUPERUSER)** : matrice 6 tables verte (7 tests intégration : 6 paramétrés + threading E3-S4) ; rouge→vert démontré (RLS off → rouge, on → vert) ; état RLS des 6 tables vérifié en base (`ENABLE`+`FORCE`+1 policy `ALL` USING==WITH CHECK).
+
+**Version** : 10.52.0
+**Tests** : 2 063 backend collectés (2 042 passés, 20 skipped [+5 : matrice 6 tables, skippée hors PG migré], 1 xfailed) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (aucun prompt skill ni orchestrateur touché — tests d'intégration RLS uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (matrice prouve les 3 propriétés par table, rouge→vert causal et non vacuous, `WITH CHECK` ne peut pas passer à vide [payloads par ailleurs valides, zéro contrainte CHECK collatérale], grants CI suffisants tables+séquences, doc OWASP factuellement cohérente) — 1 finding cosmétique traité (docstring : privilèges requis SELECT/INSERT/UPDATE/DELETE) ; **qualité** : aucun changement justifié (paramétrage + `_build_insert` retirent déjà la duplication ; connexion par test préférée à un savepoint partagé).
 
 ### Sprint 164 — E3-S4 : threading tenant bout-en-bout ✅
 
@@ -135,22 +150,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.49.0
 **Tests** : 2 002 backend collectés (1 988 passés, 13 skipped, 1 xfailed — +14 : forme de migration paramétrée sur 6 tables [colonne/FK/backfill/ordre backfill-avant-NOT-NULL/index/parité littéral↔constante], écritures défaut-legacy/tenant-explicite des 5 services, défaut legacy de `_persist`) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, placeholders `$n` alignés aux args aux 6 sites, ON CONFLICT préserve le tenant, binding asyncpg `uuid.UUID`, aucun appelant cassé — défauts présents) ; **qualité** : 1 finding traité (tests d'écriture paramétrés legacy/explicite, 10→5 fonctions), 1 écarté (helper `_load` triplé dans les tests de migration = convention pré-existante, refactor hors périmètre de ce sprint).
-
-### Sprint 161 — E3-S1 : socle tenant (`tenants` + `users.tenant_id`) ✅
-
-**Objectif :** Poser les fondations de la multi-tenance — table `tenants`, colonne `users.tenant_id` (FK), tenant « legacy » de backfill — sans isolation RLS ni rattachement des 6 tables métier (E3-S2/S3), en gardant l'auth 100 % rétrocompatible. 1ʳᵉ marche de l'épic E3 (bloqueur n°1).
-
-**Livrables :**
-- `alembic/versions/0003_tenants.py` (nouveau) — révision chaînée après `0002_audit_log` : table `tenants(id, name, slug UNIQUE, created_at)` + tenant legacy déterministe (UUID fixe, slug `legacy`, `ON CONFLICT DO NOTHING`) ; `users.tenant_id` ajouté nullable → backfill legacy (`WHERE tenant_id IS NULL`) → `SET NOT NULL` → index `idx_users_tenant`. Downgrade en ordre FK inverse (index → colonne → table), idempotent.
-- `app/models/tenant.py` (nouveau) — source unique des valeurs du tenant legacy (`LEGACY_TENANT_ID`/`SLUG`/`NAME`) ; la migration en garde une copie littérale (artefact figé), parité verrouillée par test.
-- `app/services/user_service.py` — `create_user` accepte un `tenant_id` optionnel (défaut = legacy) ; `tenant_id` exposé dans le `RETURNING` et les `SELECT` (`authenticate`/`get_by_id`).
-- `app/models/auth.py` — décision documentée : `tenant_id` **absent** de la réponse publique `/auth/me` ce sprint (exposition pertinente seulement avec le threading de contexte tenant, E3-S4).
-- Rétrocompat auth : `POST /auth/register` et `/auth/login` inchangés côté API ; nouvel inscrit rattaché au legacy par défaut.
-
-**Validation runtime (Postgres 16 local)** : `upgrade head` → table `tenants` + tenant legacy présent + un `users` inséré **avant** la migration backfillé au legacy + `tenant_id NOT NULL` + index + FK `users_tenant_id_fkey` ; `downgrade 0002` → colonne/index/table retirés ; re-`upgrade head` idempotent (legacy + backfill préservés).
-
-**Version** : 10.48.0
-**Tests** : 1 951 backend collectés (1 937 passés, 13 skipped, 1 xfailed — +17 : forme/chaînage/ordre de migration, parité littéraux↔constantes, `create_user` legacy/explicite/dict) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, ordre backfill-avant-NOT-NULL, downgrade ordre FK inverse, binding asyncpg `uuid.UUID`, `RETURNING` rétrocompatible) ; **qualité** : 2 findings traités (modèle Pydantic `Tenant` mort retiré ; constantes slug/name verrouillées par test au lieu de rester orphelines), 3 écartés (triplication `_execute_each`/`_load` = artefacts figés hors périmètre ; FK `ON DELETE` = décision délibérée E3-S2/S3).
 
 ---
 

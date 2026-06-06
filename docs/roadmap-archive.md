@@ -10,6 +10,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 161 — E3-S1 : socle tenant (`tenants` + `users.tenant_id`) ✅
+
+**Objectif :** Poser les fondations de la multi-tenance — table `tenants`, colonne `users.tenant_id` (FK), tenant « legacy » de backfill — sans isolation RLS ni rattachement des 6 tables métier (E3-S2/S3), en gardant l'auth 100 % rétrocompatible. 1ʳᵉ marche de l'épic E3 (bloqueur n°1).
+
+**Livrables :**
+- `alembic/versions/0003_tenants.py` (nouveau) — révision chaînée après `0002_audit_log` : table `tenants(id, name, slug UNIQUE, created_at)` + tenant legacy déterministe (UUID fixe, slug `legacy`, `ON CONFLICT DO NOTHING`) ; `users.tenant_id` ajouté nullable → backfill legacy (`WHERE tenant_id IS NULL`) → `SET NOT NULL` → index `idx_users_tenant`. Downgrade en ordre FK inverse (index → colonne → table), idempotent.
+- `app/models/tenant.py` (nouveau) — source unique des valeurs du tenant legacy (`LEGACY_TENANT_ID`/`SLUG`/`NAME`) ; la migration en garde une copie littérale (artefact figé), parité verrouillée par test.
+- `app/services/user_service.py` — `create_user` accepte un `tenant_id` optionnel (défaut = legacy) ; `tenant_id` exposé dans le `RETURNING` et les `SELECT` (`authenticate`/`get_by_id`).
+- `app/models/auth.py` — décision documentée : `tenant_id` **absent** de la réponse publique `/auth/me` ce sprint (exposition pertinente seulement avec le threading de contexte tenant, E3-S4).
+- Rétrocompat auth : `POST /auth/register` et `/auth/login` inchangés côté API ; nouvel inscrit rattaché au legacy par défaut.
+
+**Validation runtime (Postgres 16 local)** : `upgrade head` → table `tenants` + tenant legacy présent + un `users` inséré **avant** la migration backfillé au legacy + `tenant_id NOT NULL` + index + FK `users_tenant_id_fkey` ; `downgrade 0002` → colonne/index/table retirés ; re-`upgrade head` idempotent (legacy + backfill préservés).
+
+**Version** : 10.48.0
+**Tests** : 1 951 backend collectés (1 937 passés, 13 skipped, 1 xfailed — +17 : forme/chaînage/ordre de migration, parité littéraux↔constantes, `create_user` legacy/explicite/dict) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, ordre backfill-avant-NOT-NULL, downgrade ordre FK inverse, binding asyncpg `uuid.UUID`, `RETURNING` rétrocompatible) ; **qualité** : 2 findings traités (modèle Pydantic `Tenant` mort retiré ; constantes slug/name verrouillées par test au lieu de rester orphelines), 3 écartés (triplication `_execute_each`/`_load` = artefacts figés hors périmètre ; FK `ON DELETE` = décision délibérée E3-S2/S3).
+
 ### Sprint 160 — E2-S3 : journal d'audit `audit_log` append-only ✅
 
 **Objectif :** Créer une table `audit_log` append-only et y tracer chaque mutation métier (watchlist, annotation, clé API), consultable par un admin. Prérequis conformité Loi 25 (traçabilité des accès/modifications). Clôt l'épic E2.
