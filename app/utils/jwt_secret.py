@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import os
 
+from app.utils.env import is_dev_environment
+
 logger = logging.getLogger(__name__)
 
 _DEV_FALLBACK_SECRET = "dev-secret-change-in-production"
-_DEV_ENVS = {"dev", "development", "test", "testing"}
 
 
 def resolve_jwt_secret() -> str:
@@ -22,11 +23,9 @@ def resolve_jwt_secret() -> str:
     if secret:
         return secret
 
-    app_env = os.environ.get("APP_ENV", "").strip().lower()
-    if app_env in _DEV_ENVS:
+    if is_dev_environment():
         logger.warning(
-            "JWT_SECRET_KEY absent — repli sur le secret de développement (APP_ENV=%s)",
-            app_env,
+            "JWT_SECRET_KEY absent — repli sur le secret de développement (APP_ENV non-prod)",
         )
         return _DEV_FALLBACK_SECRET
 

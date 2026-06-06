@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
+import jwt
 import redis.asyncio as aioredis
-from jose import JWTError, jwt
 
 from app.utils.jwt_secret import resolve_jwt_secret
 
@@ -49,9 +49,16 @@ class AuthTokenService:
     def decode_access_token(self, token: str) -> dict | None:
         """Décode et valide un JWT. Retourne None si invalide ou expiré."""
         try:
-            payload = jwt.decode(token, self._secret, algorithms=[_ALGORITHM])
+            # require exp/sub : un token valide ne peut être accepté sans expiration
+            # ni sujet (défense en profondeur — revue E1-S4).
+            payload = jwt.decode(
+                token,
+                self._secret,
+                algorithms=[_ALGORITHM],
+                options={"require": ["exp", "sub"]},
+            )
             return payload
-        except JWTError:
+        except jwt.PyJWTError:
             return None
 
     async def is_jti_blacklisted(self, jti: str) -> bool:

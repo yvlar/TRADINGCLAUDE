@@ -124,6 +124,66 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+  security:
+    name: Sécurité — pip-audit + bandit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installer les outils de sécurité
+        run: pip install pip-audit bandit
+
+      - name: Audit des dépendances déclarées (pip-audit)
+        run: pip-audit -r requirements.txt
+
+      - name: Analyse statique sécurité (bandit)
+        # B608 ignoré : tout le SQL dynamique n'interpole que des listes de colonnes
+        # constantes (_SELECT_COLS/_ROW_COLUMNS) ; les données utilisateur passent
+        # toujours par des placeholders asyncpg $n (cf. conventions-python.md).
+        run: bandit -r app/ -ll --skip B608
+
+  migrations:
+    name: Migrations — Alembic
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: copilote
+          POSTGRES_PASSWORD: copilote
+          POSTGRES_DB: copilote
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U copilote"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installer Alembic + driver async
+        run: pip install "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0" "asyncpg>=0.31.0"
+
+      - name: upgrade → downgrade → upgrade (idempotence)
+        env:
+          DATABASE_URL: postgresql://copilote:copilote@localhost:5432/copilote
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic current
+
   test-e2e:
     name: E2E — Playwright
     runs-on: ubuntu-latest

@@ -285,7 +285,9 @@ def backend_server():
         # Désactiver BearerToken (clé capturée à import time, pas patchable via os.environ)
         _orig_bearer_init = BearerTokenMiddleware.__init__
 
-        def _disabled_bearer_init(self, _app, api_key: str = "") -> None:
+        def _disabled_bearer_init(self, _app, *args, **kwargs) -> None:
+            # Accepte la signature étendue (redis_url, trusted_proxies — E1-S2) tout
+            # en désactivant l'auth (api_key="" → bypass dev) pour le harnais e2e.
             _orig_bearer_init(self, _app, api_key="")
 
         stack.enter_context(
@@ -297,6 +299,7 @@ def backend_server():
             from starlette.middleware.base import BaseHTTPMiddleware
             BaseHTTPMiddleware.__init__(self, _app)
             self._redis = fake_redis
+            self._trusted_proxies = frozenset()  # E1-S2 : requis par resolve_client_ip
 
         stack.enter_context(
             patch.object(RateLimitMiddleware, "__init__", _fakeredis_rl_init)
