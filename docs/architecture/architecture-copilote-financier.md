@@ -236,9 +236,19 @@ Langfuse **exclu** de Phase 0. Worker Celery **exclu** de Phase 0.
 | `CLAUDE_MODEL` | `claude-sonnet-4-6` | ID modèle Claude |
 | `DATABASE_URL` | `postgresql://copilote:copilote@postgres:5432/copilote` | URL PostgreSQL |
 | `POSTGRES_PASSWORD` | `copilote` | Mot de passe PostgreSQL |
+| `RUN_MIGRATIONS_ON_BOOT` | `true` | L'entrypoint Docker lance `alembic upgrade head` avant uvicorn (E2-S2). `false` = DB lecture seule / migration déléguée au déploiement |
 | `LOG_LEVEL` | `INFO` | Niveau de log |
 
 ### 7.3 Schéma PostgreSQL — table analysis_history
+
+> **Gestion du schéma (E2)** — Le schéma complet (10 tables) est versionné par
+> Alembic (`alembic/versions/`, baseline `0001_baseline_schema.py`) et appliqué par
+> `alembic upgrade head`. Depuis E2-S2 (Sprint 159), le lifespan FastAPI **n'émet
+> plus aucun DDL** au démarrage : il ne crée que le pool asyncpg. En Docker,
+> l'entrypoint du service `copilote` (`infra/docker-entrypoint.sh`) lance la
+> migration avant uvicorn (gardée par `RUN_MIGRATIONS_ON_BOOT`). `infra/postgres/init.sql`
+> ne crée plus de table — la seule source de vérité du schéma est Alembic. Le DDL
+> ci-dessous est reproduit à titre documentaire.
 
 ```sql
 CREATE TABLE analysis_history (
