@@ -144,6 +144,8 @@ class InMemoryUserService:
         return service
 
     def _seed(self, persona: Persona) -> UUID:
+        from app.models.tenant import LEGACY_TENANT_ID
+
         user_id = uuid.uuid4()
         self._users[user_id] = {
             "id": user_id,
@@ -151,6 +153,7 @@ class InMemoryUserService:
             "hashed_password": _ph.hash(persona.password),
             "role": persona.role,
             "is_active": persona.is_active,
+            "tenant_id": LEGACY_TENANT_ID,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[persona.email.lower()] = user_id
