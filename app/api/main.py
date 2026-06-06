@@ -61,6 +61,7 @@ from app.services.analysis_cache import AnalysisCacheService
 from app.services.annotation_service import AnnotationService
 from app.services.api_key_service import ApiKeyRecord as _ApiKeyRecord
 from app.services.api_key_service import ApiKeyService
+from app.services.audit_log_service import AuditLogService
 from app.services.auth_token_service import AuthTokenService
 from app.services.compare_service import CompareService
 from app.services.composite_history_service import CompositeHistoryService
@@ -343,16 +344,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         daily_threshold_usd=float(os.getenv("COST_ALERT_THRESHOLD_USD", "1.0")),
     )
 
+    audit_log_service = AuditLogService(db_pool=db_pool)
     alert_history_service = AlertHistoryService(db_pool=db_pool)
-    annotation_service = AnnotationService(db_pool=db_pool)
+    annotation_service = AnnotationService(db_pool=db_pool, audit_log=audit_log_service)
     compare_service = CompareService(db_pool=db_pool)
-    watchlist_service = WatchlistService(db_pool=db_pool)
+    watchlist_service = WatchlistService(db_pool=db_pool, audit_log=audit_log_service)
     webhook_service = WebhookService()
     slack_service = SlackService()
     composite_history_service = CompositeHistoryService(db_pool=db_pool)
     esg_history_service = EsgHistoryService(db_pool=db_pool)
     eval_drift_service = EvalDriftService(redis_client=redis_pool)
-    api_key_service = ApiKeyService(db_pool=db_pool)
+    api_key_service = ApiKeyService(db_pool=db_pool, audit_log=audit_log_service)
     pdf_report_service = PdfReportService()
     screener_pdf_service = ScreenerPdfService()
     watchlist_pdf_service = WatchlistPdfService()
@@ -361,6 +363,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     auth_token_service = AuthTokenService(db_pool=db_pool, redis_client=redis_pool)
     password_reset_service = PasswordResetService()
 
+    app.state.audit_log_service = audit_log_service
     app.state.alert_history_service = alert_history_service
     app.state.annotation_service = annotation_service
     app.state.compare_service = compare_service

@@ -6,10 +6,11 @@ import os
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.services.api_key_service import ApiKeyRecord, ApiKeyService
+from app.services.audit_log_service import AuditLogEntry, AuditLogService
 from app.utils.env import is_dev_environment
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,13 @@ def _get_api_key_service(request: Request) -> ApiKeyService:
     service = getattr(request.app.state, "api_key_service", None)
     if service is None:
         raise HTTPException(status_code=503, detail="ApiKeyService non disponible")
+    return service
+
+
+def _get_audit_log_service(request: Request) -> AuditLogService:
+    service = getattr(request.app.state, "audit_log_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="AuditLogService non disponible")
     return service
 
 
@@ -113,3 +121,17 @@ async def revoke_key(
         raise HTTPException(status_code=404, detail="Clé API introuvable")
     logger.info("Clé API révoquée : id=%s", key_id)
     return RevokeKeyResponse(revoked=True)
+
+
+@router.get(
+    "/audit-log",
+    response_model=list[AuditLogEntry],
+    summary="Lister les dernières entrées du journal d'audit",
+)
+async def list_audit_log(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    _admin: ApiKeyRecord | None = Depends(_require_admin),
+    service: AuditLogService = Depends(_get_audit_log_service),
+) -> list[AuditLogEntry]:
+    return await service.list_recent(limit)

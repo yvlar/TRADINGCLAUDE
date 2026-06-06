@@ -6,6 +6,7 @@ import logging
 import asyncpg
 
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
+from app.services.audit_log_service import AuditLogService, record_audit_safe
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,11 @@ class DuplicateWatchlistError(Exception):
 class WatchlistService:
     """CRUD sur la table watchlist PostgreSQL."""
 
-    def __init__(self, db_pool: asyncpg.Pool) -> None:
+    def __init__(
+        self, db_pool: asyncpg.Pool, audit_log: AuditLogService | None = None
+    ) -> None:
         self._db = db_pool
+        self._audit = audit_log
 
     async def add_entry(self, create: WatchlistCreate) -> WatchlistEntry:
         ticker = create.ticker.upper()
@@ -62,7 +66,15 @@ class WatchlistService:
             raise DuplicateWatchlistError(
                 f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
             )
-        return _row_to_entry(row)
+        entry = _row_to_entry(row)
+        await record_audit_safe(
+            self._audit,
+            "watchlist.create",
+            "watchlist",
+            entry.id,
+            metadata={"ticker": entry.ticker, "workflow": entry.workflow},
+        )
+        return entry
 
     async def list_entries(self) -> list[WatchlistEntry]:
         rows = await self._db.fetch(
@@ -95,7 +107,12 @@ class WatchlistService:
         except Exception:
             return False
         # asyncpg retourne "DELETE N" — N est le nombre de lignes supprimées
-        return result.split()[-1] != "0"
+        deleted = result.split()[-1] != "0"
+        if deleted:
+            await record_audit_safe(
+                self._audit, "watchlist.delete", "watchlist", entry_id
+            )
+        return deleted
 
     async def update_last_analyzed(
         self,
