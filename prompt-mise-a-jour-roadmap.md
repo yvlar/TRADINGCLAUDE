@@ -1,83 +1,90 @@
-# Sprint 154 — Provenance par ratio (clé yfinance de repli) dans le rapport PDF par ticker
+# Sprint 154 — Sécurité fail-closed : CSRF / CORS / comparaison timing-safe (E1-S1)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.39.0 — Sprints 148→153 complétés)
+## État du projet (v10.39.0 — pivot stratégique 2026-06-05)
 
-Le lot 148→153 a fermé la parité déterministe des 5 cadres `earnings_quality` (Sloan, Sprint 148), mesuré hors-ligne le déterminisme contre le golden + verrouillé la cause racine `drapeaux_rouges` (Sprint 149), étendu la provenance par ratio à l'analyse rendue `AnalysisResult` (Sprint 150), et consolidé la réutilisation (`has_ratios_source` Sprint 151, couverture endpoint `/report/{id}` Sprint 152, fusion des clones `_ratios_trace` Sprint 153).
+La roadmap **bascule** de la cadence « outil d'analyse » vers la **transformation B2B/SaaS** décrite dans le **plan directeur `docs/plan-directeur-fintech-2026.md`** (audit → 44 sprints `E#-S#`, phases P0→P3). **Sprint 154 = E1-S1**, premier des ~15 sprints **P0 (fondations)**. Le backlog analyse-tool antérieur (provenance PDF par ticker, etc.) est **parqué** — récupérable via l'historique git de ce fichier.
 
 > **État courant complet** (version, fonctionnalités, endpoints, pages, compteurs de tests) : **`ROADMAP.md`** — source unique. Cette carte y renvoie, elle ne le duplique pas.
 
-> **Sprint backend pur** (rendu PDF Python depuis l'output persisté) — **aucun prompt de skill ni l'orchestrateur modifié → evals non concernées**. `ANTHROPIC_API_KEY` absente du conteneur web ; stack Docker non démarrée ; pas de test navigateur live. `frontend/node_modules` peut être absent → `npm install` dans `frontend/` avant tout gate frontend (mais ce sprint ne touche pas le frontend).
+> **Sprint backend/sécurité pur** — aucun prompt de skill ni l'orchestrateur modifié → **evals non concernées**. `ANTHROPIC_API_KEY` absente du conteneur web ; stack Docker non démarrée ; pas de test navigateur live. Frontend **non touché** (tsc/vitest/eslint restent verts sans modif).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
 1. `CLAUDE.md` — index du projet (déjà injecté comme *project instructions* — ne pas le relire avec un outil)
-2. `ROADMAP.md` — état courant v10.39.0, Sprints 148→153 ✅
-3. `.claude/rules/donnees-financieres.md` — cœur du sprint : traçabilité obligatoire (source + date), honnêteté None (ratio absent ≠ 0.0).
-4. `.claude/rules/gotchas-operationnels.md` — si le rendu PDF / services sont touchés.
+2. `ROADMAP.md` — état courant v10.39.0
+3. `docs/plan-directeur-fintech-2026.md` — **§3.3 (Sécurité OWASP)** + **§7 épic E1** (ce sprint = E1-S1, et la suite E1-S2→S4)
+4. `.claude/rules/securite.md` — secrets via `.env`, pas de fuite dans logs/erreurs
+5. `.claude/rules/api-architecture.md` — impose de lire `architecture-copilote-financier.md` (**sections 3.2, 7.3, 9.1, 11.2**) **avant toute modification des middlewares auth/rate-limit**
 
 ---
 
-## TÂCHE — Sprint 154 : afficher la provenance par ratio dans le PDF par ticker
+## TÂCHE — Sprint 154 (E1-S1) : rendre la sécurité *fail-closed*
 
-**Objectif** : Le badge signal-only « P/B via `clé` (repli) » (clé yfinance effective ≠ clé primaire attendue) est affiché sur `AnalyzeForm` (Sprint 141) **et** sur l'analyse rendue/rechargée `AnalysisResult` (Sprint 150). Le **rapport PDF par ticker** n'en porte aucune trace, alors que la source+date des ratios y est déjà rendue (Sprint 145). Compléter la parité : rendre une ligne « Provenance des ratios (repli) » dans le PDF, sous le **même filtre signal-only** que le frontend. **Sprint backend pur** (aucun frontend, migration, ni prompt de skill).
+**Objectif** : trois trous de configuration *fail-open* font qu'une mauvaise variable d'environnement en production **désactive silencieusement** des protections. Les fermer en répliquant le patron canonique déjà présent dans le repo (`resolve_jwt_secret`), où **`APP_ENV` absent = production = défaut sûr (refus)**.
 
 ### Point de départ exact (vérifié cette session — `fichier:ligne`)
 
-1. **Champ déjà persisté + reconstructible** — `GrahamRatios.ratios_provenance: dict[str, str] | None` `app/skills/tier2/graham_analysis/schemas.py:42` (exclu de la clé de cache). Persisté dans `input_data` (`_build_input_data` `model_dump(mode="json")`, Sprint 144) et reconstruit par `extract_graham_ratios(row)` `app/services/ratios_recon.py:78`.
-2. **Le PDF a déjà l'objet ratios reconstruit** — `get_ticker_report` fait `ratios = _extract_ratios(row)` `app/api/endpoints/ticker_report.py:116` (un `GrahamRatios`, donc `ratios.ratios_provenance` est disponible) et le passe à `generate_ticker_report`.
-3. **Site de rendu Graham** — `_build_ratios_rows(r: GrahamRatios)` `app/services/pdf_report_service.py:231` rend les ratios + (via `has_ratios_source(r)` `:247`) la ligne « Source des ratios » avec `_fmt_ratios_source`. C'est là (ou dans un helper voisin) qu'une ligne provenance s'insère.
-4. **Filtre signal-only — UNIQUEMENT en frontend pour l'instant** — `RATIO_PRIMARY_KEYS` + `ratiosEnRepli` `frontend/src/components/RatiosProvenanceNote.tsx:3/19` (`pb→priceToBook`, `debt_equity→debtToEquity`, `book_value→bookValue` ; repli = clé effective ≠ primaire). **Le backend n'a aucun équivalent** → à porter en Python (constante + fonction pure) pour ne montrer que les vrais replis (pas tout le dict).
-5. **⚠️ Source réelle des clés primaires (SSOT)** — les clés primaires « vraies » vivent dans l'**extracteur tier1** `app/skills/tier1/yahoo_finance.py:259,263` (`_resolve_ratio(info, ticker, "priceToBook", "priceToBookRatio")` → primaire `"priceToBook"`, repli `"priceToBookRatio"`). Le `RATIO_PRIMARY_KEYS` du frontend en est déjà un **miroir codé en dur** (dette pré-existante, revue PR §I1). Ajouter une 3ᵉ copie Python sans verrou aggraverait la dérive silencieuse écran↔PDF↔extracteur.
+1. **🔴 Bypass CSRF sur `API_KEY` vide** — `app/middleware/csrf.py:64-66` :
+   ```python
+   # Dev mode : API_KEY vide → bypass (cohérent avec BearerTokenMiddleware)
+   if not os.environ.get("API_KEY", ""):
+       return await call_next(request)
+   ```
+   En prod, si `API_KEY` n'est pas posée, **toute protection CSRF saute**. Doit dépendre de `APP_ENV`, pas de la présence d'`API_KEY`.
+2. **🟠 Comparaison CSRF non timing-safe** — `app/middleware/csrf.py:77` : `if csrf_cookie != csrf_header:` → remplacer par `hmac.compare_digest`.
+3. **🟠 Fallback CORS localhost si `CORS_ORIGINS` vide** — `app/api/main.py:599-609` : `_cors_origins_env = os.environ.get("CORS_ORIGINS", "")` puis repli sur `http://localhost:5173`… si vide. En prod, une variable oubliée ⇒ origines de dev acceptées avec `allow_credentials=True` (`:613`).
+4. **✅ Patron fail-fast canonique à RÉUTILISER** — `app/utils/jwt_secret.py:9,12-36` : `_DEV_ENVS = {"dev","development","test","testing"}` ; `resolve_jwt_secret()` lit `APP_ENV` (`:25`), tolère le repli **uniquement** si `app_env in _DEV_ENVS`, sinon `raise RuntimeError` (`:33`). **`APP_ENV` absent → traité comme production** (le défaut sûr). C'est exactement la logique à généraliser.
+5. **⚠️ Couplage `BearerTokenMiddleware`** — le commentaire `csrf.py:64` dit « cohérent avec BearerTokenMiddleware ». Ce middleware est monté en `app/api/main.py:597` (`BearerTokenMiddleware, api_key=_api_key_env`). **Le localiser** (probable `app/middleware/auth.py`) et vérifier s'il bypasse aussi sur `API_KEY` vide — si oui, **l'aligner sur le même garde** `APP_ENV` (sinon on ferme CSRF mais on laisse l'auth Bearer ouverte).
 
 ### Spécification
 
-1. **`app/services/ratios_recon.py`** (ou un module dédié) : porter le filtre signal-only en Python — constante `_RATIO_PRIMARY_KEYS: dict[str, str]` + fonction pure `ratios_en_repli(provenance: dict[str, str] | None) -> list[tuple[str, str]]` (clé instrumentée ET effective ≠ primaire ; `None`/clés primaires → `[]`). **Idéalement, dériver `_RATIO_PRIMARY_KEYS` de la SSOT** (les clés primaires passées à `_resolve_ratio` dans `yahoo_finance.py`) plutôt qu'un 3ᵉ littéral — sinon, à défaut, verrou de parité **obligatoire** (voir Tests).
-2. **`app/services/pdf_report_service.py`** : helper `_build_ratios_provenance_rows(provenance) -> list[tuple[str, str]]` (libellé « <ratio> » → « via `<clé>` (repli) », réutiliser `RATIO_LABELS` portés en Python) ; ligne(s) rendues seulement si `ratios_en_repli(...)` non vide (honnêteté None : aucune ligne sinon). Inséré près du bloc « Source des ratios » Graham. `generate_ticker_report` lit `ratios.ratios_provenance`.
-3. **Périmètre** : PDF par ticker **uniquement**. Affichage écran (`AnalysisResult`/`AnalyzeForm`), threading `AnalyzeResponse` et reconstruction (Sprint 150) **inchangés**. Rétrocompat : `ratios_provenance` absent/None → aucune ligne (PDF byte-for-byte identique).
+1. **Helper partagé `app/utils/env.py`** (nouveau) : `is_dev_environment() -> bool` — `APP_ENV.strip().lower() in _DEV_ENVS` (réutiliser/déplacer `_DEV_ENVS` depuis `jwt_secret.py` pour une **source unique**). Refactorer `resolve_jwt_secret()` pour consommer ce helper (pas de duplication de la liste).
+2. **CSRF fail-closed** (`csrf.py:64-66`) : remplacer le test `not API_KEY` par `if is_dev_environment(): return await call_next(request)`. En prod, le CSRF s'applique **même si `API_KEY` est vide**.
+3. **CSRF timing-safe** (`csrf.py:77`) : `import hmac` ; `if not hmac.compare_digest(csrf_cookie, csrf_header):` (garder le `403` + le `logger.warning`). La garde « manquant » `:71` reste inchangée.
+4. **CORS fail-fast** (`main.py:599-609`) : si `not _cors_origins_env` **et** `not is_dev_environment()` → `raise RuntimeError("CORS_ORIGINS est obligatoire hors développement …")` (mêmes mots-clés que `jwt_secret.py:33-36`). Le repli localhost n'est conservé **que** en dev/test.
+5. **Alignement `BearerTokenMiddleware`** (si le point 5 ci-dessus confirme le bypass) : même garde `is_dev_environment()`. Si l'aligner dépasse le périmètre raisonnable d'un sprint, **le documenter explicitement** et le sortir en E1-S1bis — ne pas le laisser silencieux.
+6. **Périmètre** : middlewares + bootstrap CORS uniquement. Aucune migration, aucun skill, aucun frontend, aucun changement de contrat d'API.
 
-### Tests obligatoires (pyramide)
-- **Unitaires** `ratios_en_repli` : repli détecté (clé ≠ primaire) ; clés primaires → `[]` ; `None` → `[]` ; clé non instrumentée ignorée.
-- **Verrou de parité BIDIRECTIONNEL (obligatoire — résout la dette §I1)** : un test qui échoue si `_RATIO_PRIMARY_KEYS` (Python) diverge de (a) la map frontend `RatiosProvenanceNote.tsx:3` ET (b) les clés primaires de l'extracteur `yahoo_finance.py` (`_resolve_ratio(..., PRIMAIRE, repli)`). À défaut d'un import direct TS↔Python, asserter les **trois paires connues** (`pb→priceToBook`, `debt_equity→debtToEquity`, `book_value→bookValue`) contre chacune des trois sources, avec un commentaire pointant les fichiers:lignes à mettre à jour ensemble.
-- **Unitaires** `_build_ratios_provenance_rows` : repli → ligne formatée ; pas de repli → `[]`.
-- **Acceptation `pypdf`** : le texte du PDF rendu contient « (repli) » + la clé effective quand un repli existe ; omission vérifiée sinon.
+### Tests obligatoires (pyramide — fixture `client`, cf. `.claude/rules/tests-pyramide.md`)
+- **CSRF prod fail-closed** : `APP_ENV` non-dev (ou absent) + `API_KEY` vide + POST authentifié par cookie **sans** `X-CSRF-Token` → **403** (avant : 200). 
+- **CSRF dev** : `APP_ENV=dev` → bypass conservé (rétrocompat dev). Requête `Authorization: Bearer …` → toujours exemptée (`:61-62`).
+- **CSRF timing-safe** : cookie ≠ header → 403 ; cookie == header → passe ; vérifier l'usage de `hmac.compare_digest` (pas de `!=`).
+- **CORS fail-fast** : construire l'app avec `APP_ENV=prod` + `CORS_ORIGINS` vide → `RuntimeError` ; `APP_ENV=dev` → repli localhost ; `CORS_ORIGINS="https://app.x"` → origines respectées.
+- **`is_dev_environment`** unitaire : `dev/development/test/testing` → `True` ; `prod`/absent/`""` → `False`.
 - **Non-régression** : `pytest` (hors e2e/evals) + `ruff` + `mypy app/ --ignore-missing-imports` verts.
 
 ### Note d'environnement (session web)
-Rendu PDF Python pur → evals non concernées. **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
+Tests middleware via le `TestClient` FastAPI (pas de Docker, pas de live). **Vérifier en début de session que le canal d'exécution rend bien la sortie des commandes.**
 
 ---
 
-## SPRINTS SUGGÉRÉS (non planifiés)
+## SPRINTS SUGGÉRÉS (suite de l'épic E1 puis E2 — voir plan directeur §7)
 
-### Sprint 155 — Consolidation TS du formatage « source + date » (RatiosSourceNote ↔ AnalyzeForm)
-**Objectif** : éliminer la duplication frontend du rendu « Source : … · récupéré le … » entre `RatiosSourceNote` et la ligne inline d'`AnalyzeForm` (gates et styles différents à réconcilier).
-**Complexité** : Faible.
-**Justification** : pendant TS de la consolidation backend Sprint 153 ; relevé en [LOW] par la revue indépendante du Sprint 153.
-**Référence** : EXISTANT (vérifié cette session) — `RatiosSourceNote.tsx:13-16` (rend « Source : {source} · récupéré le {date} ») ; ligne inline d'`AnalyzeForm.tsx` (rend le même motif, gate `ratios.ratios_fetched_at &&` = date-only, classe `mt-3`, `data-testid="ratios-source"`). À CRÉER — réconcilier les deux gates (date-only vs source-or-date) avant extraction ; **attention** : un changement de gate modifie l'UX (afficher source sans date).
+### Sprint 155 — E1-S2 : durcir l'identité de requête + brute-force
+**Objectif** : X-Forwarded-For lu seulement derrière un proxy de confiance (anti-spoof du rate-limit) ; rate-limit Redis sur la validation de clé API ; secret PostgreSQL généré obligatoire (≠ `copilote`).
+**Complexité** : Faible/Moyenne.
+**Référence** : EXISTANT (vérifié) — IP client dans `app/middleware/rate_limit.py` (`request.client.host`) ; `validate_key` dans `app/services/api_key_service.py` ; mot de passe PG par défaut dans `docker-compose.yml`. À CRÉER — liste d'IP de confiance + rate-limit clé.
 
-### Sprint 156 — Re-run des evals `earnings_quality` (mesure live de `drapeaux_rouges`)
-**Objectif** : exécuter en local (clé requise) `tests/evals/test_earnings_evals.py -m evals` pour mesurer enfin la cardinalité `drapeaux_rouges` que le Sprint 149 a verrouillée hors-ligne, et reporter le résultat dans `ROADMAP.md` (note de drift).
-**Complexité** : Faible en code / coûteuse en exécution (~100 appels Haiku, ~33 min).
-**Justification** : ferme la boucle ouverte au Sprint 137/149 — la précondition (5 cadres déterministes + consigne de cardinalité) est en place et verrouillée ; reste à **mesurer le live**.
-**Référence** : EXISTANT (vérifié cette session) — `test_earnings_drapeaux_rouges_cardinalite` `tests/evals/test_earnings_evals.py:146` (marqueur `evals`, skip si pas de clé) ; golden `tests/evals/fixtures/earnings_golden.json` (12 cas avec `drapeaux_rouges_max`). **Contrainte** : `ANTHROPIC_API_KEY` requise → hors conteneur web.
+### Sprint 156 — E1-S3 : confidentialité au repos & assainissement des logs
+**Objectif** : assainisseur regex (tokens/clés/emails) avant tout log ; bannir `exc_info` complet en prod ; activer le chiffrement at-rest (volume/DB managée, Redis TLS).
+**Complexité** : Moyenne.
+**Référence** : EXISTANT (vérifié) — `app/utils/error_sanitization.py` (`log_internal_error`, `correlation_id`) ; `app/observability/`. À CRÉER — filtre de redaction + config infra.
 
-### Sprint 157 — Tooltip de provenance enrichi sur `AnalysisResult` (clé primaire attendue)
-**Objectif** : au survol d'un badge de repli, afficher la clé **primaire attendue** (déjà dans le `title` côté `AnalyzeForm`) — uniformiser l'expérience entre le formulaire et l'analyse rendue.
-**Complexité** : Faible.
-**Justification** : le composant partagé `RatiosProvenanceNote` (Sprint 150) porte déjà le `title` ; vérifier qu'il s'affiche identiquement sur les deux surfaces (parité d'info-bulle).
-**Référence** : EXISTANT (vérifié cette session) — `RatiosProvenanceNote.tsx` (badge + `title` « Clé yfinance de repli — la clé primaire « … » était absente ») utilisé par `AnalyzeForm` ET `AnalysisResult` (Sprint 150). À VÉRIFIER/AJUSTER — couverture de test du `title` sur `AnalysisResult`.
+### Sprint 157 — E1-S4 : dette crypto JWT (`python-jose` → `PyJWT`)
+**Objectif** : remplacer `python-jose` (non maintenu) par `PyJWT` + pin `cryptography` ; ajouter `pip-audit`+`bandit` au CI.
+**Complexité** : Moyenne.
+**Référence** : EXISTANT (vérifié) — `python-jose[cryptography]>=3.3.0` dans `requirements.txt` ; signature/décodage dans `app/services/auth_token_service.py` (HS256). À VÉRIFIER — parité d'API JWT (claims, exp, jti) ; non-régression login/refresh/logout.
 
-### Sprint 158 — Endpoint `GET /ticker-report/{ticker}` : test d'intégration du chemin 200 multi-skills
-**Objectif** : étendre la couverture d'intégration faite pour `/report/{id}` (Sprint 152) au second endpoint PDF `/ticker-report/{ticker}` (200 + `application/pdf`, reconstruction `require_graham=False`).
-**Complexité** : Faible.
-**Justification** : `reconstruct(require_graham=False)` est le chemin de `/ticker-report` ; symétrie de couverture avec `/report/{id}`.
-**Référence** : EXISTANT (vérifié cette session) — `_reconstruct_analyze_response` `app/api/endpoints/ticker_report.py:208` → `reconstruct(row, require_graham=False)` `:213`. À CRÉER — test `client.get("/ticker-report/{ticker}")` avec `db_pool` mocké (réutiliser `_make_result_row`).
+### Sprint 158 — E2-S1 : introduire Alembic (socle migrations)
+**Objectif** : versionner le schéma (prérequis indispensable avant E3 multi-tenance) ; baseline = schéma actuel, env async asyncpg, `upgrade`/`downgrade` idempotents en CI.
+**Complexité** : Moyenne.
+**Référence** : EXISTANT (vérifié) — migrations actuellement **inline dans le lifespan** `app/api/main.py:159-313` (`CREATE TABLE IF NOT EXISTS …`) ; migrations ad hoc `infra/postgres/migration_sprint*.sql`. À CRÉER — `alembic/`, `alembic.ini`.
 
 ---
 
@@ -85,24 +92,31 @@ Rendu PDF Python pur → evals non concernées. **Vérifier en début de session
 
 ```
 Tu es un développeur Python senior sur le projet TradingClaude.
-Lis d'abord CLAUDE.md, ROADMAP.md (v10.39.0), .claude/rules/donnees-financieres.md.
-Sprint actif : 154 — Provenance par ratio (clé yfinance de repli) dans le rapport PDF par ticker.
+Lis d'abord CLAUDE.md, ROADMAP.md (v10.39.0), docs/plan-directeur-fintech-2026.md (§3.3 + §7 E1),
+.claude/rules/securite.md, .claude/rules/api-architecture.md.
+Sprint actif : 154 — Sécurité fail-closed (E1-S1, piste transformation B2B/SaaS).
 
-TÂCHE : rendre une ligne « Provenance des ratios (repli) » dans le PDF par ticker, sous le
-même filtre signal-only que le frontend (clé effective ≠ clé primaire).
-- ratios_recon.py : porter _RATIO_PRIMARY_KEYS (miroir EXACT de RatiosProvenanceNote.tsx:3) +
-  ratios_en_repli(provenance) -> list[(ratio, clé)] (clés primaires/None → []).
-- pdf_report_service.py : _build_ratios_provenance_rows(provenance) ; ligne rendue seulement
-  si repli (honnêteté None) ; generate_ticker_report lit ratios.ratios_provenance
-  (reconstruit via _extract_ratios(row) ticker_report.py:116, GrahamRatios.ratios_provenance:42).
-PÉRIMÈTRE : PDF par ticker uniquement ; affichage écran / threading / reconstruction (Sprint 150) intacts.
-TESTS : unitaires ratios_en_repli (+ parité de map avec le frontend) + _build_ratios_provenance_rows ;
-acceptation pypdf (« (repli) » présent quand repli, omis sinon).
+CONTEXTE : 3 garde-fous sont fail-open. Patron canonique à réutiliser = app/utils/jwt_secret.py
+(APP_ENV absent = production = refus). _DEV_ENVS = {dev,development,test,testing}.
+
+TÂCHE :
+1. app/utils/env.py (nouveau) : is_dev_environment() ; déplacer _DEV_ENVS depuis jwt_secret.py
+   (source unique) et refactorer resolve_jwt_secret pour le consommer.
+2. csrf.py:64-66 : bypass = is_dev_environment() (PAS « API_KEY vide »).
+3. csrf.py:77 : hmac.compare_digest (import hmac), garder 403 + warning.
+4. main.py:599-609 : si CORS_ORIGINS vide ET not is_dev_environment() → RuntimeError ;
+   repli localhost conservé seulement en dev/test.
+5. BearerTokenMiddleware (main.py:597, probable app/middleware/auth.py) : localiser ;
+   si bypass sur API_KEY vide, aligner sur is_dev_environment() — sinon documenter en E1-S1bis.
+PÉRIMÈTRE : middlewares + bootstrap CORS. Aucune migration, aucun skill, aucun frontend.
+
+TESTS (fixture client) : CSRF prod sans API_KEY → 403 ; dev → bypass ; Bearer exempté ;
+compare_digest ; CORS prod+vide → RuntimeError, dev → localhost, défini → respecté ;
+is_dev_environment unitaire.
 GATES vertes avant commit :
   .venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals -q
   .venv/bin/ruff check app/ tests/
-  .venv/bin/mypy app/ --ignore-missing-imports   # le CI le lance — ruff ne typecheck PAS
-  (frontend non touché : tsc/vitest/eslint restent verts sans modif)
+  .venv/bin/mypy app/ --ignore-missing-imports
 Compteurs MESURÉS pour le ROADMAP (pas d'estimation).
-Branche dédiée, PR base = dev. Confirmer avant git push / ouverture de PR.
+Branche dédiée (claude/sprint154-securite-fail-closed), PR base = dev. Confirmer avant git push / PR.
 ```
