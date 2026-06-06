@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.db.tenant_context import resolve_tenant
 from app.services.composite_score import CompositeScore, compute_composite_score
+from app.services.usage_event_service import record_usage_safe
 from app.skills.base import UsageDetail
 from app.utils.ticker_sanitizer import sanitize_ticker
 
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from app.services.composite_history_service import CompositeHistoryService
     from app.services.esg_history_service import EsgHistoryService
     from app.services.observability import ObservabilityService
+    from app.services.usage_event_service import UsageEventService
 
 from app.orchestrator.router import WorkflowRouter
 
@@ -436,6 +438,7 @@ class Orchestrator:
         marks_skill: MarksCyclesSkill | None = None,
         pabrai_skill: PabraiDhandhoSkill | None = None,
         esg_skill: EsgSimplifiedSkill | None = None,
+        usage_event_service: "UsageEventService | None" = None,
     ) -> None:
         self._db = db_pool
         self._graham = graham_skill
@@ -454,6 +457,35 @@ class Orchestrator:
         self._marks = marks_skill
         self._pabrai = pabrai_skill
         self._esg = esg_skill
+        self._usage_events = usage_event_service
+
+    async def _emit_usage_events(
+        self,
+        skills_applied: list[str],
+        all_usages: list[UsageDetail],
+        workflow: str,
+    ) -> None:
+        """Émet un `usage_events` best-effort par skill consommé (E4-S1, metering).
+
+        `skills_applied` et `all_usages` sont remplies en lockstep (un append de chaque
+        par skill exécuté) → l'appariement positionnel attribue chaque coût au bon skill.
+        Un coût nul (analyse servie depuis le cache) ne consomme rien → aucune émission.
+        Best-effort : un échec de metering n'avorte jamais l'analyse (`record_usage_safe`).
+        """
+        if self._usage_events is None:
+            return
+        await asyncio.gather(*(
+            record_usage_safe(
+                self._usage_events,
+                skill=skill_id,
+                workflow=workflow,
+                cost_usd=usage.cost_usd,
+                tokens_input=usage.tokens_input,
+                tokens_output=usage.tokens_output,
+            )
+            for skill_id, usage in zip(skills_applied, all_usages)
+            if usage.cost_usd > 0
+        ))
 
     def _planned_skill_ids(self, request: AnalyzeRequest) -> list[str]:
         """Liste ordonnée des skills qui s'exécuteront réellement pour cette requête.
@@ -1063,6 +1095,8 @@ class Orchestrator:
             all_usages, esg_output=esg_output,
         )
 
+        await self._emit_usage_events(skills_applied, all_usages, request.workflow)
+
         inter_skill_conflicts = _detect_inter_skill_conflicts(
             graham_output, buffett_output, earnings_output, dorsey_output
         )
@@ -1639,6 +1673,8 @@ class Orchestrator:
             greenblatt_output, damodaran_output, marks_output, pabrai_output,
             all_usages, esg_output=esg_output,
         )
+
+        await self._emit_usage_events(skills_applied, all_usages, request.workflow)
 
         inter_skill_conflicts = _detect_inter_skill_conflicts(
             graham_output, buffett_output, earnings_output, dorsey_output

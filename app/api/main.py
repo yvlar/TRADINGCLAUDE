@@ -76,6 +76,7 @@ from app.services.pdf_report_service import PdfReportService
 from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
+from app.services.usage_event_service import UsageEventService
 from app.services.user_service import UserService
 from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
@@ -311,8 +312,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         rag_service=rag_service,
         top_k=top_k,
     )
+    usage_event_service = UsageEventService(db_pool=db_pool)
     orchestrator = Orchestrator(
         db_pool=db_pool,
+        usage_event_service=usage_event_service,
         graham_skill=graham_skill,
         earnings_skill=earnings_skill,
         dorsey_skill=dorsey_skill,
@@ -371,6 +374,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     password_reset_service = PasswordResetService()
 
     app.state.audit_log_service = audit_log_service
+    app.state.usage_event_service = usage_event_service
     app.state.alert_history_service = alert_history_service
     app.state.annotation_service = annotation_service
     app.state.compare_service = compare_service
