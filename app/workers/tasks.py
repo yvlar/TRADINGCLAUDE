@@ -12,6 +12,7 @@ import anthropic
 import asyncpg
 import redis
 
+from app.db.tenant_context import apply_tenant_context
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.rag.client import RagClient
@@ -70,7 +71,9 @@ async def _build_orchestrator() -> tuple[Orchestrator, asyncpg.Pool]:
     openai_key = os.environ.get("OPENAI_API_KEY")
     top_k = int(os.environ.get("RAG_TOP_K", "5"))
 
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     client = anthropic.AsyncAnthropic(api_key=api_key)
 
     rag_client = RagClient(url=qdrant_url, collection=qdrant_coll)
@@ -230,7 +233,9 @@ async def _execute_price_alert_check() -> list[str]:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     yahoo_extractor = YahooFinanceExtractor()
     service = PriceAlertService()
     webhook_service = WebhookService()
@@ -309,7 +314,9 @@ async def _execute_weekly_watchlist_report() -> None:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     try:
         wl_service = WatchlistService(db_pool)
         entries = await wl_service.list_entries()
@@ -381,7 +388,9 @@ async def _execute_composite_alert_check() -> list[str]:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     try:
         orchestrator, _ = await _build_orchestrator()
         watchlist_service = WatchlistService(db_pool)
@@ -471,7 +480,9 @@ async def _execute_scheduled_screener() -> dict:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     orch_pool: asyncpg.Pool | None = None
     try:
         wl_service = WatchlistService(db_pool)
@@ -606,7 +617,9 @@ async def _execute_monthly_report() -> None:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     try:
         from app.services.monthly_report_service import MonthlyReportService
         from app.services.screener_pdf_service import ScreenerPdfService
@@ -661,7 +674,9 @@ async def _execute_esg_degradation_check() -> int:
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
-    db_pool = await asyncpg.create_pool(db_url, min_size=1, max_size=3)
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
     try:
         from app.services.esg_history_service import EsgHistoryService
 
