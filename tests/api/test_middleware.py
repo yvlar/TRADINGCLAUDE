@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import fakeredis.aioredis
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -26,10 +27,10 @@ _BODY_ANALYZE = {
 }
 
 
-def _make_auth_app(api_key: str) -> FastAPI:
+def _make_auth_app(api_key: str, redis_url: str | None = None) -> FastAPI:
     """App minimale avec BearerTokenMiddleware."""
     auth_app = FastAPI()
-    auth_app.add_middleware(BearerTokenMiddleware, api_key=api_key)
+    auth_app.add_middleware(BearerTokenMiddleware, api_key=api_key, redis_url=redis_url)
 
     @auth_app.get("/healthz")
     async def healthz():
@@ -154,6 +155,57 @@ async def test_apikey_vide_en_dev_bypass_200(monkeypatch: pytest.MonkeyPatch):
     ) as c:
         r = await c.get("/metrics")
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Auth — anti-brute-force sur la validation Bearer (E1-S2)
+# ---------------------------------------------------------------------------
+
+async def test_bearer_brute_force_bloque_429():
+    """Au-delà de MAX_AUTH_FAILURES échecs Bearer depuis la même IP → 429."""
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    with patch("app.middleware.auth.aioredis.from_url", return_value=fake):
+        auth_app = _make_auth_app(_TEST_API_KEY, redis_url="redis://fake")
+        async with AsyncClient(
+            transport=ASGITransport(app=auth_app), base_url="http://test"
+        ) as c:
+            for _ in range(BearerTokenMiddleware.MAX_AUTH_FAILURES):
+                r = await c.post(
+                    "/analyze", headers={"Authorization": "Bearer mauvais-token"}
+                )
+                assert r.status_code == 401
+            r = await c.post(
+                "/analyze", headers={"Authorization": "Bearer mauvais-token"}
+            )
+    assert r.status_code == 429
+
+
+async def test_bearer_brute_force_token_valide_non_compte():
+    """Un token valide passe et n'est jamais bloqué par le compteur d'échecs."""
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    with patch("app.middleware.auth.aioredis.from_url", return_value=fake):
+        auth_app = _make_auth_app(_TEST_API_KEY, redis_url="redis://fake")
+        async with AsyncClient(
+            transport=ASGITransport(app=auth_app), base_url="http://test"
+        ) as c:
+            for _ in range(BearerTokenMiddleware.MAX_AUTH_FAILURES + 5):
+                r = await c.post(
+                    "/analyze", headers={"Authorization": f"Bearer {_TEST_API_KEY}"}
+                )
+                assert r.status_code == 200
+
+
+async def test_bearer_sans_redis_pas_de_blocage():
+    """Sans Redis configuré, l'anti-brute-force est désactivé (aucun 429)."""
+    auth_app = _make_auth_app(_TEST_API_KEY)  # redis_url=None
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_app), base_url="http://test"
+    ) as c:
+        for _ in range(BearerTokenMiddleware.MAX_AUTH_FAILURES + 3):
+            r = await c.post(
+                "/analyze", headers={"Authorization": "Bearer mauvais-token"}
+            )
+            assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------

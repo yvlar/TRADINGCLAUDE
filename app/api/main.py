@@ -99,6 +99,7 @@ from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
 from app.utils.env import is_dev_environment
 from app.utils.error_sanitization import log_internal_error, sanitized_http_500
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
+from app.utils.security_config import require_secure_db_url
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -143,6 +144,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Haiku pour skills mécaniques/quantitatifs — réduction coût ~60 % sur ces appels
     haiku_model = _get_env("CLAUDE_HAIKU_MODEL", "claude-haiku-4-5-20251001")
     db_url = _get_env("DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote")
+    require_secure_db_url(db_url)
     qdrant_url = _get_env("QDRANT_URL", "http://qdrant:6333")
     qdrant_coll = _get_env("QDRANT_COLLECTION", "investment_knowledge")
     redis_url = _get_env("REDIS_URL", "redis://redis:6379/0")
@@ -623,7 +625,7 @@ app.include_router(ws_metrics_router)
 
 # Ordre inversé d'exécution : CSRF → BearerToken → RateLimit dans le pipeline
 app.add_middleware(RateLimitMiddleware, redis_url=_redis_url_env)
-app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env)
+app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env, redis_url=_redis_url_env)
 app.add_middleware(CSRFMiddleware)
 _cors_origins = _resolve_cors_origins()
 app.add_middleware(

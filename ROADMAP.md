@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.40.0 |
+| **Version** | 10.41.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 155 — E1-S2 durcir l'identité de requête + brute-force |
-| **Dernier sprint complété** | Sprint 154 — Sécurité fail-closed : CSRF/CORS/timing-safe + Bearer/admin fail-closed (E1-S1) ✅ |
+| **Sprint actif** | Sprint 156 — E1-S3 confidentialité au repos & assainissement des logs |
+| **Dernier sprint complété** | Sprint 155 — E1-S2 durcir l'identité de requête : trust-proxy XFF + anti-brute-force Bearer + secret PG ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 

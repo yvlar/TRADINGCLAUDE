@@ -22,7 +22,8 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://copilote:copilote@postgres:5432/copilote
+      # Le mot de passe se propage depuis POSTGRES_PASSWORD (≠ 'copilote' en prod).
+      - DATABASE_URL=postgresql://copilote:${POSTGRES_PASSWORD:-copilote}@postgres:5432/copilote
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:

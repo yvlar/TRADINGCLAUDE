@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hmac
 import logging
+from collections.abc import Iterable
 from typing import ClassVar
 
+import redis.asyncio as aioredis
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.utils.client_ip import resolve_client_ip, trusted_proxies_from_env
 from app.utils.env import is_dev_environment
 
 logger = logging.getLogger(__name__)
@@ -42,9 +45,53 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
     }
     EXEMPT_PREFIXES: ClassVar[tuple[str, ...]] = ("/telemetry", "/report", "/ws")
 
-    def __init__(self, app, api_key: str) -> None:
+    # Anti-brute-force sur la validation de clé Bearer : au-delà du seuil d'échecs
+    # par IP dans la fenêtre, on coupe court (429) avant tout travail de validation.
+    MAX_AUTH_FAILURES: ClassVar[int] = 20
+    AUTH_FAIL_WINDOW_S: ClassVar[int] = 300
+
+    def __init__(
+        self,
+        app,
+        api_key: str,
+        redis_url: str | None = None,
+        trusted_proxies: Iterable[str] | None = None,
+    ) -> None:
         super().__init__(app)
         self._api_key = api_key
+        self._redis: aioredis.Redis | None = (
+            aioredis.from_url(redis_url, decode_responses=True) if redis_url else None
+        )
+        self._trusted_proxies = (
+            frozenset(trusted_proxies)
+            if trusted_proxies is not None
+            else trusted_proxies_from_env()
+        )
+
+    async def _auth_failures_exceeded(self, client_ip: str) -> bool:
+        """Vrai si l'IP a dépassé le seuil d'échecs d'auth (no-op sans Redis)."""
+        if self._redis is None:
+            return False
+        try:
+            count = await self._redis.get(f"authfail:{client_ip}")
+        except Exception:
+            return False  # Redis indisponible → on ne bloque pas (fail-open du limiteur)
+        return count is not None and int(count) >= self.MAX_AUTH_FAILURES
+
+    async def _record_auth_failure(self, client_ip: str) -> None:
+        if self._redis is None:
+            return
+        try:
+            count = await self._redis.incr(f"authfail:{client_ip}")
+            if count == 1:
+                await self._redis.expire(f"authfail:{client_ip}", self.AUTH_FAIL_WINDOW_S)
+        except Exception:
+            logger.warning("Redis indisponible pour le compteur d'échecs d'authentification")
+
+    async def _reject_bearer(self, client_ip: str) -> JSONResponse:
+        """Enregistre l'échec puis renvoie 401 (point de sortie unique du chemin Bearer)."""
+        await self._record_auth_failure(client_ip)
+        return JSONResponse({"detail": "Token manquant ou invalide"}, status_code=401)
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.url.path in self.EXEMPT_PATHS:
@@ -60,11 +107,18 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
 
         auth = request.headers.get("Authorization", "")
 
-        # --- Chemin 1 : Bearer token (API keys programmatiques — inchangé) ---
+        # --- Chemin 1 : Bearer token (API keys programmatiques) ---
         if auth.startswith("Bearer "):
+            client_ip = resolve_client_ip(request, self._trusted_proxies)
+            if await self._auth_failures_exceeded(client_ip):
+                return JSONResponse(
+                    {"detail": "Trop de tentatives d'authentification — réessayez plus tard"},
+                    status_code=429,
+                )
+
             token = auth[7:]
             if not token:
-                return JSONResponse({"detail": "Token manquant ou invalide"}, status_code=401)
+                return await self._reject_bearer(client_ip)
 
             api_key_service = getattr(request.app.state, "api_key_service", None)
             if api_key_service is not None:
@@ -84,11 +138,11 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
                     request.state.api_key_record = None
                     return await call_next(request)
 
-                return JSONResponse({"detail": "Token manquant ou invalide"}, status_code=401)
+                return await self._reject_bearer(client_ip)
 
             # Pas de service DB : fallback env uniquement
             if not hmac.compare_digest(token.encode("utf-8"), self._api_key.encode("utf-8")):
-                return JSONResponse({"detail": "Token manquant ou invalide"}, status_code=401)
+                return await self._reject_bearer(client_ip)
             request.state.api_key_record = None
             return await call_next(request)
 
