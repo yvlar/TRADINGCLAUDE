@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable
+from collections.abc import Container
 
 from starlette.requests import Request
 
@@ -16,7 +16,7 @@ def trusted_proxies_from_env() -> frozenset[str]:
     return frozenset(p.strip() for p in raw.split(",") if p.strip())
 
 
-def resolve_client_ip(request: Request, trusted_proxies: Iterable[str]) -> str:
+def resolve_client_ip(request: Request, trusted_proxies: Container[str]) -> str:
     """IP réelle du client, à l'épreuve du spoof de X-Forwarded-For.
 
     X-Forwarded-For n'est honoré que si la connexion directe provient d'un proxy
@@ -25,7 +25,7 @@ def resolve_client_ip(request: Request, trusted_proxies: Iterable[str]) -> str:
     le client d'origine est la première entrée de la liste.
     """
     peer = request.client.host if request.client else "unknown"
-    if peer in set(trusted_proxies):
+    if peer in trusted_proxies:
         forwarded = request.headers.get("X-Forwarded-For", "")
         if forwarded:
             first = forwarded.split(",")[0].strip()
