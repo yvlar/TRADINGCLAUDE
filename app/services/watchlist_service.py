@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+from uuid import UUID
 
 import asyncpg
 
+from app.models.tenant import LEGACY_TENANT_ID
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
 from app.services.audit_log_service import AuditLogService, record_audit_safe
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
@@ -33,7 +35,9 @@ class WatchlistService:
         self._db = db_pool
         self._audit = audit_log
 
-    async def add_entry(self, create: WatchlistCreate) -> WatchlistEntry:
+    async def add_entry(
+        self, create: WatchlistCreate, tenant_id: UUID | None = None
+    ) -> WatchlistEntry:
         ticker = create.ticker.upper()
         # Garde anti-doublon (ticker + workflow) — alignée sur le service en mémoire
         # des E2E ; sans elle, la prod acceptait des doublons silencieux (BUG-005).
@@ -49,17 +53,20 @@ class WatchlistService:
                 f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
             )
         ratios_json = create.ratios.model_dump_json() if create.ratios else None
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
+        tenant = tenant_id or LEGACY_TENANT_ID
         try:
             row = await self._db.fetchrow(
                 f"""
-                INSERT INTO watchlist (ticker, workflow, ratios, score_alerte_min)
-                VALUES ($1, $2, $3::jsonb, $4)
+                INSERT INTO watchlist (ticker, workflow, ratios, score_alerte_min, tenant_id)
+                VALUES ($1, $2, $3::jsonb, $4, $5)
                 RETURNING {_SELECT_COLS}
                 """,
                 ticker,
                 create.workflow,
                 ratios_json,
                 create.score_alerte_min,
+                tenant,
             )
         except asyncpg.UniqueViolationError:
             # Course gagnée par une requête concurrente entre le SELECT et l'INSERT.

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 import asyncpg
 from pydantic import BaseModel
 
+from app.models.tenant import LEGACY_TENANT_ID
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -27,19 +29,27 @@ class CompositeHistoryService:
         self._db = db_pool
 
     async def record(
-        self, ticker: str, score: float, label: str, workflow: str
+        self,
+        ticker: str,
+        score: float,
+        label: str,
+        workflow: str,
+        tenant_id: UUID | None = None,
     ) -> None:
         """Insère un nouveau point d'historique du composite_score."""
         validated = sanitize_ticker(ticker)
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
+        tenant = tenant_id or LEGACY_TENANT_ID
         await self._db.execute(
             """
-            INSERT INTO composite_score_history (ticker, score, label, workflow)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO composite_score_history (ticker, score, label, workflow, tenant_id)
+            VALUES ($1, $2, $3, $4, $5)
             """,
             validated,
             score,
             label,
             workflow,
+            tenant,
         )
         logger.debug("composite_score enregistré : %s score=%.1f label=%s", validated, score, label)
 
