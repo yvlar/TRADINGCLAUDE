@@ -188,7 +188,7 @@ jobs:
 
       # Prouve la RLS (E3-S5) dans le gate : la migration laisse le schéma à head ;
       # on crée un rôle NOSUPERUSER (un superuser contournerait la RLS) puis on exécute
-      # la matrice d'isolation cross-tenant rouge→vert sur les 6 tables contre ce rôle.
+      # la matrice d'isolation cross-tenant rouge→vert sur les 7 tables RLS contre ce rôle.
       - name: Créer un rôle NOSUPERUSER pour la preuve d'isolation
         run: |
           python - <<'PY'
@@ -198,19 +198,20 @@ jobs:
               await c.execute("DROP ROLE IF EXISTS rls_tester")
               await c.execute("CREATE ROLE rls_tester LOGIN NOSUPERUSER PASSWORD 'rls_tester'")
               await c.execute("GRANT USAGE ON SCHEMA public TO rls_tester")
-              # Matrice E3-S5 : les 6 tables métier + tenants (parent FK). USAGE sur les
-              # séquences car esg_score_history/alert_history sont BIGSERIAL (nextval).
+              # Matrice E3-S5 : les 6 tables métier + tenants (parent FK) + usage_events
+              # (7ᵉ table RLS, E4-S1). USAGE sur les séquences car esg_score_history/
+              # alert_history sont BIGSERIAL (nextval).
               await c.execute(
                   "GRANT SELECT, INSERT, UPDATE, DELETE ON "
                   "analysis_history, watchlist, composite_score_history, "
-                  "esg_score_history, alert_history, annotations, tenants TO rls_tester"
+                  "esg_score_history, alert_history, annotations, usage_events, tenants TO rls_tester"
               )
               await c.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO rls_tester")
               await c.close()
           asyncio.run(main())
           PY
 
-      - name: Matrice isolation RLS 6 tables (rôle NOSUPERUSER)
+      - name: Matrice isolation RLS 7 tables (rôle NOSUPERUSER)
         env:
           RLS_TEST_DATABASE_URL: postgresql://rls_tester:rls_tester@localhost:5432/copilote
         run: pytest tests/integration/test_rls_isolation.py -m integration -q --tb=short

@@ -35,8 +35,8 @@ pytestmark = [
 _TENANT_A = "00000000-0000-0000-0000-000000000001"  # tenant legacy (présent après migration)
 _TENANT_B = "00000000-0000-0000-0000-0000000000bb"
 
-# Les 6 tables métier sous RLS — source de vérité : `alembic/versions/0005_business_rls.py`
-# (`_TABLES`), parité verrouillée par `tests/test_alembic_business_rls.py`.
+# Les 6 tables métier (0005_business_rls) + `usage_events` (7ᵉ table RLS, 0006_usage_events,
+# E4-S1) : même policy tenant, donc même matrice d'isolation.
 _TABLES: tuple[str, ...] = (
     "analysis_history",
     "watchlist",
@@ -44,6 +44,7 @@ _TABLES: tuple[str, ...] = (
     "esg_score_history",
     "alert_history",
     "annotations",
+    "usage_events",
 )
 
 # Colonnes minimales valides par table : la colonne porteuse du marqueur (pour filtrer
@@ -99,6 +100,14 @@ _PAYLOADS: dict[str, tuple[str, _PayloadBuilder]] = {
         lambda tenant, marker: [
             ("analysis_id", str(uuid.uuid4()), "::uuid"),
             ("note", marker, ""),
+            ("tenant_id", tenant, "::uuid"),
+        ],
+    ),
+    "usage_events": (
+        "skill",
+        lambda tenant, marker: [
+            ("skill", marker, ""),
+            ("workflow", "value_graham", ""),
             ("tenant_id", tenant, "::uuid"),
         ],
     ),

@@ -104,6 +104,9 @@ async def _build_orchestrator() -> tuple[Orchestrator, asyncpg.Pool]:
             top_k=top_k,
         )
 
+    # Pas de `usage_event_service` ici : les analyses planifiées (screener/alertes) tournent
+    # sous le tenant legacy (le threading tenant→worker relève d'un sprint E4 ultérieur) ;
+    # les facturer au legacy serait du bruit. Le metering reste donc scopé au chemin requête.
     orchestrator = Orchestrator(
         db_pool=db_pool,
         graham_skill=_skill(GrahamAnalysisSkill),

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 165 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 166 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.52.0 |
+| **Version** | 10.53.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 166 — E4-S1 metering (`usage_events` append-only par skill, source de vérité facturation) |
-| **Dernier sprint complété** | Sprint 165 — E3-S5 preuve d'isolation rouge→vert (matrice cross-tenant paramétrée sur les 6 tables : lecture isolée + `WITH CHECK` + fail-closed, NOSUPERUSER ; gate CI étendu aux 6 tables ; revue OWASP de la policy RLS) ✅ — **clôt l'épic E3** |
+| **Sprint actif** | Sprint 167 — E4-S2 quotas par plan + quotas screener par tenant (`plan_limits` + compteur Redis, `429` au dépassement) |
+| **Dernier sprint complété** | Sprint 166 — E4-S1 metering : table `usage_events` append-only par skill (RLS 7ᵉ table) + `UsageEventService` best-effort + émission par-skill depuis l'orchestrateur (cache hit = 0 ligne) ✅ — **ouvre l'épic E4 (facturation/SaaS)** |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -56,6 +56,7 @@
 - Prompt caching activé sur tous les system prompts
 - **Sécurité auth durcie (Sprint 125)** — secret JWT fail-fast (`RuntimeError` au boot hors dev/test si `JWT_SECRET_KEY` absent), blacklist JTI fail-closed (panne Redis → token refusé), réponses 500 assainies (body générique + `correlation_id`, `str(exc)` jamais exposé — global handler + tous les endpoints + flux SSE), CORS durci (`CORS_ORIGINS` CSV via env, méthodes explicites)
 - **Isolation RLS multi-tenant (Sprints 163-165)** — Row-Level Security PostgreSQL active (`ENABLE` + `FORCE`) sur les 6 tables métier avec policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK) ; GUC `app.tenant_id` posé par connexion au pool asyncpg (`app/db/tenant_context.py`), threadé depuis le claim JWT (Sprint 164). Fail-closed : sans contexte tenant, 0 ligne visible. **Isolation prouvée table par table en rouge→vert** (matrice paramétrée `tests/integration/test_rls_isolation.py`, rôle NOSUPERUSER, gate CI sur les 6 tables — Sprint 165) ; revue OWASP de la policy : `docs/revue-owasp-rls-2026-06.md` (2 risques résiduels suivis hors code : rôle runtime `NOSUPERUSER`/`NOBYPASSRLS`, scoping tenant de `/report`)
+- **Metering `usage_events` (Sprint 166 — ouvre E4)** — table append-only `usage_events` (`alembic/versions/0006_usage_events.py`) horodatant **par skill exécuté** la consommation facturable d'un tenant (`tenant`, `skill`, `workflow`, `cost_usd NUMERIC(10,6)`, `tokens_input/output`, `created_at`) + index `(tenant_id, created_at DESC)` ; **pas de FK vers `analysis_history`** (survit à la purge d'une analyse). 7ᵉ table RLS (`ENABLE`+`FORCE` + policy tenant standard, matrice d'isolation étendue, gate CI). Émise best-effort depuis l'orchestrateur (`_emit_usage_events`, appariement positionnel `skills_applied`↔`all_usages`) à chaque skill consommé — **un cache hit (`cost_usd=0`) n'émet rien** ; un échec de metering n'avorte jamais l'analyse. Source de vérité unique de la facturation (agrégation E4-S2/E4-S5). Chemin worker non metré (analyses planifiées sous tenant legacy — déféré)
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
@@ -87,6 +88,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 166 — E4-S1 : metering `usage_events` (ouvre E4) ✅
+
+**Objectif :** Poser la fondation de facturation — une table **`usage_events` append-only** qui enregistre, **par skill exécuté** (pas seulement par analyse), la consommation facturable d'un tenant. Source de vérité unique de l'agrégation (E4-S2 quotas, E4-S5 export). Ouvre l'épic E4 (facturation/SaaS).
+
+**Livrables :**
+- `alembic/versions/0006_usage_events.py` (nouveau, chaîné après `0005_business_rls`) — table `usage_events(id UUID gen_random_uuid, tenant_id UUID NOT NULL REFERENCES tenants(id), skill TEXT, workflow TEXT, cost_usd NUMERIC(10,6) NOT NULL DEFAULT 0, tokens_input/output INTEGER, created_at TIMESTAMPTZ)` + index `(tenant_id, created_at DESC)`. **Décisions documentées** : (1) **pas de FK vers `analysis_history`** — un événement de consommation survit à la purge de l'analyse (rétention facturation ≠ rétention analyse) ; (2) **`cost_usd NUMERIC`** — précision monétaire exacte, jamais float ; (3) **`id` UUID** (pas BIGSERIAL) — append-only aligné sur `audit_log`, aucune séquence à GRANT. **RLS 7ᵉ table** : `ENABLE`+`FORCE` + policy `usage_events_tenant_isolation` (USING + WITH CHECK sur le prédicat tenant fail-closed `NULLIF`). Downgrade idempotent (DROP POLICY → DISABLE → DROP TABLE).
+- `app/services/usage_event_service.py` (nouveau) — `UsageEventService` **append-only** calqué sur `AuditLogService` : `record(...)` (INSERT pur, `tenant_id` défaut `resolve_tenant(...)`, `cost_usd` lié en `Decimal` — asyncpg exige un Decimal pour `NUMERIC`) + helper `record_usage_safe(...)` **best-effort** (un échec de metering n'avorte jamais l'analyse — log + continue).
+- **Émission par-skill depuis l'orchestrateur** (`app/orchestrator/core.py`) — `_emit_usage_events(skills_applied, all_usages, workflow)` : appariement **positionnel** des deux listes remplies en lockstep, un `usage_events` best-effort par skill à `cost_usd>0` (**cache hit = 0 ligne**), appelé après `_persist` dans `run_company_analysis` **et** `stream_company_analysis`. Service injecté optionnellement au constructeur (rétrocompat : workers/tests sans service restent verts). **Chemin worker non metré** (analyses planifiées sous tenant legacy — déféré, commenté dans `app/workers/tasks.py`).
+- **Lifespan** (`app/api/main.py`) — `UsageEventService` instancié, injecté à l'orchestrateur + exposé sur `app.state` (câblage `AuditLogService`).
+- **Matrice RLS + CI** (`tests/integration/test_rls_isolation.py`, `.github/workflows/ci.yml`) — `usage_events` ajoutée comme 7ᵉ table de la matrice d'isolation ; GRANT du rôle `rls_tester` étendu.
+
+**Validation runtime (Postgres 16 local + rôle NOSUPERUSER)** : `upgrade head` → `usage_events` avec RLS `ENABLE`+`FORCE`, policy USING==WITH CHECK, index, FK vers `tenants` uniquement ; matrice d'isolation 7 tables verte ; **émission prouvée via le vrai service** (1 ligne isolée par tenant, A voit sa ligne, B rien ; binding `Decimal` OK) ; downgrade/re-upgrade idempotents.
+
+**Version** : 10.53.0
+**Tests** : 2 097 backend collectés (2 075 passés, 21 skipped [+1 : matrice 7ᵉ table, skippée hors PG migré], 1 xfailed — +34 : forme migration usage_events [colonnes/index/RLS ENABLE+FORCE/policy USING+WITH CHECK/fail-closed NULLIF/pas de FK analysis_history/downgrade], unitaires service [record INSERT pur, défaut tenant legacy, tenant explicite, binding Decimal, append-only, `record_usage_safe` best-effort], émission orchestrateur [appariement par-skill, cache hit=0, sans service, best-effort, **bout-en-bout via `run_company_analysis`**]) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (orchestrateur touché mais aucun prompt de skill modifié — émission de metering uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (appariement lockstep vérifié sur les 17 blocs des 2 chemins ; invariant `WITH CHECK` colonne==GUC garanti par émission `await` inline ; best-effort prouvé ; `cost_usd>0` skip cache hit ; migration fail-closed sans FK analysis_history) — 2 findings MINOR traités (worker non metré documenté ; test bout-en-bout ajouté), NIT cosmétiques traités (titre step CI « 7 tables ») ; **qualité** : `_emit_usage_events` au bon altitude, `UsageEventService` fidèle à `AuditLogService` sans divergence superflue, aucun refactor requis.
 
 ### Sprint 165 — E3-S5 : preuve d'isolation rouge→vert (clôt E3) ✅
 
@@ -136,20 +153,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.50.0
 **Tests** : 2 039 backend collectés (2 024 passés, 14 skipped [+1 : isolation runtime, skippée hors PG migré], 1 xfailed — +37 : forme de migration RLS paramétrée sur 6 tables [ENABLE/FORCE/policy USING+WITH CHECK/prédicat fail-closed NULLIF/downgrade], unitaires du câblage GUC, isolation cross-tenant runtime) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (fail-closed sain — absent/vide → NULL, pas d'erreur de cast ; policy ALL couvre SELECT/INSERT/UPDATE/DELETE sans échappatoire DELETE ; les 8 pools routent par `apply_tenant_context`, aucun site DB des 6 tables ne le contourne ; `setup` correct pour le reset par-acquisition qu'exigera E3-S4 ; CI prouve l'isolation) — 2 findings traités (isolation câblée en gate CI via rôle NOSUPERUSER ; test de forme verrouille le prédicat dans USING **et** WITH CHECK) ; **qualité** : factory de pool partagée délibérément différée à E3-S4 (où `setup` portera une vraie logique per-requête ; fail-closed backstoppe un pool oublié), `app/db/` retenu comme home (callback connexion, pas middleware ASGI), 2 tests redondants retirés.
-
-### Sprint 162 — E3-S2 : rattacher les 6 tables métier au tenant ✅
-
-**Objectif :** Propager la dimension tenant aux **données** — `tenant_id UUID NOT NULL` (FK → `tenants`) + index sur chacune des 6 tables métier, avec backfill vers le tenant « legacy » (constante `LEGACY_TENANT_ID` posée au Sprint 161). Aucune RLS ni middleware de contexte ici (E3-S3/S4) ; le tenant legacy reste le défaut des écritures tant que le threading n'est pas câblé. 2ᵉ marche de l'épic E3.
-
-**Livrables :**
-- `alembic/versions/0004_business_tenant_id.py` (nouveau) — révision chaînée après `0003_tenants`. Pour les 6 tables (`analysis_history`, `watchlist`, `composite_score_history`, `esg_score_history`, `alert_history`, `annotations`) : `ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id)` (nullable) → backfill legacy (`WHERE tenant_id IS NULL`) → `SET NOT NULL` → index `idx_<table>_tenant`. DDL bâti par template sur un tuple `_TABLES` (uniformité prouvable, zéro copier-coller). Downgrade en ordre FK inverse (index → colonne) par table, idempotent. Littéral UUID legacy figé (parité ↔ `LEGACY_TENANT_ID` verrouillée par test).
-- **Politique `ON DELETE` documentée** : `NO ACTION` (restrict, défaut PostgreSQL — comme `users.tenant_id` au Sprint 161). Supprimer un tenant **échoue** tant qu'il porte des données métier ; le hard-delete relève d'un sprint dédié, jamais d'un `CASCADE` silencieux.
-- **Écritures applicatives** (6 sites d'INSERT) : `core.py::_persist` (analysis_history), `watchlist_service`, `annotation_service`, `esg_history_service`, `composite_history_service`, `alert_history_service` — chacun accepte un `tenant_id: UUID | None = None` (défaut legacy via `tenant_id or LEGACY_TENANT_ID`, idiome partagé avec `user_service`), `tenant_id` ajouté en dernier binding de l'INSERT. `annotation.upsert` : tenant posé à l'INSERT seulement, **non** réécrit en `ON CONFLICT` (ré-annoter ne déplace pas le tenant). Décision d'altitude : **service-level explicit sans DB `DEFAULT`** → tout futur INSERT oubliant le tenant échoue franchement (NOT NULL) au lieu de mal-rattacher silencieusement (prépare le threading E3-S4).
-
-**Validation runtime (Postgres 16 local)** : `upgrade head` → les 6 tables portent `tenant_id NOT NULL` + index `idx_<table>_tenant` + FK `confdeltype=NO ACTION` ; une ligne insérée **avant** la migration dans chaque table est backfillée au legacy ; `DELETE` du tenant legacy **refusé** (données référencées) ; `downgrade 0003` → colonnes/index retirés (0 colonne) ; re-`upgrade head` idempotent ; cycle CI `downgrade base → upgrade head` vert.
-
-**Version** : 10.49.0
-**Tests** : 2 002 backend collectés (1 988 passés, 13 skipped, 1 xfailed — +14 : forme de migration paramétrée sur 6 tables [colonne/FK/backfill/ordre backfill-avant-NOT-NULL/index/parité littéral↔constante], écritures défaut-legacy/tenant-explicite des 5 services, défaut legacy de `_persist`) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, placeholders `$n` alignés aux args aux 6 sites, ON CONFLICT préserve le tenant, binding asyncpg `uuid.UUID`, aucun appelant cassé — défauts présents) ; **qualité** : 1 finding traité (tests d'écriture paramétrés legacy/explicite, 10→5 fonctions), 1 écarté (helper `_load` triplé dans les tests de migration = convention pré-existante, refactor hors périmètre de ce sprint).
 
 ---
 

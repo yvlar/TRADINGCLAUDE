@@ -10,6 +10,20 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 162 — E3-S2 : rattacher les 6 tables métier au tenant ✅
+
+**Objectif :** Propager la dimension tenant aux **données** — `tenant_id UUID NOT NULL` (FK → `tenants`) + index sur chacune des 6 tables métier, avec backfill vers le tenant « legacy » (constante `LEGACY_TENANT_ID` posée au Sprint 161). Aucune RLS ni middleware de contexte ici (E3-S3/S4) ; le tenant legacy reste le défaut des écritures tant que le threading n'est pas câblé. 2ᵉ marche de l'épic E3.
+
+**Livrables :**
+- `alembic/versions/0004_business_tenant_id.py` (nouveau) — révision chaînée après `0003_tenants`. Pour les 6 tables (`analysis_history`, `watchlist`, `composite_score_history`, `esg_score_history`, `alert_history`, `annotations`) : `ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id)` (nullable) → backfill legacy (`WHERE tenant_id IS NULL`) → `SET NOT NULL` → index `idx_<table>_tenant`. DDL bâti par template sur un tuple `_TABLES` (uniformité prouvable, zéro copier-coller). Downgrade en ordre FK inverse (index → colonne) par table, idempotent. Littéral UUID legacy figé (parité ↔ `LEGACY_TENANT_ID` verrouillée par test).
+- **Politique `ON DELETE` documentée** : `NO ACTION` (restrict, défaut PostgreSQL — comme `users.tenant_id` au Sprint 161). Supprimer un tenant **échoue** tant qu'il porte des données métier ; le hard-delete relève d'un sprint dédié, jamais d'un `CASCADE` silencieux.
+- **Écritures applicatives** (6 sites d'INSERT) : `core.py::_persist` (analysis_history), `watchlist_service`, `annotation_service`, `esg_history_service`, `composite_history_service`, `alert_history_service` — chacun accepte un `tenant_id: UUID | None = None` (défaut legacy via `tenant_id or LEGACY_TENANT_ID`, idiome partagé avec `user_service`), `tenant_id` ajouté en dernier binding de l'INSERT. `annotation.upsert` : tenant posé à l'INSERT seulement, **non** réécrit en `ON CONFLICT` (ré-annoter ne déplace pas le tenant). Décision d'altitude : **service-level explicit sans DB `DEFAULT`** → tout futur INSERT oubliant le tenant échoue franchement (NOT NULL) au lieu de mal-rattacher silencieusement (prépare le threading E3-S4).
+
+**Validation runtime (Postgres 16 local)** : `upgrade head` → les 6 tables portent `tenant_id NOT NULL` + index `idx_<table>_tenant` + FK `confdeltype=NO ACTION` ; une ligne insérée **avant** la migration dans chaque table est backfillée au legacy ; `DELETE` du tenant legacy **refusé** (données référencées) ; `downgrade 0003` → colonnes/index retirés (0 colonne) ; re-`upgrade head` idempotent ; cycle CI `downgrade base → upgrade head` vert.
+
+**Version** : 10.49.0
+**Tests** : 2 002 backend collectés (1 988 passés, 13 skipped, 1 xfailed — +14 : forme de migration paramétrée sur 6 tables [colonne/FK/backfill/ordre backfill-avant-NOT-NULL/index/parité littéral↔constante], écritures défaut-legacy/tenant-explicite des 5 services, défaut legacy de `_persist`) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, placeholders `$n` alignés aux args aux 6 sites, ON CONFLICT préserve le tenant, binding asyncpg `uuid.UUID`, aucun appelant cassé — défauts présents) ; **qualité** : 1 finding traité (tests d'écriture paramétrés legacy/explicite, 10→5 fonctions), 1 écarté (helper `_load` triplé dans les tests de migration = convention pré-existante, refactor hors périmètre de ce sprint).
+
 ### Sprint 161 — E3-S1 : socle tenant (`tenants` + `users.tenant_id`) ✅
 
 **Objectif :** Poser les fondations de la multi-tenance — table `tenants`, colonne `users.tenant_id` (FK), tenant « legacy » de backfill — sans isolation RLS ni rattachement des 6 tables métier (E3-S2/S3), en gardant l'auth 100 % rétrocompatible. 1ʳᵉ marche de l'épic E3 (bloqueur n°1).

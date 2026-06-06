@@ -1,14 +1,14 @@
-# Sprint 166 — E4-S1 : metering (`usage_events` append-only)
+# Sprint 167 — E4-S2 : quotas par plan + quotas screener par tenant
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.52.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.53.0 — transformation B2B/SaaS, phase P0→P1)
 
-**Épic E3 (isolation multi-tenant) CLOS** au Sprint 165 : l'isolation RLS des 6 tables métier est prouvée table par table en **rouge→vert** sous rôle NOSUPERUSER (matrice paramétrée `tests/integration/test_rls_isolation.py`, gate CI), et la policy a passé une **revue OWASP** (`docs/revue-owasp-rls-2026-06.md` — 2 risques résiduels hors code suivis : rôle runtime `NOSUPERUSER`/`NOBYPASSRLS`, scoping tenant de `/report`). Démarre **E4 (facturation/SaaS)** par **E4-S1 metering** : une table `usage_events` append-only, émise par l'orchestrateur à granularité **par skill**, source de vérité unique de la consommation par tenant. État courant complet (version, endpoints, compteurs, fonctionnalités actives) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+L'épic **E4 (facturation/SaaS) est ouvert** : le Sprint 166 (E4-S1) a posé la table `usage_events` append-only (metering **par skill**, 7ᵉ table RLS) + son émission best-effort depuis l'orchestrateur. Démarre **E4-S2 quotas** : un plan tarifaire (`plan_limits`) borne la consommation d'un tenant (analyses/mois, taille screener, rétention), un compteur Redis applique la borne, un `429` clair signale le dépassement. État courant complet (version, endpoints, compteurs, fonctionnalités actives) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Validation DB en session web** : un PostgreSQL 16 local peut être démarré (binaires dans `/usr/lib/postgresql/16/bin`). Postgres refuse de tourner en root → user dédié. Recette validée aux sprints 158-165 :
+> **Validation DB en session web** : un PostgreSQL 16 local peut être démarré (binaires dans `/usr/lib/postgresql/16/bin`). Postgres refuse de tourner en root → user dédié. Recette validée aux sprints 158-166 :
 > ```bash
 > useradd -m pguser 2>/dev/null || true; mkdir -p /tmp/pgdata /tmp/pgrun; chown pguser /tmp/pgdata /tmp/pgrun
 > runuser -u pguser -- /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -U copilote --auth=trust -A trust
@@ -17,81 +17,83 @@
 > DATABASE_URL=postgresql://copilote@127.0.0.1:5433/copilote .venv/bin/alembic upgrade head
 > ```
 > ⚠️ `alembic`/`sqlalchemy[asyncio]`/`mypy` sont dans `requirements.txt` mais **pas toujours installés dans `.venv`** : `.venv/bin/pip install "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0" mypy` avant les tests de migration.
-> ⚠️ **`usage_events` portera `tenant_id NOT NULL` → elle entre dans le périmètre RLS.** Suivre le pattern des 6 tables (migration `0005_business_rls.py`) : `ENABLE`+`FORCE ROW LEVEL SECURITY` + policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid`. Sinon un pool sans GUC verrait 0 ligne et ses INSERT échoueraient au `WITH CHECK`. Si tu prouves l'isolation en intégration, **étendre le `GRANT` du rôle `rls_tester`** (`.github/workflows/ci.yml`) à `usage_events` (+ séquence si BIGSERIAL).
+> ⚠️ **Si `plan_limits` porte `tenant_id` (ou est lue par tenant) → décider de son périmètre RLS.** Si la table est rattachée au tenant, suivre le pattern des 7 tables RLS (migration `0006_usage_events.py`, `0005_business_rls.py`) : `ENABLE`+`FORCE` + policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK), étendre la matrice `tests/integration/test_rls_isolation.py` (devient 8ᵉ table) et le `GRANT` du rôle `rls_tester` (`.github/workflows/ci.yml`). Si `plan_limits` est une **table de référence globale** (un plan = même borne pour tous les tenants, clé = nom de plan), justifier explicitement l'**absence** de tenant/RLS.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.52.0)
-2. `docs/plan-directeur-fintech-2026.md` — **§7-§8 épic E4 ligne `E4-S1`** (metering) et **jalon M4** (facturation)
-3. `.claude/rules/api-orchestrator.md` (point d'émission dans l'orchestrateur, pattern WORKFLOWS, `optional=True`) et `.claude/rules/tests-pyramide.md` (niveau intégration, marqueur `@pytest.mark.integration`, patch `call_claude_with_retry` — l'orchestrateur ne doit jamais appeler Claude réel en test)
-4. `app/services/audit_log_service.py` (pattern **append-only** `record(...)` à cloner) · `app/orchestrator/core.py:1706` (`_persist`, déjà tenant-aware via `resolve_tenant`, import `:15`) et le hook par-skill `observability.record_skill_execution(SkillTrace(...))` (~`core.py:616`, `cost_usd`/`tokens_input`/`tokens_output` par skill déjà disponibles) · `alembic/versions/0005_business_rls.py` (dernière révision — chaîner après)
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.53.0)
+2. `docs/plan-directeur-fintech-2026.md` — **§7-§8 épic E4 ligne `E4-S2`** (quotas) et **jalon M3** (quotas screener) / **M4** (facturation)
+3. `.claude/rules/api-architecture.md` (middleware, rate-limit Redis, contraintes infra) et `.claude/rules/gotchas-operationnels.md` (timeouts/parallélisme screener — la borne de taille screener par tenant vit ici)
+4. `app/middleware/rate_limit.py` (`RateLimitMiddleware`, compteur Redis incr/expire à cloner pour le quota) · importé `app/api/main.py:46`, monté `app/api/main.py:482` (ordre des middlewares CSRF→BearerToken→RateLimit→TenantContext commenté `:478`) · `app/db/tenant_context.py:24` (`get_current_tenant()` → clé du compteur par tenant) · `app/services/usage_event_service.py` (Sprint 166 — `usage_events` à agréger pour le compteur mensuel)
 
 ---
 
-## TÂCHE — Sprint 166 (E4-S1) : metering `usage_events`
+## TÂCHE — Sprint 167 (E4-S2) : quotas par plan + quotas screener par tenant
 
-**Objectif** : poser une table **`usage_events` append-only** qui enregistre, **par skill exécuté** (pas seulement par analyse), la consommation facturable d'un tenant — fondation unique de l'agrégation de facturation (E4-S2 quotas, E4-S4 export). Ouvre l'épic E4.
+**Objectif** : transformer la multi-tenance en **offre commerciale bornée** — un plan tarifaire limite la consommation d'un tenant, un compteur applique la borne, un `429` explicite signale le dépassement. Absorbe aussi le **quota screener par tenant** explicitement reporté de l'E3-S4 (Sprint 164).
 
 ### Spécification
-1. **Migration `alembic/versions/0006_usage_events.py`** (chaînée après `0005_business_rls`) : table `usage_events(id, tenant_id UUID NOT NULL REFERENCES tenants(id), skill TEXT NOT NULL, workflow TEXT NOT NULL, cost_usd NUMERIC(10,6) NOT NULL DEFAULT 0, tokens_input INTEGER NOT NULL DEFAULT 0, tokens_output INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())` + index `(tenant_id, created_at DESC)`. **Pas de FK vers `analysis_history`** (append-only, doit survivre à la purge d'une analyse) — décision à documenter. **RLS obligatoire** : `ENABLE`+`FORCE` + policy `usage_events_tenant_isolation` (USING + WITH CHECK sur le prédicat tenant standard). Downgrade idempotent (DROP POLICY → DISABLE → DROP TABLE). Choisir `id` UUID (`gen_random_uuid()`) **ou** BIGSERIAL — si BIGSERIAL, penser au `GRANT USAGE` séquence en CI.
-2. **`app/services/usage_event_service.py`** (nouveau) — `UsageEventService` **append-only** calqué sur `AuditLogService` : `record(tenant_id, skill, workflow, cost_usd, tokens_input, tokens_output)` (INSERT pur, jamais UPDATE/DELETE) + helper `record_usage_safe(...)` **best-effort** (un échec de metering n'avorte JAMAIS l'analyse — log + continue, comme `record_audit_safe`). `tenant_id` défaut `resolve_tenant(...)` (idiome partagé).
-3. **Émission depuis l'orchestrateur** (`app/orchestrator/core.py`) : à chaque skill exécuté avec succès (là où `observability.record_skill_execution(SkillTrace(...))` est déjà appelé), émettre **en parallèle** un `usage_events` best-effort. Réutiliser le `workflow` de la requête et le `cost_usd`/`tokens_*` de l'`UsageDetail`/usage du skill. **Un cache hit (`cost_usd=0`) n'émet rien** (rien n'est consommé) — décision à documenter. Le service est injecté optionnellement (constructeur/`app.state`, rétrocompat : workers/tests qui ne le fournissent pas restent verts).
-4. **Lifespan** (`app/api/main.py`) : instancier `UsageEventService` et l'injecter à l'orchestrateur + exposer sur `app.state` (suivre le câblage d'`AuditLogService`, Sprint 160).
+1. **Migration `alembic/versions/0007_plan_limits.py`** (chaînée après `0006_usage_events`) : table `plan_limits` définissant, **par plan** (`plan TEXT` — `free`/`pro`/…), les bornes : `max_analyses_per_month INTEGER`, `max_screener_tickers INTEGER`, `retention_days INTEGER` (+ `created_at`). Seeder les plans de base. **Rattachement tenant→plan** : décider entre (a) `tenants.plan TEXT NOT NULL DEFAULT 'free'` (colonne sur `tenants`, simple) **ou** (b) table d'association — justifier le choix. Décider et **documenter** le périmètre RLS de `plan_limits` (table de référence globale → pas de tenant/RLS ; voir l'avertissement DB ci-dessus).
+2. **`app/services/quota_service.py`** (nouveau) — `QuotaService` : (a) résout le plan du tenant courant (`get_current_tenant()`), lit ses bornes dans `plan_limits` ; (b) **compteur mensuel d'analyses** via Redis (`incr`/`expire` à la fenêtre mensuelle, clé `quota:{tenant}:{YYYY-MM}` — calquer `app/middleware/rate_limit.py`) **OU** agrégation `COUNT(*)` sur `usage_events` par tenant/mois (choisir et justifier : Redis = rapide mais éphémère, `usage_events` = source de vérité durable) ; (c) `check_and_increment()` lève une erreur quota (→ `429`) au dépassement, sinon incrémente. Best-effort **interdit ici** : un quota est une **borne dure** (au contraire du metering Sprint 166 qui est best-effort) — un échec d'infra de quota doit être tranché explicitement (fail-open documenté **ou** fail-closed `503`).
+3. **Application du quota d'analyses** : au point d'entrée `/analyze` (et `/analyze/stream`), avant de lancer l'orchestrateur, appeler `QuotaService.check_and_increment()` ; réponse `429` claire (`Retry-After` ou message « quota mensuel atteint, plan `X` : N/N ») au dépassement. Ne pas compter un **cache hit** (rien n'est consommé — cohérent avec le metering).
+4. **Quota screener par tenant (M3, reporté de E3-S4)** : borner `POST /screen` à `max_screener_tickers` du plan du tenant (en plus du plafond technique `max 20` existant) — `429`/`422` clair si la liste dépasse la borne du plan.
+5. **Frontend (léger)** : surfacer le `429` quota proprement (toast/bandeau « quota atteint ») là où `/analyze` et `/screen` sont appelés — pas de page dédiée ce sprint.
 
 ### Tests / validation
-- **Unitaires** (`tests/services/`) : `record` construit l'INSERT attendu ; `record_usage_safe` avale une exception DB sans la propager (best-effort) ; défaut `resolve_tenant`.
-- **Migration** (`tests/test_alembic_usage_events.py`, sans DB) : forme/chaînage de révision, présence colonne/index/RLS `ENABLE`+`FORCE`+policy USING+WITH CHECK, downgrade ordre inverse. Modèle : `tests/test_alembic_business_rls.py`.
-- **Intégration** (`@pytest.mark.integration`, PG local migré) : un skill exécuté émet exactement 1 ligne `usage_events` pour le tenant courant ; un cache hit n'en émet aucune ; **isolation RLS** d'`usage_events` (réutiliser/étendre la matrice `test_rls_isolation.py` — `usage_events` est une 7ᵉ table RLS).
-- **Orchestrateur** : l'émission ne doit pas appeler Claude réel — `call_claude_with_retry` patché (cf. `tests-pyramide.md`). Un test orchestrateur existant vérifie que l'analyse réussit même si `UsageEventService` lève (best-effort).
-- Suite `pytest` (hors e2e/evals) + `ruff` + `mypy app/` verts. **Eval** : l'orchestrateur est touché mais aucun **prompt de skill** ne change — émission de metering uniquement. Lancer une eval ciblée seulement si le routing/parallélisme des skills est modifié ; sinon le dire explicitement (pas de changement de prompt → pas d'eval).
+- **Unitaires** (`tests/services/`) : `QuotaService` — sous la borne incrémente et autorise ; à la borne lève l'erreur quota ; fenêtre mensuelle (clé/expire) ; résolution plan→bornes ; cache hit ne consomme pas.
+- **Migration** (`tests/test_alembic_plan_limits.py`, sans DB) : forme/chaînage de révision (après `0006_usage_events`), colonnes/seed, downgrade ordre inverse. Modèle : `tests/test_alembic_usage_events.py`.
+- **Intégration** (`@pytest.mark.integration`, PG local migré) : `/analyze` au-delà du quota → `429` ; sous quota → `200` ; `/screen` au-delà de `max_screener_tickers` → `429`/`422`. Si `plan_limits` est rattachée au tenant et sous RLS, l'ajouter à la matrice `test_rls_isolation.py` (8ᵉ table) + GRANT CI.
+- **Composant** (`frontend/src/__tests__/`) : le `429` quota rend le bandeau/toast attendu (happy path + dépassement).
+- Suite `pytest` (hors e2e/evals) + `ruff` + `mypy app/` verts ; `cd frontend && npm run typecheck` + Vitest verts. **Eval** : aucun prompt de skill touché → pas d'eval (le dire explicitement).
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E4 — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 167 — E4-S2 : quotas par plan + quotas screener par tenant
-**Objectif** : table `plan_limits` (analyses/mois, taille screener, rétention) + compteur Redis ; `429` clair au dépassement ; **inclut les quotas screener par tenant différés de l'E3-S4** (borne tickers/analyses par tenant).
-**Complexité** : Moyenne.
-**Justification** : transforme la multi-tenance en offre commerciale ; consomme le metering `usage_events` (Sprint 166) pour compter, et absorbe le quota screener explicitement reporté au Sprint 164.
-**Référence** : rate-limit Redis existant `app/middleware/rate_limit.py`, monté `app/api/main.py:478` (à étendre par tenant/plan) ; le `ContextVar` tenant (`app/db/tenant_context.py`, Sprint 164) fournit déjà le tenant courant pour cléer le compteur. `plan_limits` et l'agrégation de `usage_events` sont **à créer**.
-
 ### Sprint 168 — E4-S3 : clés API rattachées au tenant
 **Objectif** : `api_keys.tenant_id` (FK) + résolution du tenant pour chaque appel programmatique (chemin Bearer), pour que les clés API entrent dans la tenance (M4).
 **Complexité** : Faible.
-**Justification** : ferme le dernier trou de la multi-tenance — aujourd'hui une requête par clé API retombe sur le tenant legacy (`BearerTokenMiddleware` ne pose pas `tenant_id` sur le chemin Bearer, `app/middleware/auth.py:111-147`).
-**Référence** : table `api_keys` gérée par `app/services/api_key_service.py` (**sans** colonne `tenant_id` aujourd'hui — `grep -ni tenant app/services/api_key_service.py` vide, vérifié) ; la colonne `tenant_id` sur `api_keys` est **à créer** (migration chaînée après `0006_usage_events`). Le `ContextVar`/middleware tenant (Sprint 164) est en place : il suffira de poser `request.state.tenant_id` depuis l'enregistrement de clé sur le chemin Bearer de `app/middleware/auth.py`.
+**Justification** : ferme le dernier trou de la multi-tenance — aujourd'hui une requête par clé API retombe sur le tenant legacy (le chemin Bearer ne pose pas `tenant_id`).
+**Référence** : `BearerTokenMiddleware` existe (`app/middleware/auth.py:20`), thread déjà le claim `tenant_id` JWT (`app/middleware/auth.py:163`) mais **pas** sur le chemin clé API ; table `api_keys` gérée par `app/services/api_key_service.py` **sans** colonne `tenant_id` aujourd'hui (`grep -ni tenant app/services/api_key_service.py` vide, vérifié cette session). La colonne `api_keys.tenant_id` est **à créer** (migration chaînée après `0007_plan_limits`).
 
 ### Sprint 169 — E4-S4 : exposition du tenant dans `/auth/me`
-**Objectif** : exposer le `tenant_id` (et le nom du tenant) dans la réponse `/auth/me`, désormais pertinent puisque le contexte tenant est threadé.
+**Objectif** : exposer le `tenant_id` (et le nom du tenant) dans la réponse `/auth/me`, désormais cohérent puisque le contexte tenant est threadé (E3-S4) et borné (E4-S2).
 **Complexité** : Faible.
-**Justification** : le Sprint 161 avait **délibérément omis** `tenant_id` de la réponse publique tant que le threading n'existait pas (`app/models/auth.py:64`) — E3-S4 l'a livré, l'exposition devient cohérente (préparation UI multi-tenant).
-**Référence** : `tenant_id` absent de la réponse publique — commenté `app/models/auth.py:64` ; `users.tenant_id` déjà lu par `user_service.get_by_id` (`SELECT … tenant_id …`, `app/services/user_service.py:81`).
+**Justification** : le Sprint 161 avait **délibérément omis** `tenant_id` de la réponse publique tant que le threading n'existait pas — l'exposition devient cohérente (préparation UI multi-tenant + affichage du plan).
+**Référence** : `tenant_id` absent de `UserPublic` — commenté dans `app/models/auth.py` (bloc `UserPublic`, vérifié cette session) ; `users.tenant_id` déjà lu par `user_service.get_by_id` (`SELECT … tenant_id …`, `app/services/user_service.py:81`, vérifié). L'enrichissement de `UserPublic` + le `JOIN`/lookup du nom de tenant sont **à créer**.
 
 ### Sprint 170 — E4-S5 : endpoint d'agrégation de consommation (`GET /usage`)
 **Objectif** : exposer la consommation agrégée du tenant courant (coût/tokens par skill, par jour, total période) à partir de `usage_events`, pour le futur tableau de bord de facturation.
 **Complexité** : Moyenne.
 **Justification** : rend le metering (Sprint 166) actionnable côté produit et alimente l'UI facturation/quotas (M4) ; prérequis d'une page « Facturation » frontend.
-**Référence** : `usage_events` est **à créer** au Sprint 166 (cf. TÂCHE ci-dessus) ; le pattern d'agrégation par jour/skill existe déjà pour les coûts globaux (`GET /metrics` → `daily_cost`/`skills_cost`, `app/api/endpoints/` — à adapter en version **scopée tenant** via la RLS). L'endpoint `/usage` et son agrégation par tenant sont **à créer**.
+**Référence** : `usage_events` existe (`alembic/versions/0006_usage_events.py`, `app/services/usage_event_service.py`, Sprint 166) ; le pattern d'agrégation par jour/skill existe déjà pour les coûts globaux (`get_metrics` → `daily_cost`/`skills_cost`, `app/orchestrator/core.py:1981` — à adapter en version **scopée tenant** via la RLS d'`usage_events`). L'endpoint `/usage` et son agrégation par tenant sont **à créer**.
+
+### Sprint 171 — E4-S6 : intégration Stripe Billing (abonnements + usage)
+**Objectif** : brancher Stripe (abonnement par plan + facturation à l'usage depuis `usage_events`), webhooks de cycle de vie (souscription, paiement, dunning).
+**Complexité** : Élevée.
+**Justification** : convertit le socle metering+quotas (Sprints 166-167) en revenu réel (B1/B2 du plan directeur) ; dernière marche de M4.
+**Référence** : `usage_events` (Sprint 166) et `plan_limits` (Sprint 167) sont les socles ; toute l'intégration Stripe (SDK, webhooks, mapping plan↔price, `.env` clés Stripe) est **à créer**.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.52.0),
-docs/plan-directeur-fintech-2026.md (§7-§8 E4-S1 + jalon M4), .claude/rules/api-orchestrator.md
-et tests-pyramide.md.
-Sprint actif : 166 — E4-S1 (metering). Créer la migration 0006_usage_events (table append-only
-tenant/skill/workflow/cost_usd/tokens/created_at + index (tenant_id, created_at) + RLS ENABLE/FORCE
-+ policy tenant standard), un UsageEventService append-only best-effort calqué sur AuditLogService,
-et l'émission par-skill depuis l'orchestrateur (au hook record_skill_execution, core.py ~616) —
-un cache hit (cost 0) n'émet rien. Câbler dans le lifespan (app/api/main.py). Étendre la matrice
-RLS et le GRANT CI à usage_events. Best-effort : un échec de metering n'avorte jamais l'analyse.
+Tu es un développeur Python senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.53.0),
+docs/plan-directeur-fintech-2026.md (§7-§8 E4-S2 + jalon M3/M4), .claude/rules/api-architecture.md
+et gotchas-operationnels.md.
+Sprint actif : 167 — E4-S2 (quotas). Créer la migration 0007_plan_limits (table de bornes par plan
++ rattachement tenant→plan ; décider/documenter le périmètre RLS), un QuotaService (résolution plan
+→ bornes, compteur mensuel Redis OU agrégation usage_events, check_and_increment qui lève au
+dépassement — borne DURE, pas best-effort), l'application du quota à /analyze et /analyze/stream
+(429 clair, cache hit ne consomme pas), et la borne max_screener_tickers par tenant sur /screen
+(quota screener reporté de E3-S4). Surfacer le 429 quota côté frontend (toast/bandeau).
 Démarre un Postgres local (recette dans ce fichier ; installer alembic dans .venv) et PROUVE
-l'émission + l'isolation RLS d'usage_events sous rôle NOSUPERUSER.
+le 429 au dépassement + l'autorisation sous quota ; si plan_limits est tenant-scoped sous RLS,
+étendre la matrice (8ᵉ table) + GRANT CI.
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; émission par-skill vérifiée + cache hit = 0 ligne
-+ isolation RLS d'usage_events (lecture isolée + WITH CHECK + fail-closed).
+GATES : pytest (hors e2e/evals) + ruff + mypy app/ + frontend typecheck/Vitest ; 429 au dépassement
+vérifié + sous-quota autorisé + borne screener par tenant.
 ```
