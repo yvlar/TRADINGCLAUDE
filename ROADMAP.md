@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-05 — Sprint 153 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 159 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.45.0 |
+| **Version** | 10.46.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 159 — E2-S2 sortir les `CREATE TABLE` du lifespan |
-| **Dernier sprint complété** | Sprint 158 — E2-S1 socle Alembic (baseline fidèle, upgrade/downgrade validés sur Postgres réel) ✅ |
+| **Sprint actif** | Sprint 160 — E2-S3 `audit_log` append-only |
+| **Dernier sprint complété** | Sprint 159 — E2-S2 le lifespan n'émet plus de DDL (schéma porté par Alembic, boot read-only validé) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -86,6 +86,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 159 — E2-S2 : le lifespan n'émet plus de DDL ✅
+
+**Objectif :** Retirer le DDL inline du lifespan (`app/api/main.py:160-324` — tous les `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN` / `CREATE INDEX`) maintenant qu'Alembic (Sprint 158) porte le schéma. Le boot ne fait plus de DDL ; le schéma est appliqué par `alembic upgrade head`. **Sprint backend + infra, aucun changement de schéma.**
+
+**Livrables :**
+- `app/api/main.py` — bloc de migrations inline supprimé (−165 lignes) ; le lifespan ne crée que le pool asyncpg, zéro `db_pool.execute`. Commentaire : schéma porté par Alembic, appliqué hors du process API.
+- `infra/docker-entrypoint.sh` (nouveau) — `alembic upgrade head` avant uvicorn, gardé par `RUN_MIGRATIONS_ON_BOOT` (défaut `true`) ; `set -e` + `exec "$@"` (PID 1 / signaux préservés).
+- `Dockerfile` — embarque `alembic.ini` + `alembic/` + l'entrypoint (`ENTRYPOINT` → entrypoint, `CMD` → uvicorn).
+- `docker-compose.yml` — le worker fixe `RUN_MIGRATIONS_ON_BOOT=false` (une seule migration concurrente, portée par `copilote`).
+- `infra/postgres/init.sql` — réduit à un commentaire pointant vers Alembic (source de vérité unique ; no-op gardé pour rétrocompat du mount initdb).
+- `.env.example` + `docs/architecture/…` (§6.3 + §7.3) — `RUN_MIGRATIONS_ON_BOOT` documenté ; choix entrypoint expliqué.
+- `tests/api/test_boot_no_ddl.py` (nouveau) — le lifespan ne fait ni `execute` ni `executemany` (zéro DDL au boot) ; liste de skills importée de `conftest` (source unique anti-dérive).
+
+**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → 10 tables ; **boot du lifespan via un rôle EN LECTURE SEULE** (CREATE refusé) → succès, preuve directe du zéro-DDL ; `alembic downgrade base` → schéma supprimé ; re-upgrade idempotent.
+
+**Version** : 10.46.0
+**Tests** : 1 894 backend collectés (1 880 passés, 13 skipped, 1 xfailed — +1 boot no-DDL) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (couverture de schéma vérifiée — chaque table/index/colonne retirée est dans le baseline `0001` ; critère read-only satisfait) ; **qualité** : 3 findings traités (liste de skills consolidée sur `conftest`, commentaire lifespan corrigé, `init.sql` allégé).
+
 ### Sprint 153 — Mutualiser l'extraction source+date des ratios (`_ratios_trace`) ✅
 
 **Objectif :** Condition du sprint conditionnel remplie — le formateur d'affichage `_fmt_ratios_source` était déjà partagé (Sprint 145) et le gate unifié au Sprint 151 ; restait la **triplication de l'extraction source+date** (`_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace`, clones byte-identiques conservés au Sprint 146). **Sprint backend pur.**
@@ -119,18 +137,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.37.0
 **Tests** : +2 backend ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — équivalence comportementale aux deux gates, `TypeGuard` correct, aucune autre duplication (grep), aucun cycle d'import.
-
-### Sprint 150 — Provenance par ratio (repli yfinance) sur l'analyse rendue ✅
-
-**Objectif :** Étendre l'affichage signal-only de la provenance par ratio Graham (clé yfinance de repli — posé sur `AnalyzeForm` au Sprint 141) à l'analyse rendue/rechargée (`AnalysisResult`), en threadant `ratios_provenance` jusqu'à `AnalyzeResponse`. **Sprint backend (threading) + frontend (affichage).**
-
-**Livrables :**
-- `app/orchestrator/core.py` — champ `AnalyzeResponse.ratios_provenance: dict[str,str] | None` peuplé aux 4 sites live via `_request_ratios_traces` et à la reconstruction historique via `reconstruct_ratios_traces` (rétrocompat : champ absent → None ; exclu de la clé de cache).
-- `frontend/src/components/RatiosProvenanceNote.tsx` (nouveau) — logique de repli (`ratiosEnRepli` + clés primaires + badges) **extraite** de `AnalyzeForm` (DRY) et réutilisée par `AnalyzeForm` **et** `AnalysisResult` (testId `result-ratios-provenance`).
-- Tests : +2 backend (threading + reconstruction provenance), +10 Vitest (composant partagé + `ratiosEnRepli` + `AnalysisResult` repli/null/clés primaires).
-
-**Version** : 10.36.0
-**Tests** : 1 806 backend collectés (+2) ; 442 Vitest verts (+10) ; `tsc`/ESLint 0/0 ; `mypy` vert. Revue indépendante à contexte frais : **CLEAN** — 5 chemins de threading vérifiés, gate None correct, la clé de cache exclut bien `ratios_provenance` (`analysis_cache.py:74`), extraction frontend fidèle sans code mort.
 
 ---
 

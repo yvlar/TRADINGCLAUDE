@@ -25,6 +25,9 @@ services:
       # Le mot de passe se propage depuis POSTGRES_PASSWORD (≠ 'copilote' en prod).
       - DATABASE_URL=postgresql://copilote:${POSTGRES_PASSWORD:-copilote}@postgres:5432/copilote
       - REDIS_URL=redis://redis:6379/0
+      # Seul le service `copilote` applique les migrations au boot (entrypoint) ;
+      # le worker partage le même entrypoint mais ne doit pas migrer en parallèle.
+      - RUN_MIGRATIONS_ON_BOOT=false
     depends_on:
       postgres:
         condition: service_healthy

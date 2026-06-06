@@ -10,6 +10,18 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 150 — Provenance par ratio (repli yfinance) sur l'analyse rendue ✅
+
+**Objectif :** Étendre l'affichage signal-only de la provenance par ratio Graham (clé yfinance de repli — posé sur `AnalyzeForm` au Sprint 141) à l'analyse rendue/rechargée (`AnalysisResult`), en threadant `ratios_provenance` jusqu'à `AnalyzeResponse`. **Sprint backend (threading) + frontend (affichage).**
+
+**Livrables :**
+- `app/orchestrator/core.py` — champ `AnalyzeResponse.ratios_provenance: dict[str,str] | None` peuplé aux 4 sites live via `_request_ratios_traces` et à la reconstruction historique via `reconstruct_ratios_traces` (rétrocompat : champ absent → None ; exclu de la clé de cache).
+- `frontend/src/components/RatiosProvenanceNote.tsx` (nouveau) — logique de repli (`ratiosEnRepli` + clés primaires + badges) **extraite** de `AnalyzeForm` (DRY) et réutilisée par `AnalyzeForm` **et** `AnalysisResult` (testId `result-ratios-provenance`).
+- Tests : +2 backend (threading + reconstruction provenance), +10 Vitest (composant partagé + `ratiosEnRepli` + `AnalysisResult` repli/null/clés primaires).
+
+**Version** : 10.36.0
+**Tests** : 1 806 backend collectés (+2) ; 442 Vitest verts (+10) ; `tsc`/ESLint 0/0 ; `mypy` vert. Revue indépendante à contexte frais : **CLEAN** — 5 chemins de threading vérifiés, gate None correct, la clé de cache exclut bien `ratios_provenance` (`analysis_cache.py:74`), extraction frontend fidèle sans code mort.
+
 ### Sprint 149 — Mesure hors-ligne du déterminisme earnings + verrou anti-régression ✅
 
 **Objectif :** Confirmer que la sur-génération de `drapeaux_rouges` (10 échecs golden au Sprint 137) est corrigée maintenant que les 5 cadres d'interprétation sont déterministes (Sloan fermé au Sprint 148). **Blocage environnement assumé** : la mesure *live* exige `ANTHROPIC_API_KEY` (~100 appels Haiku, ~33 min — absente du conteneur web, `tests/evals` exclu du CI). Livrable = la part **mesurable hors-ligne** + verrou de la cause racine.
