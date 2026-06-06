@@ -7,6 +7,8 @@ import asyncpg
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
+from app.models.tenant import LEGACY_TENANT_ID
+
 logger = logging.getLogger(__name__)
 
 # Paramètres argon2 conformes à la spec : temps CPU=2, mémoire=64 Mo, parallélisme=2
@@ -23,18 +25,22 @@ class UserService:
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         self._pool = db_pool
 
-    async def create_user(self, email: str, password: str) -> dict:
-        """Crée un compte utilisateur avec mot de passe haché argon2."""
+    async def create_user(
+        self, email: str, password: str, tenant_id: UUID | None = None
+    ) -> dict:
+        """Crée un compte utilisateur ; à défaut de tenant_id, rattache au tenant legacy."""
         hashed = _ph.hash(password)
+        tenant = tenant_id or LEGACY_TENANT_ID
         try:
             row = await self._pool.fetchrow(
                 """
-                INSERT INTO users (email, hashed_password)
-                VALUES (LOWER($1), $2)
-                RETURNING id, email, role, created_at
+                INSERT INTO users (email, hashed_password, tenant_id)
+                VALUES (LOWER($1), $2, $3)
+                RETURNING id, email, role, tenant_id, created_at
                 """,
                 email,
                 hashed,
+                tenant,
             )
         except asyncpg.UniqueViolationError:
             raise EmailAlreadyExistsError(f"Email déjà utilisé : {email}")
@@ -47,7 +53,7 @@ class UserService:
         Exécute toujours le hash verify pour résister aux attaques par timing.
         """
         row = await self._pool.fetchrow(
-            "SELECT id, email, hashed_password, role, is_active, created_at "
+            "SELECT id, email, hashed_password, role, is_active, tenant_id, created_at "
             "FROM users WHERE email = LOWER($1)",
             email,
         )
@@ -72,7 +78,7 @@ class UserService:
     async def get_by_id(self, user_id: UUID) -> dict | None:
         """Retourne un utilisateur par son UUID ou None s'il est absent."""
         row = await self._pool.fetchrow(
-            "SELECT id, email, role, is_active, created_at FROM users WHERE id = $1",
+            "SELECT id, email, role, is_active, tenant_id, created_at FROM users WHERE id = $1",
             user_id,
         )
         return dict(row) if row else None
