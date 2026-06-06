@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.42.0 |
+| **Version** | 10.43.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 157 — E1-S4 dette crypto JWT (`python-jose` → `PyJWT`) |
-| **Dernier sprint complété** | Sprint 156 — E1-S3 assainissement des logs (redaction secrets/PII) + traceback masqué hors dev ✅ |
+| **Sprint actif** | Sprint 168 — E9-S1 disclaimer inline (P0 tiré en avant) |
+| **Dernier sprint complété** | Sprint 157 — E1-S4 migration `python-jose` → `PyJWT` + CI sécurité (pip-audit/bandit) ✅ — **épic E1 complet (154-157)** |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 

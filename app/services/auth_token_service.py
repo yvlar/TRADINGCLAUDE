@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import asyncpg
+import jwt
 import redis.asyncio as aioredis
-from jose import JWTError, jwt
 
 from app.utils.jwt_secret import resolve_jwt_secret
 
@@ -51,7 +51,7 @@ class AuthTokenService:
         try:
             payload = jwt.decode(token, self._secret, algorithms=[_ALGORITHM])
             return payload
-        except JWTError:
+        except jwt.PyJWTError:
             return None
 
     async def is_jti_blacklisted(self, jti: str) -> bool:
