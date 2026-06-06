@@ -7,7 +7,7 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel
 
-from app.models.tenant import LEGACY_TENANT_ID
+from app.db.tenant_context import resolve_tenant
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,7 @@ class CompositeHistoryService:
     ) -> None:
         """Insère un nouveau point d'historique du composite_score."""
         validated = sanitize_ticker(ticker)
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
-        tenant = tenant_id or LEGACY_TENANT_ID
+        tenant = resolve_tenant(tenant_id)
         await self._db.execute(
             """
             INSERT INTO composite_score_history (ticker, score, label, workflow, tenant_id)

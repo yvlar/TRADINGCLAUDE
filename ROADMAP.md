@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 163 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 164 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.50.0 |
+| **Version** | 10.51.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 164 — E3-S4 threading tenant bout-en-bout (endpoints→services + clé cache préfixée tenant) |
-| **Dernier sprint complété** | Sprint 163 — E3-S3 RLS PostgreSQL (ENABLE/FORCE RLS + policy `tenant_id = current_setting` + WITH CHECK sur les 6 tables, GUC `app.tenant_id` câblé au pool) ✅ |
+| **Sprint actif** | Sprint 165 — E3-S5 preuve d'isolation rouge→vert (matrice cross-tenant sur les 6 tables + revue OWASP de la policy RLS) |
+| **Dernier sprint complété** | Sprint 164 — E3-S4 threading tenant bout-en-bout (ContextVar résolu par middleware → GUC RLS + colonne `tenant_id` + clé cache préfixée tenant ; tenant authentifié threadé via claim JWT) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -88,6 +88,25 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 164 — E3-S4 : threading tenant bout-en-bout ✅
+
+**Objectif :** Faire circuler le tenant **authentifié** depuis l'entrée de requête jusqu'aux écritures DB et au cache Redis, pour que l'isolation RLS (Sprint 163) protège les **vrais** tenants — plus seulement le palier legacy. 4ᵉ marche de l'épic E3.
+
+**Décision d'architecture — source unique `ContextVar` :** un seul `ContextVar` `current_tenant` (`app/db/tenant_context.py`) alimente **à la fois** le GUC RLS (couche DB) **et** la colonne applicative `tenant_id` (les 6 sites d'écriture défaultent à `tenant_id or get_current_tenant()`). La colonne écrite égale donc toujours le GUC → le `WITH CHECK` des policies est satisfait par construction, sans threading profond de la pile d'appels (≈15 niveaux) ni risque de divergence à deux sources sous RLS.
+
+**Livrables :**
+- `app/middleware/tenant.py` (nouveau) — `TenantContextMiddleware`, **ASGI pur** (pas `BaseHTTPMiddleware`) monté en couche la plus interne : lit `scope["state"]["tenant_id"]` (posé par `BearerTokenMiddleware`), `set`/`reset` du ContextVar dans la **même tâche** que l'endpoint → propagation fiable aux acquisitions de connexion, reset en `finally` (zéro fuite inter-requêtes sous concurrence). Défaut legacy : requêtes non authentifiées / clés API / chemins exemptés.
+- `app/db/tenant_context.py` — `ContextVar` + `get/set/reset_current_tenant` ; `apply_tenant_context` (setup du pool, rejoué à chaque acquire) lit désormais `get_current_tenant()` au lieu de la constante figée. `set_current_tenant` fail-safe : claim absent/malformé → legacy.
+- **Claim JWT `tenant_id`** : `auth_token_service.create_access_token` porte le tenant (optionnel — token sans claim → legacy en aval) ; threadé depuis `user.tenant_id` aux 3 sites (register/login/refresh). `BearerTokenMiddleware` expose `request.state.tenant_id`.
+- **6 sites d'écriture** (`core.py::_persist` + `watchlist`/`annotation`/`esg_history`/`composite_history`/`alert_history`) : défaut `tenant_id or get_current_tenant()`.
+- **Cache Redis préfixé tenant** : `analysis_cache._cache_key` → `analysis:{tenant}:{ticker}:{workflow}:{hash}` ; `invalidate()` ciblé sur le tenant courant — un tenant ne sert jamais l'analyse cachée d'un autre.
+- **Quotas screener par tenant (M3)** : **différés à un sprint E4 dédié** (hors périmètre du threading — décision de cadrage).
+
+**Validation runtime (Postgres 16 local + rôle NOSUPERUSER `rls_tester`)** : preuve d'isolation de **deux tenants réels** via le chemin réel du sprint (`set_current_tenant` → `apply_tenant_context` setup du pool → GUC → RLS), pas le GUC constant legacy — A n'écrit/ne lit que A, B que B. Non-régression du `ContextVar` sous concurrence (`asyncio.gather` de deux tenants) ; cache : deux tenants, même ticker/workflow/ratios → 2 clés, aucun hit croisé ; rétrocompat non-auth/worker → legacy.
+
+**Version** : 10.51.0
+**Tests** : 2 058 backend collectés (2 042 passés, 15 skipped [+1 : isolation threading runtime, skippée hors PG migré], 1 xfailed — +19 : ContextVar set/reset/concurrence + valeur invalide, `apply_tenant_context` tenant courant, middleware ASGI [résolution scope/legacy/reset-on-raise/passthrough], claim JWT présent/absent, threading write-site sans param, isolation cache cross-tenant + non-hit croisé, isolation runtime 2 tenants réels) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché — seul `_persist` côté écriture DB).
+
 ### Sprint 163 — E3-S3 : Row-Level Security PostgreSQL sur les 6 tables métier ✅
 
 **Objectif :** Poser l'**isolation au niveau base** — `ENABLE ROW LEVEL SECURITY` + policy `tenant_id = current_setting('app.tenant_id')` sur les 6 tables métier, et injecter le GUC `app.tenant_id` par connexion au pool. Le mécanisme RLS + son câblage de contexte ; la matrice d'isolation exhaustive 6 tables relève d'E3-S5. 3ᵉ marche de l'épic E3.
@@ -132,22 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.48.0
 **Tests** : 1 951 backend collectés (1 937 passés, 13 skipped, 1 xfailed — +17 : forme/chaînage/ordre de migration, parité littéraux↔constantes, `create_user` legacy/explicite/dict) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, ordre backfill-avant-NOT-NULL, downgrade ordre FK inverse, binding asyncpg `uuid.UUID`, `RETURNING` rétrocompatible) ; **qualité** : 2 findings traités (modèle Pydantic `Tenant` mort retiré ; constantes slug/name verrouillées par test au lieu de rester orphelines), 3 écartés (triplication `_execute_each`/`_load` = artefacts figés hors périmètre ; FK `ON DELETE` = décision délibérée E3-S2/S3).
-
-### Sprint 160 — E2-S3 : journal d'audit `audit_log` append-only ✅
-
-**Objectif :** Créer une table `audit_log` append-only et y tracer chaque mutation métier (watchlist, annotation, clé API), consultable par un admin. Prérequis conformité Loi 25 (traçabilité des accès/modifications). Clôt l'épic E2.
-
-**Livrables :**
-- `alembic/versions/0002_audit_log.py` (nouveau) — révision chaînée après `0001_baseline` : table `audit_log(id, tenant_id UUID NULL, user_id UUID NULL, action, cible_type, cible_id, metadata JSONB, created_at)` + index `(created_at DESC)` et `(cible_type, cible_id)`. `tenant_id` nullable en **forward-compat E3** (pas de table `tenants` ici) ; `user_id` sans FK (l'audit survit à la suppression d'un compte ; mutations clé API sans utilisateur).
-- `app/services/audit_log_service.py` (nouveau) — `AuditLogService` append-only : `record(...)` (INSERT pur, aucun UPDATE/DELETE) + `list_recent(limit)` (tri `created_at DESC`). Helper `record_audit_safe(audit, …)` — traçage **best-effort** : un échec d'audit n'avorte jamais la mutation métier (log + continue).
-- Traçage aux 3 sites de mutation (best-effort) : `watchlist_service.py` (`add_entry`/`delete_entry`), `annotation_service.py` (`upsert`), `api_key_service.py` (`create_key`/`revoke_key`) — `audit_log` injecté en kwarg optionnel (rétrocompat des constructeurs existants : workers/tests inchangés).
-- `app/api/endpoints/admin.py` — `GET /admin/audit-log?limit=50` (admin only via `_require_admin`, 401/403 non-admin).
-- `app/api/main.py` — `AuditLogService` instancié dans le lifespan et injecté aux 3 services + exposé sur `app.state`.
-
-**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → table `audit_log` + 2 index présents ; `downgrade base` → table supprimée ; re-`upgrade head` idempotent (couvert aussi par le job CI `migrations`).
-
-**Version** : 10.47.0
-**Tests** : 1 934 backend collectés (1 920 passés, 13 skipped, 1 xfailed — +40 : service append-only, traçage 3 sites + best-effort, endpoint admin 200/401/403/422, forme de migration) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (binding asyncpg `$n::uuid` NULL-safe, sérialisation JSONB, contrat append-only, garantie best-effort vérifiée, aucune régression de constructeur) ; **qualité** : 1 finding traité (test d'introspection source `getsource` retiré — fragile, redondant avec le test de contrat `dir()`).
 
 ---
 

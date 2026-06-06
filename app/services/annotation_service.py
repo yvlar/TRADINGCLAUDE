@@ -5,8 +5,8 @@ from uuid import UUID
 
 import asyncpg
 
+from app.db.tenant_context import resolve_tenant
 from app.models.annotation import Annotation
-from app.models.tenant import LEGACY_TENANT_ID
 from app.services.audit_log_service import AuditLogService, record_audit_safe
 
 logger = logging.getLogger(__name__)
@@ -29,9 +29,8 @@ class AnnotationService:
         tenant_id: UUID | None = None,
     ) -> Annotation:
         """Crée ou remplace l'annotation (note + tags) pour un analysis_id donné."""
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4). Le tenant n'est
-        # posé qu'à l'INSERT : ré-annoter ne déplace pas une annotation de tenant.
-        tenant = tenant_id or LEGACY_TENANT_ID
+        # Tenant posé à l'INSERT seulement : ré-annoter ne déplace pas une annotation de tenant.
+        tenant = resolve_tenant(tenant_id)
         row = await self._db.fetchrow(
             """
             INSERT INTO annotations (analysis_id, note, tags, tenant_id)

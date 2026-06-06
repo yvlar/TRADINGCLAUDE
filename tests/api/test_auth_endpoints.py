@@ -19,6 +19,7 @@ def _make_user(email: str = "test@test.com", role: str = "reader") -> dict:
         "email": email,
         "role": role,
         "is_active": True,
+        "tenant_id": uuid.uuid4(),  # présent depuis Sprint 161 (RETURNING/SELECT)
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "hashed_password": "$argon2id$v=19$m=65536,t=2,p=2$hash$hash",
     }

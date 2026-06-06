@@ -6,7 +6,7 @@ from uuid import UUID
 
 import asyncpg
 
-from app.models.tenant import LEGACY_TENANT_ID
+from app.db.tenant_context import resolve_tenant
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
 from app.services.audit_log_service import AuditLogService, record_audit_safe
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
@@ -53,8 +53,7 @@ class WatchlistService:
                 f"Ticker {ticker} déjà présent dans la watchlist pour ce workflow"
             )
         ratios_json = create.ratios.model_dump_json() if create.ratios else None
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
-        tenant = tenant_id or LEGACY_TENANT_ID
+        tenant = resolve_tenant(tenant_id)
         try:
             row = await self._db.fetchrow(
                 f"""

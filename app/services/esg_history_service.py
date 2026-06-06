@@ -13,7 +13,7 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel
 
-from app.models.tenant import LEGACY_TENANT_ID
+from app.db.tenant_context import resolve_tenant
 from app.utils.esg_utils import esg_verdict
 from app.utils.ticker_sanitizer import sanitize_ticker
 
@@ -46,8 +46,7 @@ class EsgHistoryService:
         """
         validated = sanitize_ticker(ticker)
         verdict = esg_verdict(score)
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
-        tenant = tenant_id or LEGACY_TENANT_ID
+        tenant = resolve_tenant(tenant_id)
         await self._db.execute(
             """
             INSERT INTO esg_score_history (ticker, score, verdict, tenant_id)
