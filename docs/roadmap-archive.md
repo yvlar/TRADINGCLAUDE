@@ -10,6 +10,18 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 151 — Prédicat partagé `has_ratios_source` (consolidation reuse) ✅
+
+**Objectif :** Le gate « ratio possède une source OU une date » était dupliqué aux deux sites de rendu PDF (`pdf_report_service.py:246` Graham et `:261` earnings/valuation — finding *reuse* écarté au Sprint 145, désormais répété). L'extraire dans un helper partagé. **Sprint backend pur** (gate frontend déjà unifié dans `RatiosSourceNote`).
+
+**Livrables :**
+- `app/services/ratios_recon.py` — helper `has_ratios_source(ratios) -> TypeGuard[...]` (union-typé Graham/earnings/valuation, `None` → False). `TypeGuard` pour restreindre l'objet en non-None au site d'appel (accès `ratios_source`/`ratios_fetched_at`).
+- `app/services/pdf_report_service.py` — les deux gates remplacés par `has_ratios_source(r)`. Sortie PDF inchangée.
+- Tests : +2 (table de vérité source/date/both/neither/None + transverse aux 3 schémas).
+
+**Version** : 10.37.0
+**Tests** : +2 backend ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — équivalence comportementale aux deux gates, `TypeGuard` correct, aucune autre duplication (grep), aucun cycle d'import.
+
 ### Sprint 150 — Provenance par ratio (repli yfinance) sur l'analyse rendue ✅
 
 **Objectif :** Étendre l'affichage signal-only de la provenance par ratio Graham (clé yfinance de repli — posé sur `AnalyzeForm` au Sprint 141) à l'analyse rendue/rechargée (`AnalysisResult`), en threadant `ratios_provenance` jusqu'à `AnalyzeResponse`. **Sprint backend (threading) + frontend (affichage).**

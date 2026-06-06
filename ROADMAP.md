@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 159 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 160 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.46.0 |
+| **Version** | 10.47.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 160 — E2-S3 `audit_log` append-only |
-| **Dernier sprint complété** | Sprint 159 — E2-S2 le lifespan n'émet plus de DDL (schéma porté par Alembic, boot read-only validé) ✅ |
+| **Sprint actif** | Sprint 161 — E3 multi-tenance + RLS |
+| **Dernier sprint complété** | Sprint 160 — E2-S3 `audit_log` append-only (journal de mutations, conformité Loi 25) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -47,6 +47,7 @@
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
 - `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
+- `GET /admin/audit-log?limit=50` — journal d'audit append-only des mutations métier (watchlist, annotation, clé API), admin only (Sprint 160 — traçage best-effort côté service via `AuditLogService.record`, table `audit_log` posée par Alembic, `tenant_id` nullable en forward-compat E3)
 - `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63) ; **paramètre `analysis_id` optionnel (Sprint 122)** : cible une analyse précise (404 si absente/ticker différent), reconstruction multi-skills (16 outputs tier2, skill corrompu ignoré) + PDF enrichi (verdicts skill par skill, ratios clés, annotation, score ESG) ; sans `analysis_id` = comportement inchangé (rétrocompatible) ; **bloc « Sources des ratios complémentaires »** rendu via `_fmt_ratios_source` quand les ratios earnings/valuation reconstruits (Sprint 144) portent une source+date, ligne omise sinon — parité Graham (Sprint 145)
 - Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
 - RAG Qdrant activé si `OPENAI_API_KEY` présente (collection `investment_knowledge`)
@@ -85,6 +86,22 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 160 — E2-S3 : journal d'audit `audit_log` append-only ✅
+
+**Objectif :** Créer une table `audit_log` append-only et y tracer chaque mutation métier (watchlist, annotation, clé API), consultable par un admin. Prérequis conformité Loi 25 (traçabilité des accès/modifications). Clôt l'épic E2.
+
+**Livrables :**
+- `alembic/versions/0002_audit_log.py` (nouveau) — révision chaînée après `0001_baseline` : table `audit_log(id, tenant_id UUID NULL, user_id UUID NULL, action, cible_type, cible_id, metadata JSONB, created_at)` + index `(created_at DESC)` et `(cible_type, cible_id)`. `tenant_id` nullable en **forward-compat E3** (pas de table `tenants` ici) ; `user_id` sans FK (l'audit survit à la suppression d'un compte ; mutations clé API sans utilisateur).
+- `app/services/audit_log_service.py` (nouveau) — `AuditLogService` append-only : `record(...)` (INSERT pur, aucun UPDATE/DELETE) + `list_recent(limit)` (tri `created_at DESC`). Helper `record_audit_safe(audit, …)` — traçage **best-effort** : un échec d'audit n'avorte jamais la mutation métier (log + continue).
+- Traçage aux 3 sites de mutation (best-effort) : `watchlist_service.py` (`add_entry`/`delete_entry`), `annotation_service.py` (`upsert`), `api_key_service.py` (`create_key`/`revoke_key`) — `audit_log` injecté en kwarg optionnel (rétrocompat des constructeurs existants : workers/tests inchangés).
+- `app/api/endpoints/admin.py` — `GET /admin/audit-log?limit=50` (admin only via `_require_admin`, 401/403 non-admin).
+- `app/api/main.py` — `AuditLogService` instancié dans le lifespan et injecté aux 3 services + exposé sur `app.state`.
+
+**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → table `audit_log` + 2 index présents ; `downgrade base` → table supprimée ; re-`upgrade head` idempotent (couvert aussi par le job CI `migrations`).
+
+**Version** : 10.47.0
+**Tests** : 1 934 backend collectés (1 920 passés, 13 skipped, 1 xfailed — +40 : service append-only, traçage 3 sites + best-effort, endpoint admin 200/401/403/422, forme de migration) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (binding asyncpg `$n::uuid` NULL-safe, sérialisation JSONB, contrat append-only, garantie best-effort vérifiée, aucune régression de constructeur) ; **qualité** : 1 finding traité (test d'introspection source `getsource` retiré — fragile, redondant avec le test de contrat `dir()`).
 
 ### Sprint 159 — E2-S2 : le lifespan n'émet plus de DDL ✅
 
@@ -125,18 +142,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.38.0
 **Tests** : +2 backend ; `ruff` vert ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — les deux tests passent pour les bonnes raisons (500 issu du `ValueError` intentionnel vérifié par spy sur `sanitized_http_500` ; 200 = vrai PDF de bout en bout), aucune pollution (fixture `client` function-scoped réinitialise `db_pool`).
-
-### Sprint 151 — Prédicat partagé `has_ratios_source` (consolidation reuse) ✅
-
-**Objectif :** Le gate « ratio possède une source OU une date » était dupliqué aux deux sites de rendu PDF (`pdf_report_service.py:246` Graham et `:261` earnings/valuation — finding *reuse* écarté au Sprint 145, désormais répété). L'extraire dans un helper partagé. **Sprint backend pur** (gate frontend déjà unifié dans `RatiosSourceNote`).
-
-**Livrables :**
-- `app/services/ratios_recon.py` — helper `has_ratios_source(ratios) -> TypeGuard[...]` (union-typé Graham/earnings/valuation, `None` → False). `TypeGuard` pour restreindre l'objet en non-None au site d'appel (accès `ratios_source`/`ratios_fetched_at`).
-- `app/services/pdf_report_service.py` — les deux gates remplacés par `has_ratios_source(r)`. Sortie PDF inchangée.
-- Tests : +2 (table de vérité source/date/both/neither/None + transverse aux 3 schémas).
-
-**Version** : 10.37.0
-**Tests** : +2 backend ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — équivalence comportementale aux deux gates, `TypeGuard` correct, aucune autre duplication (grep), aucun cycle d'import.
 
 ---
 

@@ -10,6 +10,8 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel
 
+from app.services.audit_log_service import AuditLogService, record_audit_safe
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,8 +26,11 @@ class ApiKeyRecord(BaseModel):
 
 
 class ApiKeyService:
-    def __init__(self, db_pool: asyncpg.Pool) -> None:
+    def __init__(
+        self, db_pool: asyncpg.Pool, audit_log: AuditLogService | None = None
+    ) -> None:
         self._pool = db_pool
+        self._audit = audit_log
 
     @staticmethod
     def _hash(token: str) -> str:
@@ -81,7 +86,15 @@ class ApiKeyService:
             role,
             expires_at,
         )
-        return token, self._row_to_record(row)
+        record = self._row_to_record(row)
+        await record_audit_safe(
+            self._audit,
+            "api_key.create",
+            "api_key",
+            str(record.id),
+            metadata={"name": record.name, "role": record.role},
+        )
+        return token, record
 
     async def list_keys(self) -> list[ApiKeyRecord]:
         rows = await self._pool.fetch(
@@ -95,7 +108,12 @@ class ApiKeyService:
             "UPDATE api_keys SET active = FALSE WHERE id = $1",
             key_id,
         )
-        return result == "UPDATE 1"
+        revoked = result == "UPDATE 1"
+        if revoked:
+            await record_audit_safe(
+                self._audit, "api_key.revoke", "api_key", str(key_id)
+            )
+        return revoked
 
     async def record_usage(self, key_id: UUID) -> None:
         await self._pool.execute(

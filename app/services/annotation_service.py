@@ -5,6 +5,7 @@ import logging
 import asyncpg
 
 from app.models.annotation import Annotation
+from app.services.audit_log_service import AuditLogService, record_audit_safe
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +13,11 @@ logger = logging.getLogger(__name__)
 class AnnotationService:
     """CRUD sur la table annotations PostgreSQL — une note par analysis_id."""
 
-    def __init__(self, db_pool: asyncpg.Pool) -> None:
+    def __init__(
+        self, db_pool: asyncpg.Pool, audit_log: AuditLogService | None = None
+    ) -> None:
         self._db = db_pool
+        self._audit = audit_log
 
     async def upsert(self, analysis_id: str, note: str, tags: list[str] | None = None) -> Annotation:
         """Crée ou remplace l'annotation (note + tags) pour un analysis_id donné."""
@@ -37,7 +41,15 @@ class AnnotationService:
             note,
             tags or [],
         )
-        return _row_to_annotation(row)
+        annotation = _row_to_annotation(row)
+        await record_audit_safe(
+            self._audit,
+            "annotation.upsert",
+            "annotation",
+            annotation.analysis_id,
+            metadata={"tags": annotation.tags},
+        )
+        return annotation
 
     async def get(self, analysis_id: str) -> Annotation | None:
         """Retourne l'annotation d'une analyse ou None si absente."""
