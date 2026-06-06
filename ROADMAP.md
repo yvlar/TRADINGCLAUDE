@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.39.0 |
-| **Phase active** | Phase 3 — Pipeline de synthèse |
-| **Sprint actif** | Sprint 154 — Sécurité fail-closed (E1-S1 · piste transformation B2B/SaaS — voir `prompt-mise-a-jour-roadmap.md`) |
-| **Dernier sprint complété** | Sprint 153 — Mutualiser l'extraction source+date des ratios (`_ratios_trace`) ✅ |
+| **Version** | 10.40.0 |
+| **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
+| **Sprint actif** | Sprint 155 — E1-S2 durcir l'identité de requête + brute-force |
+| **Dernier sprint complété** | Sprint 154 — Sécurité fail-closed : CSRF/CORS/timing-safe + Bearer/admin fail-closed (E1-S1) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 

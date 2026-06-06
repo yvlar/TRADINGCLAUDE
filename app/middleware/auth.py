@@ -9,6 +9,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.utils.env import is_dev_environment
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,7 +20,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
 
     Priorité de validation :
     1. Paths exempts → pass-through immédiat.
-    2. Mode dev (API_KEY vide) → bypass total.
+    2. Dev/test sans API_KEY → bypass total (en prod, l'absence de clé n'ouvre rien).
     3. Authorization: Bearer → validation via ApiKeyService (table api_keys) ou clé env.
     4. Cookie access_token → validation JWT via AuthTokenService (web users).
     5. Aucun des deux → 401.
@@ -50,8 +52,10 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         if any(request.url.path.startswith(p) for p in self.EXEMPT_PREFIXES):
             return await call_next(request)
 
-        # Mode dev : API_KEY vide → bypass total (aucune auth configurée)
-        if not self._api_key:
+        # Dev/test sans clé configurée : bypass total. En production, l'absence
+        # d'API_KEY ne désarme PAS l'auth (fail-closed) — on retombe sur la
+        # validation du cookie JWT, sinon 401.
+        if not self._api_key and is_dev_environment():
             return await call_next(request)
 
         auth = request.headers.get("Authorization", "")

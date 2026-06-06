@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import hmac
 import logging
-import os
 from typing import ClassVar
 
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from app.utils.env import is_dev_environment
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +63,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.headers.get("Authorization", "").startswith("Bearer "):
             return await call_next(request)
 
-        # Dev mode : API_KEY vide → bypass (cohérent avec BearerTokenMiddleware)
-        if not os.environ.get("API_KEY", ""):
+        # Dev/test uniquement : bypass CSRF. En production, la protection s'applique
+        # même si API_KEY est vide (fail-closed) — une variable oubliée ne désarme rien.
+        if is_dev_environment():
             return await call_next(request)
 
         csrf_cookie = request.cookies.get("csrf_token", "")
@@ -74,7 +77,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 status_code=403,
             )
 
-        if csrf_cookie != csrf_header:
+        # Comparaison à temps constant : évite une oracle de timing sur le token.
+        if not hmac.compare_digest(csrf_cookie, csrf_header):
             logger.warning("Tentative CSRF détectée sur %s", request.url.path)
             return JSONResponse(
                 {"detail": "Token CSRF invalide"},

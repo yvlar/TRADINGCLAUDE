@@ -121,7 +121,33 @@ async def test_healthz_exempt_sans_token():
 
 
 async def test_metrics_exempt_sans_token():
-    """/metrics n'est pas dans EXEMPT_PATHS, mais sans API_KEY (vide) → auth désactivée."""
+    """/metrics n'est pas dans EXEMPT_PATHS, mais sans API_KEY (vide) en dev → auth désactivée."""
+    auth_app = _make_auth_app(api_key="")
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_app), base_url="http://test"
+    ) as c:
+        r = await c.get("/metrics")
+    assert r.status_code == 200
+
+
+async def test_apikey_vide_en_prod_enforce_401(monkeypatch: pytest.MonkeyPatch):
+    """Fail-closed : en production, une API_KEY vide ne désarme PAS l'auth.
+
+    Avant le fix : bypass total (200). Après : on retombe sur la validation cookie
+    JWT, absente ici → 401.
+    """
+    monkeypatch.setenv("APP_ENV", "production")
+    auth_app = _make_auth_app(api_key="")
+    async with AsyncClient(
+        transport=ASGITransport(app=auth_app), base_url="http://test"
+    ) as c:
+        r = await c.get("/metrics")
+    assert r.status_code == 401
+
+
+async def test_apikey_vide_en_dev_bypass_200(monkeypatch: pytest.MonkeyPatch):
+    """En dev explicite, le bypass sur API_KEY vide est conservé (rétrocompat)."""
+    monkeypatch.setenv("APP_ENV", "dev")
     auth_app = _make_auth_app(api_key="")
     async with AsyncClient(
         transport=ASGITransport(app=auth_app), base_url="http://test"

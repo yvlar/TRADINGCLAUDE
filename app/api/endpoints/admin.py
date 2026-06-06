@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.services.api_key_service import ApiKeyRecord, ApiKeyService
+from app.utils.env import is_dev_environment
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,13 @@ def _require_admin(request: Request) -> ApiKeyRecord | None:
     """Vérifie que la requête est authentifiée avec un rôle admin ou la clé env."""
     api_key_service = getattr(request.app.state, "api_key_service", None)
 
-    # Mode dev complet : aucune clé env ET aucun service DB → bypass admin check
-    if not os.environ.get("API_KEY", "") and api_key_service is None:
+    # Dev/test uniquement : aucune clé env ET aucun service DB → bypass admin check.
+    # En production, l'absence de configuration ne désarme PAS le contrôle (fail-closed).
+    if (
+        not os.environ.get("API_KEY", "")
+        and api_key_service is None
+        and is_dev_environment()
+    ):
         return None
 
     try:
