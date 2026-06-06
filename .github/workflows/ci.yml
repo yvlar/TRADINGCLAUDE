@@ -149,7 +149,7 @@ jobs:
         run: bandit -r app/ -ll --skip B608
 
   migrations:
-    name: Migrations — Alembic
+    name: Migrations — Alembic + RLS
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -171,9 +171,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
 
-      - name: Installer Alembic + driver async
-        run: pip install "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0" "asyncpg>=0.31.0"
+      - name: Installer les dépendances (CI) + Alembic
+        run: pip install -r requirements-ci.txt "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0"
 
       - name: upgrade → downgrade → upgrade (idempotence)
         env:
@@ -183,6 +185,28 @@ jobs:
           alembic downgrade base
           alembic upgrade head
           alembic current
+
+      # Prouve la RLS (E3-S3) dans le gate : la migration laisse le schéma à head ;
+      # on crée un rôle NOSUPERUSER (un superuser contournerait la RLS) puis on exécute
+      # le test d'isolation cross-tenant rouge→vert contre ce rôle.
+      - name: Créer un rôle NOSUPERUSER pour la preuve d'isolation
+        run: |
+          python - <<'PY'
+          import asyncio, asyncpg
+          async def main():
+              c = await asyncpg.connect("postgresql://copilote:copilote@localhost:5432/copilote")
+              await c.execute("DROP ROLE IF EXISTS rls_tester")
+              await c.execute("CREATE ROLE rls_tester LOGIN NOSUPERUSER PASSWORD 'rls_tester'")
+              await c.execute("GRANT USAGE ON SCHEMA public TO rls_tester")
+              await c.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON watchlist, tenants TO rls_tester")
+              await c.close()
+          asyncio.run(main())
+          PY
+
+      - name: Isolation RLS cross-tenant (rôle NOSUPERUSER)
+        env:
+          RLS_TEST_DATABASE_URL: postgresql://rls_tester:rls_tester@localhost:5432/copilote
+        run: pytest tests/integration/test_rls_isolation.py -m integration -q --tb=short
 
   test-e2e:
     name: E2E — Playwright

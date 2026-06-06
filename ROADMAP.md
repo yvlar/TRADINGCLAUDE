@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 162 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 163 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.49.0 |
+| **Version** | 10.50.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 163 — E3-S3 RLS PostgreSQL (policy `tenant_id = current_setting`) |
-| **Dernier sprint complété** | Sprint 162 — E3-S2 rattacher les 6 tables métier au tenant (`tenant_id NOT NULL` + index + backfill legacy) ✅ |
+| **Sprint actif** | Sprint 164 — E3-S4 threading tenant bout-en-bout (endpoints→services + clé cache préfixée tenant) |
+| **Dernier sprint complété** | Sprint 163 — E3-S3 RLS PostgreSQL (ENABLE/FORCE RLS + policy `tenant_id = current_setting` + WITH CHECK sur les 6 tables, GUC `app.tenant_id` câblé au pool) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -55,6 +55,7 @@
 - Retry exponentiel sur erreurs 429/529 (`app/utils/retry.py`)
 - Prompt caching activé sur tous les system prompts
 - **Sécurité auth durcie (Sprint 125)** — secret JWT fail-fast (`RuntimeError` au boot hors dev/test si `JWT_SECRET_KEY` absent), blacklist JTI fail-closed (panne Redis → token refusé), réponses 500 assainies (body générique + `correlation_id`, `str(exc)` jamais exposé — global handler + tous les endpoints + flux SSE), CORS durci (`CORS_ORIGINS` CSV via env, méthodes explicites)
+- **Isolation RLS multi-tenant (Sprint 163)** — Row-Level Security PostgreSQL active (`ENABLE` + `FORCE`) sur les 6 tables métier avec policy `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK) ; GUC `app.tenant_id` posé par connexion au pool asyncpg (`app/db/tenant_context.py`, défaut `LEGACY_TENANT_ID` tant que le threading n'est pas câblé — E3-S4). Fail-closed : sans contexte tenant, 0 ligne visible. Isolation cross-tenant prouvée en CI (rôle NOSUPERUSER)
 
 #### Frontend React (localhost:5173) — 11 pages + auth
 - SPA React 18 + TypeScript strict, Vite (proxy → :8000), Tailwind 4, shell pleine largeur `max-w-shell`, design tokens sémantiques, animations + skeletons, palette de commandes ⌘K
@@ -86,6 +87,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 163 — E3-S3 : Row-Level Security PostgreSQL sur les 6 tables métier ✅
+
+**Objectif :** Poser l'**isolation au niveau base** — `ENABLE ROW LEVEL SECURITY` + policy `tenant_id = current_setting('app.tenant_id')` sur les 6 tables métier, et injecter le GUC `app.tenant_id` par connexion au pool. Le mécanisme RLS + son câblage de contexte ; la matrice d'isolation exhaustive 6 tables relève d'E3-S5. 3ᵉ marche de l'épic E3.
+
+**Livrables :**
+- `alembic/versions/0005_business_rls.py` (nouveau) — révision chaînée après `0004_business_tenant_id`. Pour les 6 tables : `ENABLE` + `FORCE ROW LEVEL SECURITY` + `CREATE POLICY <table>_tenant_isolation` (USING + WITH CHECK sur `NULLIF(current_setting('app.tenant_id', true), '')::uuid`). DDL bâti par template sur le tuple `_TABLES` (réutilise le pattern Sprint 162). Downgrade : `DROP POLICY` + `NO FORCE` + `DISABLE`, idempotent.
+- **Décisions documentées** : (1) **fail-closed** — GUC absent/vide → `NULL::uuid` → 0 ligne visible (le `NULLIF` neutralise aussi la chaîne vide qui sinon lèverait `22P02`) ; (2) **WITH CHECK** — un tenant ne peut pas écrire la ligne d'un autre ; (3) **FORCE RLS** — le propriétaire de table est lui aussi soumis (défense en profondeur + isolation prouvable en local via rôle NOSUPERUSER).
+- `app/db/tenant_context.py` (nouveau) — `apply_tenant_context(conn)` posé comme `setup=` du pool asyncpg : `set_config('app.tenant_id', LEGACY_TENANT_ID, false)` (portée session) à chaque acquisition. Câblé au pool API (`app/api/main.py`) **et aux 7 pools workers** (`app/workers/tasks.py`) — sous `FORCE` RLS, un pool sans GUC verrait 0 ligne et ses INSERT échoueraient au `WITH CHECK`. Palier E3-S3 : tout le monde est « legacy » jusqu'au threading (E3-S4).
+- **Périmètre** : RLS + policy + câblage GUC + tests. PAS de threading `current_user`/tenant (E3-S4), PAS de clé cache préfixée tenant (E3-S4), PAS de quotas (E4).
+
+**Validation runtime (Postgres 16 local + gate CI)** : `upgrade head` → `rowsecurity = true` + `forcerowsecurity = true` + une policy ALL (USING+WITH CHECK) par table ; `downgrade` → policies retirées + RLS désactivée ; re-`upgrade` idempotent ; cycle `downgrade base → upgrade head` vert. **Isolation cross-tenant prouvée** (rôle **NOSUPERUSER**) : `SET app.tenant_id = A` ne voit que A, bascule B → seulement B, GUC vide → 0 ligne, INSERT cross-tenant refusé par `WITH CHECK`. Le job CI `migrations` crée un rôle NOSUPERUSER et exécute ce test d'isolation — l'isolation est un gate, pas seulement une preuve locale.
+
+**Version** : 10.50.0
+**Tests** : 2 039 backend collectés (2 024 passés, 14 skipped [+1 : isolation runtime, skippée hors PG migré], 1 xfailed — +37 : forme de migration RLS paramétrée sur 6 tables [ENABLE/FORCE/policy USING+WITH CHECK/prédicat fail-closed NULLIF/downgrade], unitaires du câblage GUC, isolation cross-tenant runtime) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (fail-closed sain — absent/vide → NULL, pas d'erreur de cast ; policy ALL couvre SELECT/INSERT/UPDATE/DELETE sans échappatoire DELETE ; les 8 pools routent par `apply_tenant_context`, aucun site DB des 6 tables ne le contourne ; `setup` correct pour le reset par-acquisition qu'exigera E3-S4 ; CI prouve l'isolation) — 2 findings traités (isolation câblée en gate CI via rôle NOSUPERUSER ; test de forme verrouille le prédicat dans USING **et** WITH CHECK) ; **qualité** : factory de pool partagée délibérément différée à E3-S4 (où `setup` portera une vraie logique per-requête ; fail-closed backstoppe un pool oublié), `app/db/` retenu comme home (callback connexion, pas middleware ASGI), 2 tests redondants retirés.
 
 ### Sprint 162 — E3-S2 : rattacher les 6 tables métier au tenant ✅
 
@@ -132,24 +148,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.47.0
 **Tests** : 1 934 backend collectés (1 920 passés, 13 skipped, 1 xfailed — +40 : service append-only, traçage 3 sites + best-effort, endpoint admin 200/401/403/422, forme de migration) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (binding asyncpg `$n::uuid` NULL-safe, sérialisation JSONB, contrat append-only, garantie best-effort vérifiée, aucune régression de constructeur) ; **qualité** : 1 finding traité (test d'introspection source `getsource` retiré — fragile, redondant avec le test de contrat `dir()`).
-
-### Sprint 159 — E2-S2 : le lifespan n'émet plus de DDL ✅
-
-**Objectif :** Retirer le DDL inline du lifespan (`app/api/main.py:160-324` — tous les `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN` / `CREATE INDEX`) maintenant qu'Alembic (Sprint 158) porte le schéma. Le boot ne fait plus de DDL ; le schéma est appliqué par `alembic upgrade head`. **Sprint backend + infra, aucun changement de schéma.**
-
-**Livrables :**
-- `app/api/main.py` — bloc de migrations inline supprimé (−165 lignes) ; le lifespan ne crée que le pool asyncpg, zéro `db_pool.execute`. Commentaire : schéma porté par Alembic, appliqué hors du process API.
-- `infra/docker-entrypoint.sh` (nouveau) — `alembic upgrade head` avant uvicorn, gardé par `RUN_MIGRATIONS_ON_BOOT` (défaut `true`) ; `set -e` + `exec "$@"` (PID 1 / signaux préservés).
-- `Dockerfile` — embarque `alembic.ini` + `alembic/` + l'entrypoint (`ENTRYPOINT` → entrypoint, `CMD` → uvicorn).
-- `docker-compose.yml` — le worker fixe `RUN_MIGRATIONS_ON_BOOT=false` (une seule migration concurrente, portée par `copilote`).
-- `infra/postgres/init.sql` — réduit à un commentaire pointant vers Alembic (source de vérité unique ; no-op gardé pour rétrocompat du mount initdb).
-- `.env.example` + `docs/architecture/…` (§6.3 + §7.3) — `RUN_MIGRATIONS_ON_BOOT` documenté ; choix entrypoint expliqué.
-- `tests/api/test_boot_no_ddl.py` (nouveau) — le lifespan ne fait ni `execute` ni `executemany` (zéro DDL au boot) ; liste de skills importée de `conftest` (source unique anti-dérive).
-
-**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → 10 tables ; **boot du lifespan via un rôle EN LECTURE SEULE** (CREATE refusé) → succès, preuve directe du zéro-DDL ; `alembic downgrade base` → schéma supprimé ; re-upgrade idempotent.
-
-**Version** : 10.46.0
-**Tests** : 1 894 backend collectés (1 880 passés, 13 skipped, 1 xfailed — +1 boot no-DDL) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (couverture de schéma vérifiée — chaque table/index/colonne retirée est dans le baseline `0001` ; critère read-only satisfait) ; **qualité** : 3 findings traités (liste de skills consolidée sur `conftest`, commentaire lifespan corrigé, `init.sql` allégé).
 
 ---
 

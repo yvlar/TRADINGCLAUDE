@@ -39,6 +39,7 @@ from app.api.endpoints.telemetry import router as telemetry_router
 from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.watchlist import router as watchlist_router
 from app.api.endpoints.ws_metrics import router as ws_metrics_router
+from app.db.tenant_context import apply_tenant_context
 from app.logging_config import configure_logging
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.csrf import CSRFMiddleware
@@ -156,7 +157,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     max_retries = int(_get_env("CLAUDE_MAX_RETRIES", str(_DEFAULT_MAX_RETRIES)))
     cache_ttl = int(_get_env("ANALYSIS_CACHE_TTL", "86400"))
 
-    db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+    # `setup` pose le contexte tenant (GUC `app.tenant_id`) à chaque acquisition de
+    # connexion : la RLS (Sprint 163) restreint chaque requête au tenant courant.
+    # Défaut legacy tant que le threading tenant n'est pas câblé (E3-S4).
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=2, max_size=10, setup=apply_tenant_context
+    )
 
     # Aucun DDL au boot : le schéma est porté par Alembic et appliqué hors du process
     # API (`alembic upgrade head` via l'entrypoint). Un rôle en lecture seule sur le

@@ -10,6 +10,24 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 159 — E2-S2 : le lifespan n'émet plus de DDL ✅
+
+**Objectif :** Retirer le DDL inline du lifespan (`app/api/main.py:160-324` — tous les `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN` / `CREATE INDEX`) maintenant qu'Alembic (Sprint 158) porte le schéma. Le boot ne fait plus de DDL ; le schéma est appliqué par `alembic upgrade head`. **Sprint backend + infra, aucun changement de schéma.**
+
+**Livrables :**
+- `app/api/main.py` — bloc de migrations inline supprimé (−165 lignes) ; le lifespan ne crée que le pool asyncpg, zéro `db_pool.execute`. Commentaire : schéma porté par Alembic, appliqué hors du process API.
+- `infra/docker-entrypoint.sh` (nouveau) — `alembic upgrade head` avant uvicorn, gardé par `RUN_MIGRATIONS_ON_BOOT` (défaut `true`) ; `set -e` + `exec "$@"` (PID 1 / signaux préservés).
+- `Dockerfile` — embarque `alembic.ini` + `alembic/` + l'entrypoint (`ENTRYPOINT` → entrypoint, `CMD` → uvicorn).
+- `docker-compose.yml` — le worker fixe `RUN_MIGRATIONS_ON_BOOT=false` (une seule migration concurrente, portée par `copilote`).
+- `infra/postgres/init.sql` — réduit à un commentaire pointant vers Alembic (source de vérité unique ; no-op gardé pour rétrocompat du mount initdb).
+- `.env.example` + `docs/architecture/…` (§6.3 + §7.3) — `RUN_MIGRATIONS_ON_BOOT` documenté ; choix entrypoint expliqué.
+- `tests/api/test_boot_no_ddl.py` (nouveau) — le lifespan ne fait ni `execute` ni `executemany` (zéro DDL au boot) ; liste de skills importée de `conftest` (source unique anti-dérive).
+
+**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → 10 tables ; **boot du lifespan via un rôle EN LECTURE SEULE** (CREATE refusé) → succès, preuve directe du zéro-DDL ; `alembic downgrade base` → schéma supprimé ; re-upgrade idempotent.
+
+**Version** : 10.46.0
+**Tests** : 1 894 backend collectés (1 880 passés, 13 skipped, 1 xfailed — +1 boot no-DDL) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (couverture de schéma vérifiée — chaque table/index/colonne retirée est dans le baseline `0001` ; critère read-only satisfait) ; **qualité** : 3 findings traités (liste de skills consolidée sur `conftest`, commentaire lifespan corrigé, `init.sql` allégé).
+
 ### Sprint 153 — Mutualiser l'extraction source+date des ratios (`_ratios_trace`) ✅
 
 **Objectif :** Condition du sprint conditionnel remplie — le formateur d'affichage `_fmt_ratios_source` était déjà partagé (Sprint 145) et le gate unifié au Sprint 151 ; restait la **triplication de l'extraction source+date** (`_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace`, clones byte-identiques conservés au Sprint 146). **Sprint backend pur.**
