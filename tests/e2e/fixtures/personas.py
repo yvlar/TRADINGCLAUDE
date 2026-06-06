@@ -158,12 +158,15 @@ class InMemoryUserService:
 
     @staticmethod
     def _public(row: dict, *, with_hash: bool = False) -> dict:
-        keys = ["id", "email", "role", "is_active", "created_at"]
+        keys = ["id", "email", "role", "is_active", "tenant_id", "created_at"]
         if with_hash:
             keys.append("hashed_password")
         return {k: row[k] for k in keys if k in row}
 
-    async def create_user(self, email: str, password: str) -> dict:
+    async def create_user(
+        self, email: str, password: str, tenant_id: UUID | None = None
+    ) -> dict:
+        from app.models.tenant import LEGACY_TENANT_ID
         from app.services.user_service import EmailAlreadyExistsError
 
         norm = email.lower()
@@ -176,6 +179,7 @@ class InMemoryUserService:
             "hashed_password": _ph.hash(password),
             "role": "reader",
             "is_active": True,
+            "tenant_id": tenant_id or LEGACY_TENANT_ID,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[norm] = user_id

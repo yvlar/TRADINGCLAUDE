@@ -10,6 +10,16 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 152 — Couverture d'intégration de GET /report/{id} (cœur reconstruct Sprint 147) ✅
+
+**Objectif :** Le chemin 200 du endpoint `GET /report/{analysis_id}` (DB → `reconstruct(require_graham=True)` → PDF) n'était couvert qu'au niveau unité (`_reconstruct_response`). Verrouiller le contrat au niveau endpoint. **Sprint tests pur.**
+
+**Livrables :**
+- `tests/services/test_report.py` — deux tests d'intégration HTTP : (1) 200 + `application/pdf` + magic number `%PDF`, reconstruction multi-skills (graham + earnings) ; (2) `result` sans graham → `ValueError` du cœur consolidé → **500 assaini**. Réutilise le helper `_make_result_row` des tests de reconstruction Sprint 147 (DRY).
+
+**Version** : 10.38.0
+**Tests** : +2 backend ; `ruff` vert ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — les deux tests passent pour les bonnes raisons (500 issu du `ValueError` intentionnel vérifié par spy sur `sanitized_http_500` ; 200 = vrai PDF de bout en bout), aucune pollution (fixture `client` function-scoped réinitialise `db_pool`).
+
 ### Sprint 151 — Prédicat partagé `has_ratios_source` (consolidation reuse) ✅
 
 **Objectif :** Le gate « ratio possède une source OU une date » était dupliqué aux deux sites de rendu PDF (`pdf_report_service.py:246` Graham et `:261` earnings/valuation — finding *reuse* écarté au Sprint 145, désormais répété). L'extraire dans un helper partagé. **Sprint backend pur** (gate frontend déjà unifié dans `RatiosSourceNote`).
