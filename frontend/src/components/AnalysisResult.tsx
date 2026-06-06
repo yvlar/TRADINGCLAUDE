@@ -20,6 +20,7 @@ import { MarksSection } from './MarksSection'
 import { PabraiSection } from './PabraiSection'
 import { CanadianTaxSection } from './CanadianTaxSection'
 import { Disclaimer } from './Disclaimer'
+import { VerdictDisclaimer } from './VerdictDisclaimer'
 
 function verdictBadge(verdict: string | undefined) {
   if (!verdict) return null
@@ -151,6 +152,11 @@ export function AnalysisResult({
               </Button>
             )}
           </div>
+          {(g?.verdict || result.composite_score) && (
+            <div className="mt-2">
+              <VerdictDisclaimer />
+            </div>
+          )}
           <p className="text-xs text-muted-foreground mt-2">
             Workflow : <span className="font-medium">{result.workflow}</span> ·{' '}
             {new Date(result.created_at).toLocaleString('fr-CA')}

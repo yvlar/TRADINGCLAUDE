@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.43.0 |
+| **Version** | 10.44.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 168 — E9-S1 disclaimer inline (P0 tiré en avant) |
-| **Dernier sprint complété** | Sprint 157 — E1-S4 migration `python-jose` → `PyJWT` + CI sécurité (pip-audit/bandit) ✅ — **épic E1 complet (154-157)** |
+| **Sprint actif** | Sprint 158 — E2-S1 introduire Alembic (socle migrations) |
+| **Dernier sprint complété** | Sprint 168 — E9-S1 disclaimer inline adjacent au verdict (P0 tiré en avant) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
