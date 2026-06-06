@@ -160,6 +160,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
                     request.state.user_id = payload.get("sub")
                     request.state.user_role = payload.get("role", "reader")
                     request.state.user_email = payload.get("email", "")
+                    # tenant_id (claim ajouté E3-S4) → lu par TenantContextMiddleware ;
+                    # absent des tokens émis avant E3-S4 → défaut legacy en aval.
+                    request.state.tenant_id = payload.get("tenant_id")
                     request.state.api_key_record = None
                     return await call_next(request)
 

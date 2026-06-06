@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.endpoints.screen import ScreenEntry, ScreenResult
 from app.api.main import app
+from app.db.tenant_context import reset_current_tenant, set_current_tenant
 from app.orchestrator.core import (
     AnalyzeResponse,
     HistoryResponse,
@@ -49,6 +50,16 @@ from app.skills.tier2.graham_analysis.schemas import (
     GrahamRatios,
 )
 from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
+
+
+@contextmanager
+def as_tenant(tenant_id):
+    """Pose le tenant courant pour la durée du bloc puis le restaure (hygiène ContextVar)."""
+    token = set_current_tenant(tenant_id)
+    try:
+        yield
+    finally:
+        reset_current_tenant(token)
 
 
 def _make_criteria_defensif(scores: list[bool] | None = None) -> list[GrahamCriterion]:

@@ -12,7 +12,7 @@ from uuid import UUID
 import asyncpg
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.tenant import LEGACY_TENANT_ID
+from app.db.tenant_context import resolve_tenant
 from app.services.composite_score import CompositeScore, compute_composite_score
 from app.skills.base import UsageDetail
 from app.utils.ticker_sanitizer import sanitize_ticker
@@ -1806,8 +1806,9 @@ class Orchestrator:
 
         price_at_analysis: float | None = request.ratios.price if request.ratios is not None else None
 
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
-        tenant = tenant_id or LEGACY_TENANT_ID
+        # Tenant explicite (worker ciblé) ou, à défaut, tenant résolu de la requête (ContextVar)
+        # — garantit colonne == GUC RLS (WITH CHECK). Legacy hors requête.
+        tenant = resolve_tenant(tenant_id)
         row = await self._db.fetchrow(
             """
             INSERT INTO analysis_history (

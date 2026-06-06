@@ -44,6 +44,7 @@ from app.logging_config import configure_logging
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.csrf import CSRFMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.tenant import TenantContextMiddleware
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import (
     AnalyzeRequest,
@@ -470,7 +471,10 @@ app.include_router(telemetry_router)
 app.include_router(watchlist_router)
 app.include_router(ws_metrics_router)
 
-# Ordre inversé d'exécution : CSRF → BearerToken → RateLimit dans le pipeline
+# Ordre inversé d'exécution : CSRF → BearerToken → RateLimit → TenantContext dans le
+# pipeline. `add_middleware` empile en tête → ajouté EN PREMIER = couche la plus INTERNE,
+# donc exécuté en dernier, après que BearerToken a résolu request.state.tenant_id.
+app.add_middleware(TenantContextMiddleware)
 app.add_middleware(RateLimitMiddleware, redis_url=_redis_url_env)
 app.add_middleware(BearerTokenMiddleware, api_key=_api_key_env, redis_url=_redis_url_env)
 app.add_middleware(CSRFMiddleware)

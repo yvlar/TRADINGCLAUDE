@@ -9,6 +9,7 @@ import pytest
 from app.orchestrator.core import AnalyzeResponse
 from app.services.analysis_cache import AnalysisCacheService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
+from tests.conftest import as_tenant
 
 # ---------------------------------------------------------------------------
 # Fixtures locales
@@ -131,11 +132,13 @@ async def test_cache_set_puis_get(
 async def test_cache_key_deterministe(
     cache: AnalysisCacheService, ratios_bns: GrahamRatios
 ):
-    """Même ticker + workflow + ratios → même clé à chaque appel."""
+    """Même ticker + workflow + ratios → même clé à chaque appel (tenant legacy par défaut)."""
+    from app.models.tenant import LEGACY_TENANT_ID
+
     key1 = cache._cache_key("BNS", "value_graham", ratios_bns)
     key2 = cache._cache_key("BNS", "value_graham", ratios_bns)
     assert key1 == key2
-    assert key1.startswith("analysis:BNS:value_graham:")
+    assert key1.startswith(f"analysis:{LEGACY_TENANT_ID}:BNS:value_graham:")
 
 
 async def test_cache_key_differente_si_ratios_diff(
@@ -162,7 +165,7 @@ async def test_cache_key_avec_tracabilite_ne_plante_pas(
         }
     )
     key = cache._cache_key("BNS", "value_graham", horodate)
-    assert key.startswith("analysis:BNS:value_graham:")
+    assert ":BNS:value_graham:" in key
 
 
 async def test_cache_key_ignore_horodatage_recuperation(
@@ -214,11 +217,13 @@ async def test_cache_ttl_transmis(
 
 
 async def test_cache_invalidate_ticker(mock_redis: AsyncMock, ratios_bns: GrahamRatios):
-    """invalidate('BNS') supprime toutes les clés du ticker."""
+    """invalidate('BNS') cible le pattern préfixé tenant et supprime les clés du ticker."""
+    from app.models.tenant import LEGACY_TENANT_ID
+
     mock_redis.keys = AsyncMock(
         return_value=[
-            "analysis:BNS:value_graham:abc123",
-            "analysis:BNS:compounder_buffett:def456",
+            f"analysis:{LEGACY_TENANT_ID}:BNS:value_graham:abc123",
+            f"analysis:{LEGACY_TENANT_ID}:BNS:compounder_buffett:def456",
         ]
     )
     mock_redis.delete = AsyncMock(return_value=2)
@@ -227,8 +232,45 @@ async def test_cache_invalidate_ticker(mock_redis: AsyncMock, ratios_bns: Graham
     count = await cache.invalidate("BNS")
 
     assert count == 2
-    mock_redis.keys.assert_called_once()
+    # Le pattern KEYS est bien préfixé par le tenant courant (legacy hors requête).
+    assert mock_redis.keys.await_args.args[0] == f"analysis:{LEGACY_TENANT_ID}:BNS:*"
     mock_redis.delete.assert_called_once()
+
+
+async def test_cache_key_isole_par_tenant(
+    cache: AnalysisCacheService, ratios_bns: GrahamRatios
+):
+    """Même ticker/workflow/ratios mais tenants différents → clés distinctes (E3-S4)."""
+    tenant_a = uuid.uuid4()
+    tenant_b = uuid.uuid4()
+
+    with as_tenant(tenant_a):
+        key_a = cache._cache_key("BNS", "value_graham", ratios_bns)
+    with as_tenant(tenant_b):
+        key_b = cache._cache_key("BNS", "value_graham", ratios_bns)
+
+    assert key_a != key_b
+    assert key_a.startswith(f"analysis:{tenant_a}:BNS:value_graham:")
+    assert key_b.startswith(f"analysis:{tenant_b}:BNS:value_graham:")
+
+
+async def test_cache_get_set_no_hit_croise(
+    mock_redis: AsyncMock,
+    ratios_bns: GrahamRatios,
+    analyze_response_bns: AnalyzeResponse,
+):
+    """Le set d'un tenant et le get d'un autre n'utilisent pas la même clé Redis (aucun hit croisé)."""
+    cache = AnalysisCacheService(redis_client=mock_redis, ttl_seconds=3600)
+
+    with as_tenant(uuid.uuid4()):
+        await cache.set("BNS", "value_graham", ratios_bns, analyze_response_bns)
+        set_key = mock_redis.set.await_args.args[0]
+
+    with as_tenant(uuid.uuid4()):
+        await cache.get("BNS", "value_graham", ratios_bns)
+        get_key = mock_redis.get.await_args.args[0]
+
+    assert set_key != get_key
 
 
 # ---------------------------------------------------------------------------

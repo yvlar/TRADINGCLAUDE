@@ -130,6 +130,7 @@ async def register(request: Request, body: RegisterRequest, response: Response) 
         user_id=user_id,
         email=user["email"],
         role=user["role"],
+        tenant_id=user["tenant_id"],
     )
     refresh_token = await auth_token_service.create_refresh_token(user_id=user_id)
     csrf_token = str(uuid.uuid4())
@@ -188,6 +189,7 @@ async def login(request: Request, body: LoginRequest, response: Response) -> Aut
         user_id=user_id,
         email=user["email"],
         role=user["role"],
+        tenant_id=user["tenant_id"],
     )
     refresh_token = await auth_token_service.create_refresh_token(
         user_id=user_id,
@@ -273,6 +275,7 @@ async def refresh(
         user_id=user_id,
         email=user["email"],
         role=user["role"],
+        tenant_id=user["tenant_id"],
     )
     csrf_token = str(uuid.uuid4())
 

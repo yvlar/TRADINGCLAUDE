@@ -94,3 +94,14 @@ async def test_watchlist_add_entry_tenant(kwargs, expected):
         WatchlistCreate(ticker="bns", workflow="value_graham"), **kwargs
     )
     assert pool.fetchrow.await_args.args[-1] == expected
+
+
+async def test_threading_contextvar_renseigne_le_tenant_sans_param_explicite():
+    """E3-S4 : sans param explicite, l'écriture prend le tenant résolu de la requête (ContextVar)."""
+    from tests.conftest import as_tenant
+
+    tenant_requete = uuid.uuid4()
+    pool = AsyncMock()
+    with as_tenant(tenant_requete):
+        await CompositeHistoryService(pool).record("BNS", 72.5, "FORT", "value_graham")
+    assert pool.execute.await_args.args[-1] == tenant_requete

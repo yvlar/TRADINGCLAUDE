@@ -10,7 +10,7 @@ from uuid import UUID
 
 import asyncpg
 
-from app.models.tenant import LEGACY_TENANT_ID
+from app.db.tenant_context import resolve_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,7 @@ class AlertHistoryService:
         tenant_id: UUID | None = None,
     ) -> int:
         """Insere une alerte dans alert_history et retourne son id."""
-        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
-        tenant = tenant_id or LEGACY_TENANT_ID
+        tenant = resolve_tenant(tenant_id)
         row = await self._db.fetchrow(
             """
             INSERT INTO alert_history (ticker, type, valeur, seuil, message, tenant_id)

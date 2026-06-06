@@ -32,8 +32,10 @@ class AuthTokenService:
         self._redis = redis_client
         self._secret = resolve_jwt_secret()
 
-    def create_access_token(self, user_id: UUID, email: str, role: str) -> str:
-        """Crée un JWT HS256 avec TTL de 15 minutes."""
+    def create_access_token(
+        self, user_id: UUID, email: str, role: str, tenant_id: UUID | None = None
+    ) -> str:
+        """Crée un JWT HS256 avec TTL de 15 minutes ; porte le tenant si fourni (E3-S4)."""
         now = datetime.now(timezone.utc)
         jti = str(uuid.uuid4())
         payload = {
@@ -44,6 +46,9 @@ class AuthTokenService:
             "iat": now,
             "exp": now + timedelta(minutes=_ACCESS_TOKEN_TTL_MIN),
         }
+        # Optionnel pour rétrocompat : un token sans claim tenant retombe sur le legacy en aval.
+        if tenant_id is not None:
+            payload["tenant_id"] = str(tenant_id)
         return jwt.encode(payload, self._secret, algorithm=_ALGORITHM)
 
     def decode_access_token(self, token: str) -> dict | None:

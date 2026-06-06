@@ -34,6 +34,23 @@ class TestJwtRoundTrip:
         assert payload["role"] == "admin"
         assert payload["jti"]
 
+    def test_claim_tenant_present_si_fourni(self, monkeypatch: pytest.MonkeyPatch):
+        """tenant_id fourni → claim `tenant_id` présent dans le token (E3-S4)."""
+        service = self._service(monkeypatch)
+        tenant = uuid4()
+        token = service.create_access_token(uuid4(), "a@b.co", "reader", tenant_id=tenant)
+        payload = service.decode_access_token(token)
+        assert payload is not None
+        assert payload["tenant_id"] == str(tenant)
+
+    def test_claim_tenant_absent_par_defaut(self, monkeypatch: pytest.MonkeyPatch):
+        """Sans tenant_id (rétrocompat) → aucun claim tenant, token toujours valide."""
+        service = self._service(monkeypatch)
+        token = service.create_access_token(uuid4(), "a@b.co", "reader")
+        payload = service.decode_access_token(token)
+        assert payload is not None
+        assert "tenant_id" not in payload
+
     def test_token_falsifie_rejete(self, monkeypatch: pytest.MonkeyPatch):
         service = self._service(monkeypatch)
         token = service.create_access_token(uuid4(), "a@b.co", "reader")

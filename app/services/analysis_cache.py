@@ -6,6 +6,7 @@ import logging
 
 import redis.asyncio as aioredis
 
+from app.db.tenant_context import get_current_tenant
 from app.orchestrator.core import AnalyzeResponse
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 
@@ -14,8 +15,9 @@ logger = logging.getLogger(__name__)
 
 class AnalysisCacheService:
     """
-    Cache Redis des analyses — clé = analysis:{ticker}:{workflow}:{ratios_hash}.
-    Évite les re-analyses Claude identiques (même ticker + workflow + ratios).
+    Cache Redis des analyses — clé = analysis:{tenant}:{ticker}:{workflow}:{ratios_hash}.
+    Évite les re-analyses Claude identiques (même tenant + ticker + workflow + ratios).
+    Le préfixe tenant (E3-S4) garantit qu'un tenant ne sert jamais l'analyse cachée d'un autre.
     """
 
     def __init__(self, redis_client: aioredis.Redis, ttl_seconds: int = 86400) -> None:
@@ -53,8 +55,8 @@ class AnalysisCacheService:
         logger.debug("Analyse %s/%s mise en cache (TTL %ds)", ticker, workflow, self._ttl)
 
     async def invalidate(self, ticker: str) -> int:
-        """Supprime toutes les entrées du ticker (KEYS + DEL). Retourne le nombre supprimé."""
-        pattern = f"analysis:{ticker}:*"
+        """Supprime les entrées du ticker pour le tenant courant (KEYS + DEL). Retourne le nombre supprimé."""
+        pattern = f"analysis:{get_current_tenant()}:{ticker}:*"
         keys = await self._redis.keys(pattern)
         if not keys:
             return 0
@@ -76,4 +78,4 @@ class AnalysisCacheService:
             sort_keys=True,
         )
         ratios_hash = hashlib.sha256(ratios_json.encode()).hexdigest()[:12]
-        return f"analysis:{ticker}:{workflow}:{ratios_hash}"
+        return f"analysis:{get_current_tenant()}:{ticker}:{workflow}:{ratios_hash}"

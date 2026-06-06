@@ -10,6 +10,22 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 160 — E2-S3 : journal d'audit `audit_log` append-only ✅
+
+**Objectif :** Créer une table `audit_log` append-only et y tracer chaque mutation métier (watchlist, annotation, clé API), consultable par un admin. Prérequis conformité Loi 25 (traçabilité des accès/modifications). Clôt l'épic E2.
+
+**Livrables :**
+- `alembic/versions/0002_audit_log.py` (nouveau) — révision chaînée après `0001_baseline` : table `audit_log(id, tenant_id UUID NULL, user_id UUID NULL, action, cible_type, cible_id, metadata JSONB, created_at)` + index `(created_at DESC)` et `(cible_type, cible_id)`. `tenant_id` nullable en **forward-compat E3** (pas de table `tenants` ici) ; `user_id` sans FK (l'audit survit à la suppression d'un compte ; mutations clé API sans utilisateur).
+- `app/services/audit_log_service.py` (nouveau) — `AuditLogService` append-only : `record(...)` (INSERT pur, aucun UPDATE/DELETE) + `list_recent(limit)` (tri `created_at DESC`). Helper `record_audit_safe(audit, …)` — traçage **best-effort** : un échec d'audit n'avorte jamais la mutation métier (log + continue).
+- Traçage aux 3 sites de mutation (best-effort) : `watchlist_service.py` (`add_entry`/`delete_entry`), `annotation_service.py` (`upsert`), `api_key_service.py` (`create_key`/`revoke_key`) — `audit_log` injecté en kwarg optionnel (rétrocompat des constructeurs existants : workers/tests inchangés).
+- `app/api/endpoints/admin.py` — `GET /admin/audit-log?limit=50` (admin only via `_require_admin`, 401/403 non-admin).
+- `app/api/main.py` — `AuditLogService` instancié dans le lifespan et injecté aux 3 services + exposé sur `app.state`.
+
+**Validation runtime (Postgres 16 local)** : `alembic upgrade head` → table `audit_log` + 2 index présents ; `downgrade base` → table supprimée ; re-`upgrade head` idempotent (couvert aussi par le job CI `migrations`).
+
+**Version** : 10.47.0
+**Tests** : 1 934 backend collectés (1 920 passés, 13 skipped, 1 xfailed — +40 : service append-only, traçage 3 sites + best-effort, endpoint admin 200/401/403/422, forme de migration) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (binding asyncpg `$n::uuid` NULL-safe, sérialisation JSONB, contrat append-only, garantie best-effort vérifiée, aucune régression de constructeur) ; **qualité** : 1 finding traité (test d'introspection source `getsource` retiré — fragile, redondant avec le test de contrat `dir()`).
+
 ### Sprint 159 — E2-S2 : le lifespan n'émet plus de DDL ✅
 
 **Objectif :** Retirer le DDL inline du lifespan (`app/api/main.py:160-324` — tous les `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD COLUMN` / `CREATE INDEX`) maintenant qu'Alembic (Sprint 158) porte le schéma. Le boot ne fait plus de DDL ; le schéma est appliqué par `alembic upgrade head`. **Sprint backend + infra, aucun changement de schéma.**
