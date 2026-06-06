@@ -7,10 +7,12 @@ import time
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import asyncpg
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.tenant import LEGACY_TENANT_ID
 from app.services.composite_score import CompositeScore, compute_composite_score
 from app.skills.base import UsageDetail
 from app.utils.ticker_sanitizer import sanitize_ticker
@@ -1721,6 +1723,7 @@ class Orchestrator:
         pabrai_output: PabraiOutput | None,
         usages: list[UsageDetail],
         esg_output: EsgOutput | None = None,
+        tenant_id: UUID | None = None,
     ) -> str:
         """Insère l'analyse agrégée dans analysis_history et retourne l'UUID généré."""
         skills_list: list[str] = []
@@ -1803,14 +1806,17 @@ class Orchestrator:
 
         price_at_analysis: float | None = request.ratios.price if request.ratios is not None else None
 
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
+        tenant = tenant_id or LEGACY_TENANT_ID
         row = await self._db.fetchrow(
             """
             INSERT INTO analysis_history (
                 ticker, workflow_name, skills_used, input_data, result,
                 cost_usd, tokens_input, tokens_output,
-                tokens_cache_read, tokens_cache_creation, price_at_analysis
+                tokens_cache_read, tokens_cache_creation, price_at_analysis,
+                tenant_id
             )
-            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id
             """,
             request.ticker,
@@ -1824,6 +1830,7 @@ class Orchestrator:
             total_tokens_cache_r,
             total_tokens_cache_c,
             price_at_analysis,
+            tenant,
         )
 
         return str(row["id"])

@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 161 complété**
+**Dernière mise à jour : 2026-06-06 — Sprint 162 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.48.0 |
+| **Version** | 10.49.0 |
 | **Phase active** | Transformation B2B/SaaS — P0 Fondations (plan directeur FinTech) |
-| **Sprint actif** | Sprint 162 — E3-S2 rattacher les 6 tables métier au tenant |
-| **Dernier sprint complété** | Sprint 161 — E3-S1 socle tenant (`tenants` + `users.tenant_id` FK, backfill legacy) ✅ |
+| **Sprint actif** | Sprint 163 — E3-S3 RLS PostgreSQL (policy `tenant_id = current_setting`) |
+| **Dernier sprint complété** | Sprint 162 — E3-S2 rattacher les 6 tables métier au tenant (`tenant_id NOT NULL` + index + backfill legacy) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -87,6 +87,20 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 162 — E3-S2 : rattacher les 6 tables métier au tenant ✅
+
+**Objectif :** Propager la dimension tenant aux **données** — `tenant_id UUID NOT NULL` (FK → `tenants`) + index sur chacune des 6 tables métier, avec backfill vers le tenant « legacy » (constante `LEGACY_TENANT_ID` posée au Sprint 161). Aucune RLS ni middleware de contexte ici (E3-S3/S4) ; le tenant legacy reste le défaut des écritures tant que le threading n'est pas câblé. 2ᵉ marche de l'épic E3.
+
+**Livrables :**
+- `alembic/versions/0004_business_tenant_id.py` (nouveau) — révision chaînée après `0003_tenants`. Pour les 6 tables (`analysis_history`, `watchlist`, `composite_score_history`, `esg_score_history`, `alert_history`, `annotations`) : `ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id)` (nullable) → backfill legacy (`WHERE tenant_id IS NULL`) → `SET NOT NULL` → index `idx_<table>_tenant`. DDL bâti par template sur un tuple `_TABLES` (uniformité prouvable, zéro copier-coller). Downgrade en ordre FK inverse (index → colonne) par table, idempotent. Littéral UUID legacy figé (parité ↔ `LEGACY_TENANT_ID` verrouillée par test).
+- **Politique `ON DELETE` documentée** : `NO ACTION` (restrict, défaut PostgreSQL — comme `users.tenant_id` au Sprint 161). Supprimer un tenant **échoue** tant qu'il porte des données métier ; le hard-delete relève d'un sprint dédié, jamais d'un `CASCADE` silencieux.
+- **Écritures applicatives** (6 sites d'INSERT) : `core.py::_persist` (analysis_history), `watchlist_service`, `annotation_service`, `esg_history_service`, `composite_history_service`, `alert_history_service` — chacun accepte un `tenant_id: UUID | None = None` (défaut legacy via `tenant_id or LEGACY_TENANT_ID`, idiome partagé avec `user_service`), `tenant_id` ajouté en dernier binding de l'INSERT. `annotation.upsert` : tenant posé à l'INSERT seulement, **non** réécrit en `ON CONFLICT` (ré-annoter ne déplace pas le tenant). Décision d'altitude : **service-level explicit sans DB `DEFAULT`** → tout futur INSERT oubliant le tenant échoue franchement (NOT NULL) au lieu de mal-rattacher silencieusement (prépare le threading E3-S4).
+
+**Validation runtime (Postgres 16 local)** : `upgrade head` → les 6 tables portent `tenant_id NOT NULL` + index `idx_<table>_tenant` + FK `confdeltype=NO ACTION` ; une ligne insérée **avant** la migration dans chaque table est backfillée au legacy ; `DELETE` du tenant legacy **refusé** (données référencées) ; `downgrade 0003` → colonnes/index retirés (0 colonne) ; re-`upgrade head` idempotent ; cycle CI `downgrade base → upgrade head` vert.
+
+**Version** : 10.49.0
+**Tests** : 2 002 backend collectés (1 988 passés, 13 skipped, 1 xfailed — +14 : forme de migration paramétrée sur 6 tables [colonne/FK/backfill/ordre backfill-avant-NOT-NULL/index/parité littéral↔constante], écritures défaut-legacy/tenant-explicite des 5 services, défaut legacy de `_persist`) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (split DDL sûr, placeholders `$n` alignés aux args aux 6 sites, ON CONFLICT préserve le tenant, binding asyncpg `uuid.UUID`, aucun appelant cassé — défauts présents) ; **qualité** : 1 finding traité (tests d'écriture paramétrés legacy/explicite, 10→5 fonctions), 1 écarté (helper `_load` triplé dans les tests de migration = convention pré-existante, refactor hors périmètre de ce sprint).
+
 ### Sprint 161 — E3-S1 : socle tenant (`tenants` + `users.tenant_id`) ✅
 
 **Objectif :** Poser les fondations de la multi-tenance — table `tenants`, colonne `users.tenant_id` (FK), tenant « legacy » de backfill — sans isolation RLS ni rattachement des 6 tables métier (E3-S2/S3), en gardant l'auth 100 % rétrocompatible. 1ʳᵉ marche de l'épic E3 (bloqueur n°1).
@@ -136,18 +150,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.46.0
 **Tests** : 1 894 backend collectés (1 880 passés, 13 skipped, 1 xfailed — +1 boot no-DDL) ; `ruff`/`mypy app/` verts ; frontend inchangé. Revue indépendante à contexte frais : **correctness CLEAN** (couverture de schéma vérifiée — chaque table/index/colonne retirée est dans le baseline `0001` ; critère read-only satisfait) ; **qualité** : 3 findings traités (liste de skills consolidée sur `conftest`, commentaire lifespan corrigé, `init.sql` allégé).
-
-### Sprint 153 — Mutualiser l'extraction source+date des ratios (`_ratios_trace`) ✅
-
-**Objectif :** Condition du sprint conditionnel remplie — le formateur d'affichage `_fmt_ratios_source` était déjà partagé (Sprint 145) et le gate unifié au Sprint 151 ; restait la **triplication de l'extraction source+date** (`_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace`, clones byte-identiques conservés au Sprint 146). **Sprint backend pur.**
-
-**Livrables :**
-- `app/services/ratios_recon.py` — les trois clones fusionnés en un seul helper union-typé `_ratios_trace(ratios: GrahamRatios | EarningsQualityRatios | ValuationRatios | None) -> tuple[str | None, str | None]` (les trois schémas portent les mêmes champs `ratios_fetched_at`/`ratios_source`). Honnêteté None : source conservée même sans date.
-- Sites mis à jour : `core.py::_request_ratios_traces` et `reconstruct_ratios_traces`. Import `core.py` réduit à `_ratios_trace`.
-- Tests : 3 classes quasi-dupliquées fusionnées en `TestRatiosTraceHelper` (couverture superset — None, 3 types avec/sans date, + cas source-sans-date).
-
-**Version** : 10.39.0
-**Tests** : 1 809 backend collectés (1 795 passés, 13 skipped, 1 xfailed — net −1 par consolidation de tests) ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — équivalence comportementale vérifiée, condition correctement résolue, zéro référence pendante, aucune régression de typage.
 
 ---
 

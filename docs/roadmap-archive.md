@@ -10,6 +10,18 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 153 — Mutualiser l'extraction source+date des ratios (`_ratios_trace`) ✅
+
+**Objectif :** Condition du sprint conditionnel remplie — le formateur d'affichage `_fmt_ratios_source` était déjà partagé (Sprint 145) et le gate unifié au Sprint 151 ; restait la **triplication de l'extraction source+date** (`_graham_ratios_trace`/`_earnings_ratios_trace`/`_valuation_ratios_trace`, clones byte-identiques conservés au Sprint 146). **Sprint backend pur.**
+
+**Livrables :**
+- `app/services/ratios_recon.py` — les trois clones fusionnés en un seul helper union-typé `_ratios_trace(ratios: GrahamRatios | EarningsQualityRatios | ValuationRatios | None) -> tuple[str | None, str | None]` (les trois schémas portent les mêmes champs `ratios_fetched_at`/`ratios_source`). Honnêteté None : source conservée même sans date.
+- Sites mis à jour : `core.py::_request_ratios_traces` et `reconstruct_ratios_traces`. Import `core.py` réduit à `_ratios_trace`.
+- Tests : 3 classes quasi-dupliquées fusionnées en `TestRatiosTraceHelper` (couverture superset — None, 3 types avec/sans date, + cas source-sans-date).
+
+**Version** : 10.39.0
+**Tests** : 1 809 backend collectés (1 795 passés, 13 skipped, 1 xfailed — net −1 par consolidation de tests) ; `ruff`/`mypy` verts ; frontend inchangé. Revue indépendante à contexte frais : **CLEAN** — équivalence comportementale vérifiée, condition correctement résolue, zéro référence pendante, aucune régression de typage.
+
 ### Sprint 152 — Couverture d'intégration de GET /report/{id} (cœur reconstruct Sprint 147) ✅
 
 **Objectif :** Le chemin 200 du endpoint `GET /report/{analysis_id}` (DB → `reconstruct(require_graham=True)` → PDF) n'était couvert qu'au niveau unité (`_reconstruct_response`). Verrouiller le contrat au niveau endpoint. **Sprint tests pur.**

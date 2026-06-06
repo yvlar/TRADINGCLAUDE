@@ -6,8 +6,11 @@ en best-effort par les workers Celery (ESG degradation, screener FORT, prix seui
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 import asyncpg
+
+from app.models.tenant import LEGACY_TENANT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +28,15 @@ class AlertHistoryService:
         valeur: float | None,
         seuil: float | None,
         message: str | None,
+        tenant_id: UUID | None = None,
     ) -> int:
         """Insere une alerte dans alert_history et retourne son id."""
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
+        tenant = tenant_id or LEGACY_TENANT_ID
         row = await self._db.fetchrow(
             """
-            INSERT INTO alert_history (ticker, type, valeur, seuil, message)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO alert_history (ticker, type, valeur, seuil, message, tenant_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
             """,
             ticker,
@@ -38,6 +44,7 @@ class AlertHistoryService:
             valeur,
             seuil,
             message,
+            tenant,
         )
         alert_id = int(row["id"])
         logger.debug("Alerte enregistrée : %s %s id=%d", type, ticker, alert_id)

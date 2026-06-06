@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from uuid import UUID
 
 import asyncpg
 from pydantic import BaseModel
 
+from app.models.tenant import LEGACY_TENANT_ID
 from app.utils.esg_utils import esg_verdict
 from app.utils.ticker_sanitizer import sanitize_ticker
 
@@ -34,7 +36,9 @@ class EsgHistoryService:
     def __init__(self, db_pool: asyncpg.Pool) -> None:
         self._db = db_pool
 
-    async def record(self, ticker: str, score: float) -> None:
+    async def record(
+        self, ticker: str, score: float, tenant_id: UUID | None = None
+    ) -> None:
         """Insère un nouveau point d'historique ESG.
 
         Calcule le verdict via esg_verdict() puis INSERT. Le ticker est valide
@@ -42,14 +46,17 @@ class EsgHistoryService:
         """
         validated = sanitize_ticker(ticker)
         verdict = esg_verdict(score)
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4).
+        tenant = tenant_id or LEGACY_TENANT_ID
         await self._db.execute(
             """
-            INSERT INTO esg_score_history (ticker, score, verdict)
-            VALUES ($1, $2, $3)
+            INSERT INTO esg_score_history (ticker, score, verdict, tenant_id)
+            VALUES ($1, $2, $3, $4)
             """,
             validated,
             float(score),
             verdict,
+            tenant,
         )
         logger.debug(
             "esg_score enregistre : %s score=%.1f verdict=%s",

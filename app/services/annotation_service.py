@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 import asyncpg
 
 from app.models.annotation import Annotation
+from app.models.tenant import LEGACY_TENANT_ID
 from app.services.audit_log_service import AuditLogService, record_audit_safe
 
 logger = logging.getLogger(__name__)
@@ -19,12 +21,21 @@ class AnnotationService:
         self._db = db_pool
         self._audit = audit_log
 
-    async def upsert(self, analysis_id: str, note: str, tags: list[str] | None = None) -> Annotation:
+    async def upsert(
+        self,
+        analysis_id: str,
+        note: str,
+        tags: list[str] | None = None,
+        tenant_id: UUID | None = None,
+    ) -> Annotation:
         """Crée ou remplace l'annotation (note + tags) pour un analysis_id donné."""
+        # Défaut legacy tant que le tenant n'est pas threadé (E3-S4). Le tenant n'est
+        # posé qu'à l'INSERT : ré-annoter ne déplace pas une annotation de tenant.
+        tenant = tenant_id or LEGACY_TENANT_ID
         row = await self._db.fetchrow(
             """
-            INSERT INTO annotations (analysis_id, note, tags)
-            VALUES ($1::uuid, $2, $3::text[])
+            INSERT INTO annotations (analysis_id, note, tags, tenant_id)
+            VALUES ($1::uuid, $2, $3::text[], $4)
             ON CONFLICT (analysis_id) DO UPDATE
                 SET note = EXCLUDED.note,
                     tags = EXCLUDED.tags,
@@ -40,6 +51,7 @@ class AnnotationService:
             analysis_id,
             note,
             tags or [],
+            tenant,
         )
         annotation = _row_to_annotation(row)
         await record_audit_safe(

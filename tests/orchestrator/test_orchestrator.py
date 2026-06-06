@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.models.tenant import LEGACY_TENANT_ID
 from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
 from app.skills.base import UsageDetail
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityInput
@@ -178,6 +179,15 @@ class TestOrchestratorRunCompanyAnalysis:
         assert args[7] == 1000   # tokens_input
         assert args[8] == 200    # tokens_output
         assert args[10] == 1500  # tokens_cache_creation
+
+    @pytest.mark.asyncio
+    async def test_persist_tenant_legacy_par_defaut(
+        self, orchestrator, mock_db_pool, request_msft
+    ):
+        """Sans threading tenant (E3-S4), l'analyse persistée atterrit sur le legacy."""
+        await orchestrator.run_company_analysis(request_msft)
+        args = mock_db_pool.fetchrow.call_args[0]
+        assert args[-1] == LEGACY_TENANT_ID  # dernier binding = tenant_id
 
     @pytest.mark.asyncio
     async def test_persist_input_data_contient_earnings_valuation(
