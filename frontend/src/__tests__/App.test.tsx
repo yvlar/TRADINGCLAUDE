@@ -36,6 +36,7 @@ describe('App — shell pleine largeur', () => {
       role: 'reader',
       tenant_id: 't1',
       tenant_name: 'Espace Démo',
+      plan: 'free',
       created_at: '2026-01-01T00:00:00Z',
     }
     vi.mocked(authMe).mockResolvedValue(user)

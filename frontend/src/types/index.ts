@@ -781,6 +781,8 @@ export interface User {
   role: string
   tenant_id: string
   tenant_name: string
+  // plan tarifaire du tenant (`free`/`pro`) exposé au Sprint 173 — pilote le CTA Facturation
+  plan: string
   created_at: string
 }
 
@@ -859,6 +861,26 @@ export interface SkillAnalysesResponse {
   skill: string
   period_days: number
   entries: SkillAnalysisEntry[]
+}
+
+// ---- Consommation agrégée /usage (E4-S5, Sprint 170) — miroir de UsageResponse/UsageBySkill ----
+// Champs en snake_case : reflètent la réponse JSON FastAPI (pas d'alias camelCase côté API)
+export interface UsageBySkill {
+  skill: string
+  cost_usd: number
+  tokens_input: number
+  tokens_output: number
+  events: number
+}
+
+export interface UsageResponse {
+  period_days: number
+  total_cost_usd: number
+  total_tokens_input: number
+  total_tokens_output: number
+  by_skill: UsageBySkill[]
+  // coût USD total par jour (clé YYYY-MM-DD), même forme que MetricsResponse.daily_cost
+  daily_cost: Record<string, number>
 }
 
 // ---- Recherche sémantique RAG (Sprint 106) ----

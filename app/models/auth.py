@@ -64,11 +64,15 @@ class UserPublic(BaseModel):
     # tenant_id + tenant_name exposés depuis le Sprint 169 (E4-S4) : le contexte tenant
     # est désormais threadé (E3-S4) et borné (E4-S2/S3), l'omission délibérée du Sprint 161
     # n'a plus lieu d'être — le client en a besoin pour l'UI multi-tenant.
+    # plan exposé au Sprint 173 (E4-S8) : la page Facturation lit le plan courant du tenant
+    # pour choisir le CTA (souscrire vs gérer l'abonnement) — réutilise /auth/me plutôt qu'un
+    # endpoint dédié (le plan est déjà une colonne `tenants`, résolue par le même JOIN).
     id: UUID
     email: str
     role: str
     tenant_id: UUID
     tenant_name: str
+    plan: str
     created_at: datetime
 
 

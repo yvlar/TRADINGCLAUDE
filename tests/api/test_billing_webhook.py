@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 
 from app.api.main import app
-from app.services.stripe_service import InvalidWebhookSignatureError
+from app.services.stripe_service import InvalidWebhookSignatureError, NoStripeCustomerError
 
 
 @pytest_asyncio.fixture
@@ -25,6 +25,7 @@ async def billing_client(client):
     service.verify_event = MagicMock(return_value={"id": "evt_1", "type": "x"})
     service.handle_event = AsyncMock(return_value=True)
     service.create_checkout_session = AsyncMock(return_value="https://stripe/checkout")
+    service.create_billing_portal_session = AsyncMock(return_value="https://stripe/portal")
     app.state.stripe_service = service
     try:
         yield client, service
@@ -99,3 +100,65 @@ async def test_checkout_authentifie_retourne_url(billing_client):
     assert resp.status_code == 200
     assert resp.json() == {"checkout_url": "https://stripe/checkout"}
     service.create_checkout_session.assert_awaited_once()
+
+
+def _authed_token_service():
+    auth = AsyncMock()
+    auth.decode_access_token = MagicMock(
+        return_value={
+            "sub": str(uuid.uuid4()),
+            "email": "t@t.com",
+            "role": "reader",
+            "jti": str(uuid.uuid4()),
+            "exp": 9_999_999_999,
+        }
+    )
+    auth.is_jti_blacklisted = AsyncMock(return_value=False)
+    return auth
+
+
+@pytest.mark.asyncio
+async def test_portal_sans_session_renvoie_401(billing_client):
+    c, _ = billing_client
+    resp = await c.post("/billing/portal")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_portal_authentifie_retourne_url(billing_client):
+    c, service = billing_client
+    prev_auth = getattr(app.state, "auth_token_service", None)
+    app.state.auth_token_service = _authed_token_service()
+    try:
+        resp = await c.post("/billing/portal", cookies={"access_token": "fake"})
+    finally:
+        app.state.auth_token_service = prev_auth
+    assert resp.status_code == 200
+    assert resp.json() == {"portal_url": "https://stripe/portal"}
+    service.create_billing_portal_session.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_portal_sans_customer_renvoie_409(billing_client):
+    c, service = billing_client
+    service.create_billing_portal_session = AsyncMock(side_effect=NoStripeCustomerError("aucun"))
+    prev_auth = getattr(app.state, "auth_token_service", None)
+    app.state.auth_token_service = _authed_token_service()
+    try:
+        resp = await c.post("/billing/portal", cookies={"access_token": "fake"})
+    finally:
+        app.state.auth_token_service = prev_auth
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_portal_503_si_non_configure(billing_client):
+    c, service = billing_client
+    service.is_configured = False
+    prev_auth = getattr(app.state, "auth_token_service", None)
+    app.state.auth_token_service = _authed_token_service()
+    try:
+        resp = await c.post("/billing/portal", cookies={"access_token": "fake"})
+    finally:
+        app.state.auth_token_service = prev_auth
+    assert resp.status_code == 503

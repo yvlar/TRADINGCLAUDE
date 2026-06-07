@@ -11,13 +11,14 @@ from app.models.tenant import LEGACY_TENANT_ID, LEGACY_TENANT_NAME
 from app.services.user_service import UserService, _ph
 
 
-def _fake_row(tenant_id, tenant_name: str = "Acme Capital") -> dict:
+def _fake_row(tenant_id, tenant_name: str = "Acme Capital", plan: str = "free") -> dict:
     return {
         "id": uuid.uuid4(),
         "email": "alice@test.com",
         "role": "reader",
         "tenant_id": tenant_id,
         "tenant_name": tenant_name,
+        "plan": plan,
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
 
@@ -106,3 +107,42 @@ async def test_authenticate_retourne_tenant_name_via_join(service):
     assert result["tenant_name"] == LEGACY_TENANT_NAME
     sql = pool.fetchrow.await_args.args[0]
     assert "JOIN tenants" in sql
+
+
+async def test_get_by_id_retourne_le_plan_via_join(service):
+    """E4-S8 : le plan du tenant est résolu par le même JOIN que tenant_name."""
+    svc, pool = service
+    pool.fetchrow.return_value = _fake_row(LEGACY_TENANT_ID, plan="pro")
+
+    result = await svc.get_by_id(uuid.uuid4())
+
+    assert result is not None
+    assert result["plan"] == "pro"
+    assert "t.plan" in pool.fetchrow.await_args.args[0]
+
+
+async def test_authenticate_retourne_le_plan_via_join(service):
+    svc, pool = service
+    password = "Password123!"
+    row = _fake_row(LEGACY_TENANT_ID, plan="pro")
+    row["hashed_password"] = _ph.hash(password)
+    row["is_active"] = True
+    pool.fetchrow.return_value = row
+
+    result = await svc.authenticate("alice@test.com", password)
+
+    assert result is not None
+    assert result["plan"] == "pro"
+    assert "t.plan" in pool.fetchrow.await_args.args[0]
+
+
+async def test_create_user_returning_inclut_le_plan(service):
+    """Le RETURNING porte une sous-requête corrélée pour le plan (comme tenant_name)."""
+    svc, pool = service
+    pool.fetchrow.return_value = _fake_row(LEGACY_TENANT_ID, plan="free")
+
+    result = await svc.create_user("alice@test.com", "Password123!")
+
+    assert result["plan"] == "free"
+    sql = pool.fetchrow.await_args.args[0]
+    assert "plan" in sql

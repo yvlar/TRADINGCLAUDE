@@ -62,7 +62,7 @@ describe('RegisterPage', () => {
 
   it('appelle authRegister et redirige vers /login après inscription', async () => {
     vi.mocked(authApi.authRegister).mockResolvedValue({
-      user: { id: 'uuid-1', email: 'new@test.com', role: 'reader', tenant_id: 'tenant-1', tenant_name: 'Acme', created_at: '2026-01-01T00:00:00Z' },
+      user: { id: 'uuid-1', email: 'new@test.com', role: 'reader', tenant_id: 'tenant-1', tenant_name: 'Acme', plan: 'free', created_at: '2026-01-01T00:00:00Z' },
       message: 'Compte créé',
     })
 

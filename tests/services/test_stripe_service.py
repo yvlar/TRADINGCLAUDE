@@ -12,7 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 
-from app.services.stripe_service import InvalidWebhookSignatureError, StripeService
+from app.services.stripe_service import (
+    InvalidWebhookSignatureError,
+    NoStripeCustomerError,
+    StripeService,
+)
 
 _PRICES = {"free": "price_free", "pro": "price_pro"}
 
@@ -129,6 +133,40 @@ class TestCheckout:
             await svc.create_checkout_session(
                 uuid.uuid4(), "entreprise", success_url="https://s", cancel_url="https://c"
             )
+
+
+class TestBillingPortal:
+    @pytest.mark.asyncio
+    async def test_portal_retourne_url_pour_customer_existant(self):
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={"stripe_customer_id": "cus_existing"})
+        svc = _service(pool)
+        with patch("app.services.stripe_service.stripe") as st:
+            st.billing_portal.Session.create = MagicMock(return_value={"url": "https://stripe/portal"})
+            url = await svc.create_billing_portal_session(
+                uuid.uuid4(), return_url="https://app/facturation"
+            )
+        assert url == "https://stripe/portal"
+        _, kwargs = st.billing_portal.Session.create.call_args
+        assert kwargs["customer"] == "cus_existing"
+        assert kwargs["return_url"] == "https://app/facturation"
+
+    @pytest.mark.asyncio
+    async def test_portal_sans_customer_leve_no_customer(self):
+        """Aucune ligne subscriptions → NoStripeCustomerError (jamais de customer fabriqué)."""
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value=None)
+        svc = _service(pool)
+        with pytest.raises(NoStripeCustomerError):
+            await svc.create_billing_portal_session(uuid.uuid4(), return_url="https://app")
+
+    @pytest.mark.asyncio
+    async def test_portal_customer_null_leve_no_customer(self):
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={"stripe_customer_id": None})
+        svc = _service(pool)
+        with pytest.raises(NoStripeCustomerError):
+            await svc.create_billing_portal_session(uuid.uuid4(), return_url="https://app")
 
 
 class TestHandleEvent:

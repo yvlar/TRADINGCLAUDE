@@ -14,7 +14,11 @@ from pydantic import BaseModel
 
 from app.api.endpoints.auth import _get_current_user
 from app.db.tenant_context import get_current_tenant
-from app.services.stripe_service import InvalidWebhookSignatureError, StripeService
+from app.services.stripe_service import (
+    InvalidWebhookSignatureError,
+    NoStripeCustomerError,
+    StripeService,
+)
 from app.utils.error_sanitization import sanitized_http_500
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,10 @@ class CheckoutRequest(BaseModel):
 
 class CheckoutResponse(BaseModel):
     checkout_url: str
+
+
+class PortalResponse(BaseModel):
+    portal_url: str
 
 
 def _service(request: Request) -> StripeService:
@@ -70,11 +78,33 @@ async def create_checkout(request: Request, body: CheckoutRequest) -> CheckoutRe
         url = await service.create_checkout_session(
             get_current_tenant(),
             body.plan,
-            success_url=f"{frontend_url}/billing?status=success",
-            cancel_url=f"{frontend_url}/billing?status=cancel",
+            success_url=f"{frontend_url}/facturation?status=success",
+            cancel_url=f"{frontend_url}/facturation?status=cancel",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise sanitized_http_500(exc, logger, "Erreur lors de la création du checkout Stripe") from exc
     return CheckoutResponse(checkout_url=url)
+
+
+@router.post(
+    "/billing/portal",
+    response_model=PortalResponse,
+    summary="Crée une session du Billing Portal Stripe pour le tenant courant",
+)
+async def open_portal(request: Request) -> PortalResponse:
+    """Retourne l'URL du portail de gestion d'abonnement (401 si non authentifié, 409 sans abonnement)."""
+    await _get_current_user(request)
+    service = _service(request)
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    try:
+        url = await service.create_billing_portal_session(
+            get_current_tenant(),
+            return_url=f"{frontend_url}/facturation",
+        )
+    except NoStripeCustomerError as exc:
+        raise HTTPException(status_code=409, detail="Aucun abonnement Stripe pour ce tenant") from exc
+    except Exception as exc:
+        raise sanitized_http_500(exc, logger, "Erreur lors de l'ouverture du portail Stripe") from exc
+    return PortalResponse(portal_url=url)

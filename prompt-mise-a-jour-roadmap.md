@@ -1,54 +1,50 @@
-# Sprint 173 — E4-S8 : page « Facturation » frontend (consommation + plan + abonnement)
+# Sprint 174 — E4-S9 : facturation à l'usage métrée vers Stripe (metered usage records)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.59.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.60.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (172, E4-S7) a branché **Stripe** : SDK + clés `.env`, migration `subscriptions`/`stripe_events` (HORS RLS), `StripeService` (checkout + synchro `tenants.plan` via webhooks), `POST /billing/webhook` (signature `Stripe-Signature` vérifiée AVANT traitement, idempotence atomique par `event.id`) et `POST /billing/checkout`. Le socle E4 backend est complet ; il reste à lui donner une **surface produit**. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (173, E4-S8) a livré la **page Facturation** : `plan` exposé via `/auth/me`, `StripeService.create_billing_portal_session` + `POST /billing/portal`, clients `usage.ts`/`billing.ts`, page React `/facturation` (consommation `GET /usage` + badge plan + CTA checkout/portail). L'abonnement (`free`/`pro`) est désormais souscriptible ET gérable côté produit ; reste à **facturer la consommation réelle** au-delà de l'abonnement forfaitaire. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Travail FRONTEND** : ce sprint est majoritairement React/TS. `cd frontend && npm test` (Vitest), `npm run typecheck` (tsc 0 erreur), `npm run lint` (ESLint 0 warning). Le proxy Vite `:5173 → :8000` permet d'exercer l'API ; pas de Docker dans le conteneur web → pas de test navigateur live (le dire, ne pas le simuler).
+> **Travail BACKEND** : ce sprint est worker + service Stripe (+ éventuelle migration de suivi). `pytest` (hors e2e/evals) + `ruff` + `mypy app/`. Pas de Docker dans le conteneur web → la validation Stripe réelle est mockée ; le DIRE, ne pas la simuler. **Le SDK `stripe` et `mypy`/`alembic` ne sont pas préinstallés dans le venv du conteneur web** — si une commande échoue sur un import manquant, `bash scripts/setup-web-session.sh` puis `.venv/bin/pip install stripe mypy alembic` (déjà dans `requirements.txt`).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.59.0)
-2. `.claude/rules/conventions-frontend.md` (React 18, TS strict zéro `any`, structure pages/composants, client `frontend/src/api/` typé — central pour une page React) et `.claude/rules/variables-financieres.md` (casse `snake_case` Python ↔ `camelCase` TS pour tout champ de consommation/coût exposé — la page lit `UsageResponse`)
-3. **Code de référence à vérifier en début de session (anti-hallucination)** : `GET /usage` agrège déjà cost/tokens du tenant courant (`app/api/endpoints/usage.py:12`, S170) ; `UsageResponse`/`UsageBySkill` (`app/models/usage.py:16,6`) = forme JSON à typer côté TS ; `QuotaBanner` (`frontend/src/components/QuotaBanner.tsx`), `SkillCostPieChart` + `DailyCostTrendChart` (`frontend/src/components/`) existent et sont réutilisables ; `POST /billing/checkout` (`app/api/endpoints/billing.py:60`, S172) crée une session de checkout. **À VÉRIFIER / À CRÉER** : le plan du tenant **n'est PAS exposé au frontend** (`app/models/auth.py` n'a pas de champ `plan` ; `User` `frontend/src/types/index.ts:782-783` porte `tenant_id`/`tenant_name` mais pas `plan`) → l'afficher exige une exposition backend (champ sur `UserPublic`/`/auth/me` OU `GET /billing/subscription`) ; le client `frontend/src/api/usage.ts` **est absent** (à créer) ; aucune page `BillingPage`/client `frontend/src/api/billing.ts` (à créer) ; **aucune méthode de portail Stripe** (`StripeService` n'a que `create_checkout_session`, pas de `create_billing_portal_session`) → le bouton « Gérer l'abonnement » exige un nouvel endpoint + méthode service.
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.60.0)
+2. `.claude/rules/gotchas-operationnels.md` (patterns worker/service `app/workers/**` — central pour une tâche Celery périodique de report) et `.claude/rules/securite.md` (clé Stripe via `.env`, jamais loggée — le report Stripe appelle le SDK avec `api_key=`)
+3. **Code de référence à vérifier en début de session (anti-hallucination)** : `UsageEventService.aggregate(days)` agrège déjà `cost_usd`/tokens par tenant (`app/services/usage_event_service.py:75`, S170) et `record(...)` est l'écriture append-only (`:43`, S166) ; `StripeService` existe (`app/services/stripe_service.py:58`) avec checkout (`:88`) et portal (`:114`) mais **AUCUNE méthode de metered record** (vérifié — pas de `usage_record`/`metered` dans le fichier) → à créer. Le chemin worker tourne **sous le tenant legacy** (`app/workers/tasks.py:109-110`, commentaire « threading tenant→worker relève d'un sprint E4 ultérieur ») ; `_build_orchestrator` (`:63`) est le constructeur partagé des tâches. **À VÉRIFIER / À CRÉER** : un **price `metered` Stripe** (nouvelle clé `.env` `STRIPE_PRICE_METERED` + `.env.example` factice) ; une **tâche worker périodique** de report (clonée sur `run_retention_purge`/`run_scheduled_screener`, enregistrée dans `beat_schedule`) ; un mécanisme **anti-double-report** (idempotence : la fenêtre déjà rapportée ne doit pas l'être deux fois — soit une table de suivi `usage_report_log`, soit un horodatage `reported_at`, à trancher et documenter).
 
 ---
 
-## TÂCHE — Sprint 173 (E4-S8) : page « Facturation » frontend
+## TÂCHE — Sprint 174 (E4-S9) : metered usage records vers Stripe
 
-**Objectif** : donner une surface self-service au socle E4 + à Stripe (S172) — une page React qui consolide la **consommation** (`GET /usage`), le **plan courant** et un point d'entrée vers la **gestion de l'abonnement** (checkout pour souscrire, portail Stripe pour gérer).
+**Objectif** : fermer la boucle de monétisation — pousser la consommation agrégée (`usage_events`) vers Stripe en **metered usage records**, pour facturer l'usage réel *en plus* de l'abonnement forfaitaire (partie « facturation à l'usage » explicitement déférée au S172).
 
 ### Spécification
-1. **Exposer le plan courant** — le plan du tenant n'est pas lisible côté client. Ajouter `plan` à `UserPublic` (`app/models/auth.py`) + le résoudre dans `UserService` (déjà un JOIN `tenants` pour `tenant_name` au S169 — ajouter `t.plan`), threader aux 3 sites de construction (`/me`, login, register), et l'ajouter au type `User` (`frontend/src/types/index.ts`). **OU** créer `GET /billing/subscription` (plan + statut depuis `subscriptions`/`tenants`). **Trancher et documenter** le choix (réutiliser `/auth/me` = moins d'endpoints ; endpoint dédié = découple billing de l'authn).
-2. **Portail de gestion Stripe** — `StripeService.create_billing_portal_session(tenant_id) -> str` (URL du [Billing Portal](https://stripe.com/docs/customer-management) Stripe, `asyncio.to_thread`) + endpoint `POST /billing/portal` (authentifié, résout le customer du tenant). Si le tenant n'a pas de `stripe_customer_id` → 409/404 clair. Si Stripe non configuré → 503 (cohérent avec `_service`, `billing.py:33`).
-3. **Client API typé** — `frontend/src/api/usage.ts` (`getUsage(days)` → `UsageResponse` typé) + `frontend/src/api/billing.ts` (`createCheckout(plan)`, `openPortal()`), via `client.ts` (cookies/CSRF). Zéro `any` ; types miroir exacts du JSON (`snake_case` → conversion).
-4. **Page `BillingPage`** (`frontend/src/pages/`, route `/facturation`) — tableau de bord : plan courant (badge), consommation du mois (total coût/tokens depuis `GET /usage`), **réutilise** `SkillCostPieChart` (ventilation `by_skill`) + `DailyCostTrendChart` (`daily_cost`), quota restant (réutilise `QuotaBanner` ou sa logique). Boutons : « Passer à Pro » (→ `createCheckout('pro')` → redirige vers l'URL Stripe) si plan `free` ; « Gérer l'abonnement » (→ `openPortal()`) si déjà abonné. Route ajoutée au router + lien de navigation.
-5. **États** — chargement (skeleton), erreur (message assaini), `rag`/billing désactivé (503 → message « facturation indisponible » sans casser la page).
+1. **Price metered Stripe** — nouvelle clé `STRIPE_PRICE_METERED` (`.env` + `.env.example` factice). La facturation à l'usage est **désactivée** (no-op loggé, jamais d'erreur) si la clé ou Stripe ne sont pas configurés (cohérent avec `is_configured`, `stripe_service.py:73`).
+2. **Méthode service** — `StripeService.report_usage(subscription_item_id, quantity, timestamp) -> None` (ou signature équivalente) : appelle l'API Stripe metered usage records via `asyncio.to_thread` (boucle non bloquée, clé par appel `api_key=`, aucune clé loggée). **Vérifier l'API exacte du SDK installé** (`stripe.billing.MeterEvent` vs `SubscriptionItem.create_usage_record` selon la version `>=15`) et documenter le choix — ne pas supposer.
+3. **Idempotence du report** — **trancher et documenter** : une fenêtre de consommation ne doit jamais être rapportée deux fois (sinon double facturation). Soit une table `usage_report_log` (tenant + fenêtre + `reported_at`), soit un curseur de dernière fenêtre rapportée par tenant. Migration Alembic chaînée après `0009` si table (décision RLS à trancher comme `subscriptions` S172 — probablement HORS RLS, report tourne sous legacy).
+4. **Tâche worker périodique** — `run_usage_reporting` (clonée sur `run_retention_purge`, `tasks.py`) : pour chaque tenant abonné (`subscriptions.status='active'` avec un `stripe_subscription_id`), agrège la consommation de la fenêtre non encore rapportée et la pousse en metered record. **Best-effort par tenant** (un échec n'avorte pas les autres) ; enregistrée dans `beat_schedule` (heure creuse, ex. quotidien). Aucune clé Stripe loggée.
+5. **Résolution de l'item d'abonnement** — le metered record cible un `subscription_item` (price metered) ; résoudre l'item depuis `subscriptions.stripe_subscription_id` (lookup Stripe ou colonne persistée — trancher).
 
 ### Tests / validation
-- **Backend** (si exposition du plan/portail) : unitaires `UserService`/`StripeService` (plan résolu ; `create_billing_portal_session` mocké ; 503/404 sans customer) + intégration endpoint(s) (`tests/api/`). `pytest` (hors e2e/evals) + `ruff` + `mypy app/` verts.
-- **Frontend** (Vitest, **obligatoire par composant/page**) : `BillingPage` happy (plan free → bouton « Passer à Pro » ; plan pro → « Gérer l'abonnement »), état chargement, erreur, billing désactivé ; clients `usage.ts`/`billing.ts` (forme typée, appel correct). `npm test` + `npm run typecheck` + `npm run lint` à 0 erreur/0 warning.
+- **Unitaires** `StripeService.report_usage` (SDK mocké : quantity/timestamp transmis ; no-op si non configuré ; aucune clé loggée) + idempotence (fenêtre déjà rapportée → skip).
+- **Unitaires/intégration** worker `run_usage_reporting` (itération tenants abonnés, best-effort un échec n'interrompt pas les autres, `beat_schedule` incrémenté, fenêtre rapportée marquée).
+- Si migration : forme (`tests/test_alembic_*`) — chaînage après `0009`, colonnes, downgrade ; décision RLS documentée.
+- `pytest` (hors e2e/evals) + `ruff` + `mypy app/` verts.
 - **Eval** : aucun prompt de skill touché → **pas d'eval** (le dire explicitement).
-- **Preuve d'acceptation observable** : monter `BillingPage` avec un `GET /usage` mocké → le tableau affiche le total + la ventilation par skill ; plan `free` → CTA checkout, plan `pro` → CTA portail.
+- **Preuve d'acceptation observable** : worker exécuté avec `UsageEventService.aggregate` + SDK Stripe mockés → un tenant abonné consommant N unités produit **un** metered record de quantité N ; une 2ᵉ exécution sur la même fenêtre **ne re-rapporte pas** (idempotence).
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E4/E5 — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 174 — E4-S9 : facturation à l'usage métrée vers Stripe (metered records)
-**Objectif** : pousser la consommation agrégée (`usage_events`) vers Stripe en **metered usage records** — la partie « facturation à l'usage » explicitement déférée au S172.
-**Complexité** : Moyenne.
-**Justification** : ferme la boucle de monétisation (abonnement *plus* usage réel facturé) ; le socle d'agrégation existe déjà.
-**Référence** : `UsageEventService.aggregate(days)` agrège déjà cost/tokens par tenant (`app/services/usage_event_service.py:75`, vérifié) ; `StripeService` existe (`app/services/stripe_service.py`, S172, vérifié) mais **n'a aucune méthode de metered record** (à créer) ; un price `metered` Stripe + une tâche de report périodique (worker) sont **à créer**.
-
 ### Sprint 175 — E4-S10 : provisionnement de clés API par tenant (admin self-service)
-**Objectif** : permettre à un admin de tenant de créer des clés rattachées à **son** tenant via un champ `tenant_id` optionnel sur `CreateKeyRequest` (aujourd'hui `create_key` hérite du tenant courant ; une clé env-admin retombe sur legacy).
+**Objectif** : permettre à un admin de tenant de créer des clés rattachées à **son** tenant via un champ `tenant_id` optionnel sur `CreateKeyRequest` (aujourd'hui `create_key` hérite du tenant courant).
 **Complexité** : Faible.
 **Justification** : rend le rattachement tenant des clés (S168) pilotable côté produit, prérequis d'un onboarding multi-tenant.
 **Référence** : `create_key(...)` (`app/services/api_key_service.py:75`, vérifié) rattache au tenant courant ; `CreateKeyRequest` (`app/api/endpoints/admin.py:21`, vérifié) ; `POST /admin/keys` délègue à `service.create_key(...)` (`app/api/endpoints/admin.py:82,90`, vérifié) **sans** `tenant_id` explicite. L'ajout d'un champ `tenant_id` optionnel + sa validation (admin ne crée que pour son tenant) sont **à créer**.
@@ -57,13 +53,19 @@ Le dernier sprint (172, E4-S7) a branché **Stripe** : SDK + clés `.env`, migra
 **Objectif** : faire passer les endpoints `/report` (auth-exemptés, donc sous tenant legacy par défaut) sous le contexte tenant du demandeur — risque résiduel n°2 de la revue OWASP RLS.
 **Complexité** : Moyenne.
 **Justification** : ferme le dernier trou d'isolation documenté — un rapport ne doit refléter que les données du tenant qui le demande.
-**Référence** : `/report` exempté de l'auth middleware (`app/middleware/auth.py:49` `EXEMPT_PREFIXES = ("/telemetry", "/report", "/ws")`, vérifié) → GUC legacy par défaut ; décision « legacy-only documentée » dans `docs/revue-owasp-rls-2026-06.md` (existe, vérifié). Un token de rapport portant le tenant + le threading du contexte (réutilisant `tenant_scope`, `app/db/tenant_context.py:65`, vérifié) sont **à créer**.
+**Référence** : `/report` exempté via `EXEMPT_PREFIXES = ("/telemetry", "/report", "/ws")` (`app/middleware/auth.py:49`, vérifié) → GUC legacy par défaut ; décision « legacy-only documentée » dans `docs/revue-owasp-rls-2026-06.md` (existe, vérifié). Un token de rapport portant le tenant + le threading du contexte (réutilisant `tenant_scope`, `app/db/tenant_context.py:65`, vérifié) sont **à créer**.
 
 ### Sprint 177 — E5-S1 : threading tenant des analyses planifiées (workers métrés)
 **Objectif** : faire tourner les analyses planifiées (screener/alertes/watchlist) **sous le tenant propriétaire** plutôt que legacy, afin de les metrer dans `usage_events` (chemin worker non métré, déféré au S166).
 **Complexité** : Élevée.
-**Justification** : ferme le dernier trou de facturation — la conso planifiée d'un tenant doit lui être imputée ; réutilise `tenant_scope` (S171).
-**Référence** : le chemin worker tourne sous legacy (`app/workers/tasks.py:109-110` commentaire « threading tenant→worker relève d'un sprint E4 ultérieur », vérifié ; `_build_orchestrator` `tasks.py:63`) ; `tenant_scope` (`app/db/tenant_context.py:65`, vérifié) est la primitive d'exécution par-tenant ; `watchlist` porte déjà `tenant_id` (RLS, S163-165). Le threading du tenant propriétaire de chaque entrée watchlist vers l'orchestrateur + l'injection du `UsageEventService` au worker sont **à créer**.
+**Justification** : ferme le dernier trou de facturation — la conso planifiée d'un tenant doit lui être imputée ; complémentaire au S174 (qui rapporte la conso métrée à Stripe).
+**Référence** : le chemin worker tourne sous legacy (`app/workers/tasks.py:109-110` commentaire « threading tenant→worker relève d'un sprint E4 ultérieur », vérifié ; `_build_orchestrator` `:63`, vérifié) ; `tenant_scope` (`app/db/tenant_context.py:65`, vérifié) est la primitive d'exécution par-tenant ; `watchlist` porte déjà `tenant_id` (RLS, S163-165). Le threading du tenant propriétaire de chaque entrée watchlist vers l'orchestrateur + l'injection du `UsageEventService` au worker sont **à créer**.
+
+### Sprint 178 — E4-S12 : retour de checkout sur la page Facturation (UX)
+**Objectif** : gérer le retour de checkout Stripe sur `BillingPage` — lire `?status=success|cancel` (params du `success_url`/`cancel_url`) pour afficher une confirmation et **rafraîchir le plan** affiché (le webhook met `tenants.plan` à jour de façon asynchrone, mais `user.plan` du contexte est figé au montage).
+**Complexité** : Faible.
+**Justification** : sans rafraîchissement, un tenant qui vient de passer à `pro` voit encore le CTA « Passer à Pro » jusqu'au prochain rechargement complet — friction produit immédiate.
+**Référence** : `success_url`/`cancel_url` pointent déjà `/facturation?status=...` (`app/api/endpoints/billing.py:81`, vérifié, corrigé au S173) ; `BillingPage` lit `user.plan` du contexte (`frontend/src/pages/BillingPage.tsx`, créé S173) ; `AuthContext` **n'expose aucune méthode de refresh** (`frontend/src/contexts/AuthContext.tsx` — `useAuth` ne retourne que `user`/`isAuthenticated`/`isLoading`/`login`/`logout`, vérifié) → exposer un `refreshUser()` (re-`authMe()`) est **à créer**.
 
 ---
 
@@ -71,15 +73,16 @@ Le dernier sprint (172, E4-S7) a branché **Stripe** : SDK + clés `.env`, migra
 
 ```
 Tu es un développeur Python/TypeScript senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md
-(v10.59.0), .claude/rules/conventions-frontend.md et variables-financieres.md.
-Sprint actif : 173 — E4-S8 (page « Facturation » frontend). Construire une page React /facturation
-qui consolide la consommation (GET /usage, S170), le plan courant et la gestion d'abonnement Stripe.
-Trancher l'exposition du plan (champ sur UserPublic/auth/me OU GET /billing/subscription — le plan
-n'est PAS exposé aujourd'hui). Ajouter StripeService.create_billing_portal_session + POST /billing/portal
-(bouton « Gérer l'abonnement »). Créer frontend/src/api/usage.ts + billing.ts (typés, zéro any),
-BillingPage réutilisant SkillCostPieChart/DailyCostTrendChart/QuotaBanner, CTA checkout (plan free→Pro)
-ou portail (déjà abonné).
+(v10.60.0), .claude/rules/gotchas-operationnels.md et securite.md.
+Sprint actif : 174 — E4-S9 (facturation à l'usage métrée vers Stripe). Pousser la consommation
+agrégée (usage_events) en metered usage records Stripe : nouvelle clé STRIPE_PRICE_METERED,
+StripeService.report_usage (SDK via asyncio.to_thread, vérifier l'API du SDK installé >=15),
+idempotence anti-double-report (table usage_report_log OU curseur par tenant — trancher),
+tâche worker run_usage_reporting (clonée sur run_retention_purge, best-effort par tenant abonné,
+beat_schedule). Désactivé proprement (no-op loggé) si Stripe/price non configuré.
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; frontend Vitest + typecheck + lint 0/0 ;
-preuve : BillingPage avec GET /usage mocké affiche total + ventilation by_skill + CTA selon le plan.
+GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; pas d'eval (aucun prompt de skill touché) ;
+preuve : worker avec aggregate + SDK mockés → 1 metered record de quantité N, 2ᵉ run même
+fenêtre → pas de re-report (idempotence). Note : stripe/mypy/alembic non préinstallés dans le
+venv web → pip install si import manquant.
 ```
