@@ -140,9 +140,99 @@ class TestRecord:
 class TestAppendOnly:
 
     def test_service_n_expose_aucune_mutation(self):
-        """Append-only : seul `record` est exposé (ni update ni delete)."""
+        """Append-only : `record` (write) + `aggregate` (read), aucun update ni delete."""
         methods = {m for m in dir(UsageEventService) if not m.startswith("_")}
-        assert methods == {"record"}
+        assert methods == {"record", "aggregate"}
+
+
+class TestAggregate:
+
+    def _pool_with(self, *, totals: dict, skills: list[dict], daily: list[dict]) -> AsyncMock:
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value=totals)
+        # fetch est appelé 2 fois : skills puis daily (ordre des requêtes dans aggregate).
+        pool.fetch = AsyncMock(side_effect=[skills, daily])
+        return pool
+
+    @pytest.mark.asyncio
+    async def test_aggregate_calcule_totaux_par_skill_et_par_jour(self):
+        pool = self._pool_with(
+            totals={
+                "total_cost": Decimal("0.030000"),
+                "total_in": 3000,
+                "total_out": 1500,
+            },
+            skills=[
+                {"skill": "graham_analysis", "cost": Decimal("0.020000"),
+                 "tok_in": 2000, "tok_out": 1000, "nb": 2},
+                {"skill": "earnings_quality", "cost": Decimal("0.010000"),
+                 "tok_in": 1000, "tok_out": 500, "nb": 1},
+            ],
+            daily=[
+                {"day": "2026-06-05", "cost": Decimal("0.010000")},
+                {"day": "2026-06-06", "cost": Decimal("0.020000")},
+            ],
+        )
+        svc = UsageEventService(db_pool=pool)
+
+        result = await svc.aggregate(days=30)
+
+        assert result.period_days == 30
+        assert result.total_cost_usd == pytest.approx(0.03)
+        assert result.total_tokens_input == 3000
+        assert result.total_tokens_output == 1500
+        assert [s.skill for s in result.by_skill] == ["graham_analysis", "earnings_quality"]
+        assert result.by_skill[0].events == 2
+        assert result.by_skill[0].cost_usd == pytest.approx(0.02)
+        assert result.daily_cost == {"2026-06-05": 0.01, "2026-06-06": 0.02}
+
+    @pytest.mark.asyncio
+    async def test_aggregate_fenetre_days_liee_en_str_dans_chaque_requete(self):
+        """La fenêtre `days` est passée en str ($1) aux 3 requêtes (borne `interval`)."""
+        pool = self._pool_with(
+            totals={"total_cost": 0, "total_in": 0, "total_out": 0},
+            skills=[],
+            daily=[],
+        )
+        svc = UsageEventService(db_pool=pool)
+
+        await svc.aggregate(days=7)
+
+        assert pool.fetchrow.call_args.args[1] == "7"
+        assert all(call.args[1] == "7" for call in pool.fetch.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_aggregate_jeu_vide_renvoie_zeros(self):
+        pool = self._pool_with(
+            totals={"total_cost": 0, "total_in": 0, "total_out": 0},
+            skills=[],
+            daily=[],
+        )
+        svc = UsageEventService(db_pool=pool)
+
+        result = await svc.aggregate(days=90)
+
+        assert result.period_days == 90
+        assert result.total_cost_usd == 0.0
+        assert result.by_skill == []
+        assert result.daily_cost == {}
+
+    @pytest.mark.asyncio
+    async def test_aggregate_sans_filtre_tenant_applicatif(self):
+        """L'isolation vient de la RLS : aucune des requêtes ne porte de WHERE tenant_id."""
+        pool = self._pool_with(
+            totals={"total_cost": 0, "total_in": 0, "total_out": 0},
+            skills=[],
+            daily=[],
+        )
+        svc = UsageEventService(db_pool=pool)
+
+        await svc.aggregate(days=30)
+
+        queries = [pool.fetchrow.call_args.args[0]]
+        queries += [call.args[0] for call in pool.fetch.call_args_list]
+        for query in queries:
+            assert "tenant_id" not in query
 
 
 class TestRecordUsageSafe:
