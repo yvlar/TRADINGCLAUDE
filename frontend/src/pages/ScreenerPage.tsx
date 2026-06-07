@@ -7,6 +7,7 @@ import { ScreenerTable } from '../components/ScreenerTable'
 import { Disclaimer } from '../components/Disclaimer'
 import { SkeletonTable } from '../components/ui/skeleton'
 import { PageTransition } from '../components/PageTransition'
+import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
 import { postScreen, exportScreen, downloadScreenerPdf } from '../api/analyze'
 import type { ScreenRequest, ScreenResult } from '../types'
 
@@ -112,11 +113,14 @@ export default function ScreenerPage() {
         </Card>
       </form>
 
-      {screenMutation.isError && (
-        <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
-          Erreur : {(screenMutation.error as Error).message}
-        </div>
-      )}
+      {screenMutation.isError &&
+        (isQuotaError(screenMutation.error) ? (
+          <QuotaBanner message={(screenMutation.error as Error).message} />
+        ) : (
+          <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
+            Erreur : {(screenMutation.error as Error).message}
+          </div>
+        ))}
 
       {screenMutation.isPending && (
         <SkeletonTable rows={5} cols={7} />

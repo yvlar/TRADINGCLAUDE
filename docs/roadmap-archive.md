@@ -10,6 +10,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 163 — E3-S3 : Row-Level Security PostgreSQL sur les 6 tables métier ✅
+
+**Objectif :** Poser l'**isolation au niveau base** — `ENABLE ROW LEVEL SECURITY` + policy `tenant_id = current_setting('app.tenant_id')` sur les 6 tables métier, et injecter le GUC `app.tenant_id` par connexion au pool. Le mécanisme RLS + son câblage de contexte ; la matrice d'isolation exhaustive 6 tables relève d'E3-S5. 3ᵉ marche de l'épic E3.
+
+**Livrables :**
+- `alembic/versions/0005_business_rls.py` (nouveau) — révision chaînée après `0004_business_tenant_id`. Pour les 6 tables : `ENABLE` + `FORCE ROW LEVEL SECURITY` + `CREATE POLICY <table>_tenant_isolation` (USING + WITH CHECK sur `NULLIF(current_setting('app.tenant_id', true), '')::uuid`). DDL bâti par template sur le tuple `_TABLES` (réutilise le pattern Sprint 162). Downgrade : `DROP POLICY` + `NO FORCE` + `DISABLE`, idempotent.
+- **Décisions documentées** : (1) **fail-closed** — GUC absent/vide → `NULL::uuid` → 0 ligne visible (le `NULLIF` neutralise aussi la chaîne vide qui sinon lèverait `22P02`) ; (2) **WITH CHECK** — un tenant ne peut pas écrire la ligne d'un autre ; (3) **FORCE RLS** — le propriétaire de table est lui aussi soumis (défense en profondeur + isolation prouvable en local via rôle NOSUPERUSER).
+- `app/db/tenant_context.py` (nouveau) — `apply_tenant_context(conn)` posé comme `setup=` du pool asyncpg : `set_config('app.tenant_id', LEGACY_TENANT_ID, false)` (portée session) à chaque acquisition. Câblé au pool API (`app/api/main.py`) **et aux 7 pools workers** (`app/workers/tasks.py`) — sous `FORCE` RLS, un pool sans GUC verrait 0 ligne et ses INSERT échoueraient au `WITH CHECK`. Palier E3-S3 : tout le monde est « legacy » jusqu'au threading (E3-S4).
+- **Périmètre** : RLS + policy + câblage GUC + tests. PAS de threading `current_user`/tenant (E3-S4), PAS de clé cache préfixée tenant (E3-S4), PAS de quotas (E4).
+
+**Validation runtime (Postgres 16 local + gate CI)** : `upgrade head` → `rowsecurity = true` + `forcerowsecurity = true` + une policy ALL (USING+WITH CHECK) par table ; `downgrade` → policies retirées + RLS désactivée ; re-`upgrade` idempotent ; cycle `downgrade base → upgrade head` vert. **Isolation cross-tenant prouvée** (rôle **NOSUPERUSER**) : `SET app.tenant_id = A` ne voit que A, bascule B → seulement B, GUC vide → 0 ligne, INSERT cross-tenant refusé par `WITH CHECK`. Le job CI `migrations` crée un rôle NOSUPERUSER et exécute ce test d'isolation — l'isolation est un gate, pas seulement une preuve locale.
+
+**Version** : 10.50.0
+**Tests** : 2 039 backend collectés (2 024 passés, 14 skipped [+1 : isolation runtime, skippée hors PG migré], 1 xfailed — +37 : forme de migration RLS paramétrée sur 6 tables [ENABLE/FORCE/policy USING+WITH CHECK/prédicat fail-closed NULLIF/downgrade], unitaires du câblage GUC, isolation cross-tenant runtime) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché). Revue indépendante à contexte frais : **correctness CLEAN** (fail-closed sain — absent/vide → NULL, pas d'erreur de cast ; policy ALL couvre SELECT/INSERT/UPDATE/DELETE sans échappatoire DELETE ; les 8 pools routent par `apply_tenant_context`, aucun site DB des 6 tables ne le contourne ; `setup` correct pour le reset par-acquisition qu'exigera E3-S4 ; CI prouve l'isolation) — 2 findings traités (isolation câblée en gate CI via rôle NOSUPERUSER ; test de forme verrouille le prédicat dans USING **et** WITH CHECK) ; **qualité** : factory de pool partagée délibérément différée à E3-S4 (où `setup` portera une vraie logique per-requête ; fail-closed backstoppe un pool oublié), `app/db/` retenu comme home (callback connexion, pas middleware ASGI), 2 tests redondants retirés.
+
 ### Sprint 162 — E3-S2 : rattacher les 6 tables métier au tenant ✅
 
 **Objectif :** Propager la dimension tenant aux **données** — `tenant_id UUID NOT NULL` (FK → `tenants`) + index sur chacune des 6 tables métier, avec backfill vers le tenant « legacy » (constante `LEGACY_TENANT_ID` posée au Sprint 161). Aucune RLS ni middleware de contexte ici (E3-S3/S4) ; le tenant legacy reste le défaut des écritures tant que le threading n'est pas câblé. 2ᵉ marche de l'épic E3.

@@ -73,6 +73,7 @@ from app.services.monthly_report_service import MonthlyReportService
 from app.services.observability import ObservabilityService
 from app.services.password_reset_service import PasswordResetService
 from app.services.pdf_report_service import PdfReportService
+from app.services.quota_service import QuotaExceededError, QuotaService
 from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
@@ -102,6 +103,7 @@ from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
 from app.utils.env import is_dev_environment
 from app.utils.error_sanitization import log_internal_error, sanitized_http_500
+from app.utils.quota_http import quota_exceeded_http
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
 from app.utils.security_config import require_secure_db_url
 
@@ -341,6 +343,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     analysis_cache = AnalysisCacheService(redis_client=redis_pool, ttl_seconds=cache_ttl)
 
+    # Quotas par plan (E4-S2) : compteur mensuel d'analyses + borne taille screener par tenant.
+    quota_service = QuotaService(db_pool=db_pool, redis_client=redis_pool)
+
     screener = ScreenerService(
         orchestrator=orchestrator,
         extractor=yahoo_extractor,
@@ -386,6 +391,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.sedar_extractor = sedar_extractor
     app.state.redis_pool = redis_pool
     app.state.analysis_cache = analysis_cache
+    app.state.quota_service = quota_service
     app.state.screener = screener
     app.state.observability = obs_service
     app.state.watchlist_service = watchlist_service
@@ -559,8 +565,16 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     observability = getattr(request.app.state, "observability", None)
     composite_history_service = getattr(request.app.state, "composite_history_service", None)
     esg_history_service = getattr(request.app.state, "esg_history_service", None)
+    quota_service: QuotaService | None = getattr(request.app.state, "quota_service", None)
+
+    # Borne dure : refuse AVANT tout travail si le quota mensuel est atteint (429).
+    if quota_service is not None:
+        try:
+            await quota_service.check()
+        except QuotaExceededError as err:
+            raise quota_exceeded_http(err) from err
     try:
-        return await orchestrator.run_company_analysis(
+        response = await orchestrator.run_company_analysis(
             body, cache=cache, observability=observability,
             composite_history_service=composite_history_service,
             esg_history_service=esg_history_service,
@@ -569,6 +583,11 @@ async def analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         raise sanitized_http_500(
             exc, logger, f"Erreur lors de l'analyse de {body.ticker}"
         ) from exc
+    # Un cache hit (Redis ou composite) ne consomme rien : cost_usd=0 → on n'incrémente pas
+    # (cohérent avec le metering Sprint 166 qui n'émet rien pour cost_usd=0).
+    if quota_service is not None and response.cost_usd > 0:
+        await quota_service.increment()
+    return response
 
 
 def _parse_tags_param(tags: str | None) -> list[str] | None:

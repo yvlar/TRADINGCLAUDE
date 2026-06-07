@@ -6,6 +6,7 @@ import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
 import { Badge } from '../components/ui/badge'
 import { PageTransition, StaggerItem } from '../components/PageTransition'
+import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
 import { streamAnalyze, postReport, downloadTickerPdf } from '../api/analyze'
 import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
@@ -45,6 +46,7 @@ export default function AnalyzePage() {
   const [lastRequest, setLastRequest] = useState<AnalyzeRequest | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamError, setStreamError] = useState<string | null>(null)
+  const [quotaError, setQuotaError] = useState<string | null>(null)
   const [partialResult, setPartialResult] = useState<Partial<AnalyzeResponse>>({})
   const [activeSkill, setActiveSkill] = useState<string | null>(null)
   const [plannedSkills, setPlannedSkills] = useState<string[]>([])
@@ -80,6 +82,7 @@ export default function AnalyzePage() {
     setPlannedSkills([])
     setActiveSkill(null)
     setStreamError(null)
+    setQuotaError(null)
     setDepuisCache(false)
     setLastRequest(req)
     setIsStreaming(true)
@@ -108,7 +111,11 @@ export default function AnalyzePage() {
         }
       }
     } catch (err) {
-      setStreamError(err instanceof Error ? err.message : 'Erreur de streaming')
+      if (isQuotaError(err)) {
+        setQuotaError(err instanceof Error ? err.message : 'Quota mensuel atteint')
+      } else {
+        setStreamError(err instanceof Error ? err.message : 'Erreur de streaming')
+      }
     } finally {
       setIsStreaming(false)
       setActiveSkill(null)
@@ -165,6 +172,8 @@ export default function AnalyzePage() {
             initialTicker={prefillTicker}
           />
         </StaggerItem>
+
+        {quotaError && <QuotaBanner message={quotaError} />}
 
         {streamError && (
           <div

@@ -483,6 +483,13 @@ async def client(analyze_response_msft: AnalyzeResponse):
     mock_analysis_cache.set = AsyncMock(return_value=None)
     mock_analysis_cache.invalidate = AsyncMock(return_value=0)
 
+    # QuotaService autorisant par défaut — les tests de dépassement (429) le surchargent.
+    mock_quota = AsyncMock()
+    mock_quota.check = AsyncMock(return_value=None)
+    mock_quota.increment = AsyncMock(return_value=None)
+    mock_quota.check_and_increment = AsyncMock(return_value=None)
+    mock_quota.check_screener_size = AsyncMock(return_value=None)
+
     mock_screener = AsyncMock()
     mock_screener.screen = AsyncMock(
         return_value=ScreenResult(
@@ -554,6 +561,7 @@ async def client(analyze_response_msft: AnalyzeResponse):
             app.state.redis_pool = mock_redis_pool
             app.state.yahoo_extractor = mock_yahoo
             app.state.analysis_cache = mock_analysis_cache
+            app.state.quota_service = mock_quota
             app.state.screener = mock_screener
             app.state.observability = mock_obs
             yield c

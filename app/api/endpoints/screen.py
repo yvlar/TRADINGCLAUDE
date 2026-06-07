@@ -5,9 +5,11 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, model_validator
 
+from app.services.quota_service import QuotaExceededError, QuotaService
 from app.services.screener import ScreenerService
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.utils.error_sanitization import sanitized_http_500
+from app.utils.quota_http import quota_exceeded_http
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,14 @@ class ScreenResult(BaseModel):
 async def screen(request: Request, body: ScreenRequest) -> ScreenResult:
     """Lance le screener sur la liste de tickers fournie."""
     screener: ScreenerService = request.app.state.screener
+    quota_service: QuotaService | None = getattr(request.app.state, "quota_service", None)
+
+    # Borne par plan du tenant, en plus du plafond technique max 20 (ScreenRequest).
+    if quota_service is not None:
+        try:
+            await quota_service.check_screener_size(len(body.tickers))
+        except QuotaExceededError as err:
+            raise quota_exceeded_http(err) from err
     try:
         return await screener.screen(body)
     except Exception as exc:
