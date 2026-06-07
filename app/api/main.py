@@ -37,6 +37,7 @@ from app.api.endpoints.screener_report import router as screener_report_router
 from app.api.endpoints.semantic_search import router as semantic_search_router
 from app.api.endpoints.telemetry import router as telemetry_router
 from app.api.endpoints.ticker_report import router as ticker_report_router
+from app.api.endpoints.usage import router as usage_router
 from app.api.endpoints.watchlist import router as watchlist_router
 from app.api.endpoints.ws_metrics import router as ws_metrics_router
 from app.db.tenant_context import apply_tenant_context
@@ -478,6 +479,7 @@ app.include_router(report_router)
 app.include_router(screen_router)
 app.include_router(semantic_search_router)
 app.include_router(telemetry_router)
+app.include_router(usage_router)
 app.include_router(watchlist_router)
 app.include_router(ws_metrics_router)
 

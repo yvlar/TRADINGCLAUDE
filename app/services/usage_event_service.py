@@ -15,8 +15,12 @@ import asyncpg
 from pydantic import BaseModel
 
 from app.db.tenant_context import resolve_tenant
+from app.models.usage import UsageBySkill, UsageResponse
 
 logger = logging.getLogger(__name__)
+
+# Fenêtre d'agrégation par défaut de `GET /usage` (cohérent avec `GET /metrics`).
+_DEFAULT_USAGE_DAYS = 30
 
 
 class UsageEvent(BaseModel):
@@ -67,6 +71,74 @@ class UsageEventService:
             tokens_output,
         )
         return _row_to_event(row)
+
+    async def aggregate(self, days: int = _DEFAULT_USAGE_DAYS) -> UsageResponse:
+        """Agrège la consommation du tenant courant sur `days` jours (lecture seule).
+
+        Aucun filtre `WHERE tenant_id` : l'isolation vient de la RLS (GUC `app.tenant_id`
+        posé par connexion via `apply_tenant_context`) — chaque requête ne voit que les
+        lignes du tenant courant. `cost_usd` (NUMERIC) est arrondi à 6 décimales en `float`
+        côté API, comme `MetricsResponse`.
+        """
+        # Lié en str ($1) dans `($1 || ' days')::interval`, comme `get_metrics`.
+        window = str(days)
+
+        totals_row = await self._db.fetchrow(
+            """
+            SELECT
+                COALESCE(SUM(cost_usd), 0)      AS total_cost,
+                COALESCE(SUM(tokens_input), 0)  AS total_in,
+                COALESCE(SUM(tokens_output), 0) AS total_out
+            FROM usage_events
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            """,
+            window,
+        )
+
+        skill_rows = await self._db.fetch(
+            """
+            SELECT skill,
+                   COALESCE(SUM(cost_usd), 0)      AS cost,
+                   COALESCE(SUM(tokens_input), 0)  AS tok_in,
+                   COALESCE(SUM(tokens_output), 0) AS tok_out,
+                   COUNT(*)                        AS nb
+            FROM usage_events
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY skill
+            ORDER BY cost DESC
+            """,
+            window,
+        )
+
+        daily_rows = await self._db.fetch(
+            """
+            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                   COALESCE(SUM(cost_usd), 0)                            AS cost
+            FROM usage_events
+            WHERE created_at >= NOW() - ($1 || ' days')::interval
+            GROUP BY day
+            ORDER BY day
+            """,
+            window,
+        )
+
+        return UsageResponse(
+            period_days=days,
+            total_cost_usd=round(float(totals_row["total_cost"]), 6),
+            total_tokens_input=int(totals_row["total_in"]),
+            total_tokens_output=int(totals_row["total_out"]),
+            by_skill=[
+                UsageBySkill(
+                    skill=row["skill"],
+                    cost_usd=round(float(row["cost"]), 6),
+                    tokens_input=int(row["tok_in"]),
+                    tokens_output=int(row["tok_out"]),
+                    events=int(row["nb"]),
+                )
+                for row in skill_rows
+            ],
+            daily_cost={row["day"]: round(float(row["cost"]), 6) for row in daily_rows},
+        )
 
 
 def _row_to_event(row: asyncpg.Record) -> UsageEvent:
