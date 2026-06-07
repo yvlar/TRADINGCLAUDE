@@ -61,12 +61,14 @@ class ResetPasswordRequest(BaseModel):
 
 
 class UserPublic(BaseModel):
-    # tenant_id volontairement absent de la réponse publique (/auth/me) au Sprint 161 :
-    # le dict interne de UserService le porte déjà, mais l'exposition côté client n'a
-    # de sens qu'avec le threading de contexte tenant (E3-S4, sprint 164).
+    # tenant_id + tenant_name exposés depuis le Sprint 169 (E4-S4) : le contexte tenant
+    # est désormais threadé (E3-S4) et borné (E4-S2/S3), l'omission délibérée du Sprint 161
+    # n'a plus lieu d'être — le client en a besoin pour l'UI multi-tenant.
     id: UUID
     email: str
     role: str
+    tenant_id: UUID
+    tenant_name: str
     created_at: datetime
 
 

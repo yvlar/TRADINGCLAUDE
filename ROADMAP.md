@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-07 — Sprint 168 complété**
+**Dernière mise à jour : 2026-06-07 — Sprint 169 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.55.0 |
+| **Version** | 10.56.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 169 — E4-S4 exposition du tenant dans `/auth/me` (`tenant_id` + nom du tenant dans la réponse publique) |
-| **Dernier sprint complété** | Sprint 168 — E4-S3 clés API rattachées au tenant : `api_keys.tenant_id` (migration `0008`, hors RLS — table d'authn lue avant le contexte tenant), exposé sur `ApiKeyRecord` + rattaché au tenant courant à la création, et `BearerTokenMiddleware` pose `request.state.tenant_id` sur le chemin clé API (symétrique au chemin JWT) → ContextVar/RLS/quota/metering ciblent le tenant de la clé ✅ |
+| **Sprint actif** | Sprint 170 — E4-S5 endpoint d'agrégation de consommation (`GET /usage`) — coût/tokens par skill scopé tenant depuis `usage_events` |
+| **Dernier sprint complété** | Sprint 169 — E4-S4 exposition du tenant dans `/auth/me` : `UserPublic` porte désormais `tenant_id` + `tenant_name` (levée de l'omission délibérée du Sprint 161), nom du tenant résolu en un seul aller-retour (JOIN `tenants` dans `get_by_id`/`authenticate`, sous-requête corrélée dans `create_user`), threadé aux 3 sites `/me`/login/register, affiché côté frontend via `TenantBadge` dans le header ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -37,7 +37,7 @@
 - `POST /auth/login` — authentification cookie, rate limiting Redis 5/15 min (Sprint Login)
 - `POST /auth/logout` — blacklist JWT jti + invalidation refresh token (Sprint Login)
 - `POST /auth/refresh` — rotation refresh token avec détection de vol par famille (Sprint Login)
-- `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login)
+- `GET /auth/me` — profil utilisateur authentifié via cookie access_token (Sprint Login) ; expose `tenant_id` + `tenant_name` (Sprint 169 — nom résolu par JOIN `tenants` dans `get_by_id`, parité login/register)
 - `GET /alerts?limit=50` — historique des alertes Celery (ESG + composite + prix) (Sprint 99)
 - `GET /semantic-search?q=&k=5` — recherche sémantique RAG dans `investment_knowledge` ; `rag_enabled=false` + `results=[]` si `OPENAI_API_KEY` absente (Sprint 106)
 - `GET`/`PUT /preferences/screener` — préférences Screener (tri + filtres) liées au compte authentifié, table `user_preferences` (JSONB, PK `(user_id, key)`) ; 401 si non authentifié, fallback localStorage côté client (Sprint 124)
@@ -71,7 +71,7 @@
 - **Alertes** `/alerts` — tableau des alertes Celery récentes
 - **Recherche** `/recherche` — recherche sémantique RAG en langage naturel
 - **Admin** — gestion des clés API (créer/lister/révoquer)
-- **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe)
+- **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe) ; **badge « Espace : <nom> »** (`TenantBadge`, réutilise le composant `Badge` du design system) affiché dans le header dès l'authentification, masqué si le nom de tenant est absent (rétrocompat réponse en cache) (Sprint 169)
 - **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG) ; **bloc d'avertissement réglementaire** (« recherche éducative — pas un conseil financier ») inséré dans chaque rapport (Sprint 129)
 - **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse, sous le tableau du Screener et sous la comparaison de tickers (Sprint 133), et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
 - **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121 ; la carte Z-Score (Earnings Quality) affiche désormais ses termes auditables X1-X5 en grille, en parité avec les 8 indices du M-Score (Sprint 136)
@@ -89,6 +89,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 169 — E4-S4 : exposition du tenant dans `/auth/me` ✅
+
+**Objectif :** Rendre le tenant **visible côté client** maintenant que le contexte tenant est threadé (E3-S4) et borné (E4-S2/S3). Exposer `tenant_id` **et le nom du tenant** dans `UserPublic` (préparation UI multi-tenant), en levant la restriction délibérée du Sprint 161 désormais cohérente. 4ᵉ marche de l'épic E4. **Sans migration** (`users.tenant_id` existe depuis le Sprint 161, `tenants.name` depuis le Sprint E3-S1) — lecture/enrichissement de réponse uniquement.
+
+**Livrables :**
+- `app/models/auth.py` — `UserPublic` porte désormais `tenant_id: UUID` + `tenant_name: str` (commentaire d'omission du Sprint 161 remplacé par la justification de la levée).
+- `app/services/user_service.py` — **résolution du nom de tenant en un seul aller-retour** : `get_by_id` et `authenticate` font un `JOIN tenants t ON u.tenant_id = t.id` (`t.name AS tenant_name`) ; `create_user` utilise une **sous-requête corrélée** dans `INSERT … RETURNING` (`(SELECT name FROM tenants WHERE id = users.tenant_id)`) car `RETURNING` ne supporte pas de `JOIN`. `tenants` et `users` sont **hors RLS** (tables parentes) → le JOIN n'introduit aucune fuite d'isolation. La FK `users.tenant_id → tenants(id)` (Sprint E3-S1) garantit un `tenant_name` non-null.
+- `app/api/endpoints/auth.py` — les **3 sites de construction** de `UserPublic` (`/me`, login, register) threadent `tenant_id` + `tenant_name` ; les dicts proviennent respectivement de `get_by_id`/`authenticate`/`create_user` qui retournent désormais tous le nom (aucun `KeyError`). `/refresh` et `/reset-password` lisent `get_by_id` mais n'utilisent que `email`/`role`/`tenant_id` — le nouveau champ est additif et inoffensif.
+- **Frontend** — `User` (`frontend/src/types/index.ts`) gagne `tenant_id` + `tenant_name` (snake_case, miroir exact du JSON, zéro `any`) ; nouveau composant `TenantBadge` (réutilise le `Badge` `variant="outline"` du design system) rendu dans le header de `App.tsx` via `user?.tenant_name`, masqué (`return null`) si le nom est absent/vide (rétrocompat réponse `/auth/me` en cache d'avant le sprint).
+
+**Validation runtime (Postgres 16 local migré)** : `UserService` exercé sur le schéma réel — `create_user` (tenant custom **et** legacy) ramène le bon `tenant_name` via la sous-requête corrélée ; `get_by_id` et `authenticate` via le JOIN ; `tenant_name` non-null prouvé (FK). **Preuve d'acceptation observable** : `GET /auth/me` (test d'intégration) retourne `tenant_id` + `tenant_name` corrects, tenant legacy → « Legacy ».
+
+**Version** : 10.56.0
+**Tests** : 2 158 backend collectés (2 130 passés, 27 skipped, 1 xfailed — +6 : unitaires `UserService` [`get_by_id` JOIN ramène `tenant_name` / absent → None, `authenticate` JOIN ramène `tenant_name`, `create_user` RETURNING inclut le nom], intégration [`GET /auth/me` expose `tenant_id`+`tenant_name`, tenant legacy → « Legacy »] + assertions tenant ajoutées à `test_register_success`/`test_login_success`) ; `ruff`/`mypy app/` verts ; **frontend 453 Vitest verts** (+4 : `TenantBadge` happy/undefined/empty, header App affiche le nom une fois authentifié) + typecheck/ESLint verts ; **pas d'eval** (aucun prompt de skill ni l'orchestrateur de skills touché — enrichissement de réponse d'authentification uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (3 sites threadés, aucun `KeyError`, JOIN sans fuite RLS, sous-requête corrélée valide + non-null garantie par la FK, tests non-vacuous prouvant le JOIN et la forme de `/auth/me`) — 0 finding CRITICAL/MAJOR/MINOR, 2 NIT traités (FK confirmée `0003_tenants.py:42` + preuve Postgres live ; assertions tenant ajoutées aux endpoints register/login) ; **qualité** (`/simplify` 4 axes) : 1 finding convergent appliqué (`TenantBadge` réutilise le composant `Badge` du design system au lieu d'un `<span>` brut), duplication des 3 constructions `UserPublic` et du JOIN `authenticate`/`get_by_id` conservée (pré-existante, les requêtes diffèrent — `authenticate` sélectionne `hashed_password` ; un fragment partagé serait plus fragile), efficacité jugée négligeable (lookups PK/index).
 
 ### Sprint 168 — E4-S3 : clés API rattachées au tenant ✅
 
@@ -136,21 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.53.0
 **Tests** : 2 097 backend collectés (2 075 passés, 21 skipped [+1 : matrice 7ᵉ table, skippée hors PG migré], 1 xfailed — +34 : forme migration usage_events [colonnes/index/RLS ENABLE+FORCE/policy USING+WITH CHECK/fail-closed NULLIF/pas de FK analysis_history/downgrade], unitaires service [record INSERT pur, défaut tenant legacy, tenant explicite, binding Decimal, append-only, `record_usage_safe` best-effort], émission orchestrateur [appariement par-skill, cache hit=0, sans service, best-effort, **bout-en-bout via `run_company_analysis`**]) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (orchestrateur touché mais aucun prompt de skill modifié — émission de metering uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (appariement lockstep vérifié sur les 17 blocs des 2 chemins ; invariant `WITH CHECK` colonne==GUC garanti par émission `await` inline ; best-effort prouvé ; `cost_usd>0` skip cache hit ; migration fail-closed sans FK analysis_history) — 2 findings MINOR traités (worker non metré documenté ; test bout-en-bout ajouté), NIT cosmétiques traités (titre step CI « 7 tables ») ; **qualité** : `_emit_usage_events` au bon altitude, `UsageEventService` fidèle à `AuditLogService` sans divergence superflue, aucun refactor requis.
-
-### Sprint 165 — E3-S5 : preuve d'isolation rouge→vert (clôt E3) ✅
-
-**Objectif :** Transformer la preuve d'isolation minimale (1 table, E3-S3) en **matrice cross-tenant exhaustive sur les 6 tables métier**, en rouge→vert, + revue OWASP de la policy RLS. Clôt l'épic E3 (bloqueur n°1, isolation au niveau base).
-
-**Livrables :**
-- `tests/integration/test_rls_isolation.py` — la preuve 1-table devient une **matrice paramétrée** sur les 6 tables (`@pytest.mark.parametrize` sur `_TABLES`, parité verrouillée ↔ migration `0005_business_rls._TABLES`). Pour chaque table, sous rôle **NOSUPERUSER** : (a) **lecture isolée** — A ne voit que A (`USING`) ; (b) **`WITH CHECK`** — A ne peut pas écrire une ligne de B ; (c) **fail-closed** — GUC vide → `NULLIF`→`NULL::uuid` → 0 ligne. Fabrique de payload par table (`_PAYLOADS` + `_build_insert`) gérant les contraintes propres : `watchlist` (index unique **global** `(ticker, workflow)` → marqueurs distincts par tenant), `annotations` (`analysis_id` UNIQUE global → UUID neuf par insertion ; `note` NOT NULL), `analysis_history` (`input_data`/`result` JSONB NOT NULL). Le test E3-S4 (ContextVar→pool→GUC) est conservé.
-- **Aspect rouge→vert prouvé empiriquement** : même requête de lecture → `{A}` sous GUC=A et `{B}` sous GUC=B (les deux lignes existent ; seule la policy masque celle de l'autre). Désactiver la RLS sur une table fait virer le cas au rouge ; la réactiver, au vert — vérifié en session.
-- **Gate CI étendu** (`.github/workflows/ci.yml`) — le `GRANT` du rôle `rls_tester` couvre désormais les **6 tables + `tenants`** + `USAGE ON ALL SEQUENCES` (les BIGSERIAL `esg_score_history`/`alert_history` en dépendent) ; la matrice tourne en gate, pas seulement en local.
-- **Revue OWASP** (`docs/revue-owasp-rls-2026-06.md`, nouveau) — policy passée au crible : injection GUC **non exploitable** (`set_config` en paramètres liés + `UUID(...)` fail-safe legacy), **aucune** fonction `SECURITY DEFINER`, `FORCE RLS` couvre le propriétaire (les 6 tables `ENABLE`+`FORCE` vérifiées runtime). **2 risques résiduels hors code, suivis** : (1) le rôle runtime doit être `NOSUPERUSER`/`NOBYPASSRLS`/non-propriétaire (sinon RLS inerte — `copilote` est superuser+BYPASSRLS) ; (2) `/report` auth-exempté → GUC legacy : **décision = documenter legacy-only**, scoping tenant du token de rapport reporté à un sprint dédié.
-
-**Validation runtime (Postgres 16 local + rôle NOSUPERUSER)** : matrice 6 tables verte (7 tests intégration : 6 paramétrés + threading E3-S4) ; rouge→vert démontré (RLS off → rouge, on → vert) ; état RLS des 6 tables vérifié en base (`ENABLE`+`FORCE`+1 policy `ALL` USING==WITH CHECK).
-
-**Version** : 10.52.0
-**Tests** : 2 063 backend collectés (2 042 passés, 20 skipped [+5 : matrice 6 tables, skippée hors PG migré], 1 xfailed) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (aucun prompt skill ni orchestrateur touché — tests d'intégration RLS uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (matrice prouve les 3 propriétés par table, rouge→vert causal et non vacuous, `WITH CHECK` ne peut pas passer à vide [payloads par ailleurs valides, zéro contrainte CHECK collatérale], grants CI suffisants tables+séquences, doc OWASP factuellement cohérente) — 1 finding cosmétique traité (docstring : privilèges requis SELECT/INSERT/UPDATE/DELETE) ; **qualité** : aucun changement justifié (paramétrage + `_build_insert` retirent déjà la duplication ; connexion par test préférée à un savepoint partagé).
 
 ---
 

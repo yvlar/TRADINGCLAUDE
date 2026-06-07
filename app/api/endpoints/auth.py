@@ -144,6 +144,8 @@ async def register(request: Request, body: RegisterRequest, response: Response) 
             id=user_id,
             email=user["email"],
             role=user["role"],
+            tenant_id=user["tenant_id"],
+            tenant_name=user["tenant_name"],
             created_at=user["created_at"],
         ),
         message="Compte créé avec succès",
@@ -207,6 +209,8 @@ async def login(request: Request, body: LoginRequest, response: Response) -> Aut
             id=user_id,
             email=user["email"],
             role=user["role"],
+            tenant_id=user["tenant_id"],
+            tenant_name=user["tenant_name"],
             created_at=user["created_at"],
         ),
         message="Connexion réussie",
@@ -298,6 +302,8 @@ async def me(request: Request) -> UserPublic:
         id=user["id"],
         email=user["email"],
         role=user["role"],
+        tenant_id=user["tenant_id"],
+        tenant_name=user["tenant_name"],
         created_at=user["created_at"],
     )
 

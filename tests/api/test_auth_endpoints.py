@@ -12,7 +12,11 @@ from app.api.main import app
 from app.services.user_service import EmailAlreadyExistsError
 
 
-def _make_user(email: str = "test@test.com", role: str = "reader") -> dict:
+def _make_user(
+    email: str = "test@test.com",
+    role: str = "reader",
+    tenant_name: str = "Acme Capital",
+) -> dict:
     """Fabrique un dict utilisateur pour les mocks."""
     return {
         "id": uuid.uuid4(),
@@ -20,6 +24,7 @@ def _make_user(email: str = "test@test.com", role: str = "reader") -> dict:
         "role": role,
         "is_active": True,
         "tenant_id": uuid.uuid4(),  # présent depuis Sprint 161 (RETURNING/SELECT)
+        "tenant_name": tenant_name,  # nom du tenant exposé au Sprint 169 (JOIN tenants)
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "hashed_password": "$argon2id$v=19$m=65536,t=2,p=2$hash$hash",
     }
@@ -89,6 +94,9 @@ async def test_register_success(auth_client):
     data = response.json()
     assert "user" in data
     assert "email" in data["user"]
+    # Le tenant est exposé dès l'inscription (Sprint 169) — construit via create_user.
+    assert "tenant_id" in data["user"]
+    assert data["user"]["tenant_name"] == "Acme Capital"
 
 
 @pytest.mark.asyncio
@@ -121,6 +129,9 @@ async def test_login_success(auth_client):
     assert response.status_code == 200
     data = response.json()
     assert "user" in data
+    # Le tenant est exposé à la connexion (Sprint 169) — construit via authenticate.
+    assert "tenant_id" in data["user"]
+    assert data["user"]["tenant_name"] == "Acme Capital"
 
 
 @pytest.mark.asyncio
@@ -172,6 +183,33 @@ async def test_me_with_valid_cookie(auth_client, _mock_user_service):
     assert response.status_code == 200
     data = response.json()
     assert "email" in data
+
+
+@pytest.mark.asyncio
+async def test_me_expose_le_tenant(auth_client, _mock_user_service):
+    """Preuve d'acceptation : /auth/me porte tenant_id + tenant_name (Sprint 169)."""
+    user = _make_user(tenant_name="Espace Démo")
+    _mock_user_service.get_by_id.return_value = user
+    response = await auth_client.get(
+        "/auth/me",
+        cookies={"access_token": "fake-jwt-access-token"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tenant_id"] == str(user["tenant_id"])
+    assert data["tenant_name"] == "Espace Démo"
+
+
+@pytest.mark.asyncio
+async def test_me_tenant_legacy(auth_client, _mock_user_service):
+    user = _make_user(tenant_name="Legacy")
+    _mock_user_service.get_by_id.return_value = user
+    response = await auth_client.get(
+        "/auth/me",
+        cookies={"access_token": "fake-jwt-access-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["tenant_name"] == "Legacy"
 
 
 # ---- POST /auth/forgot-password ----

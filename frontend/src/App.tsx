@@ -6,6 +6,7 @@ import { RouteFallback } from './components/RouteFallback'
 import { Button } from './components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
 import { Disclaimer } from './components/Disclaimer'
+import { TenantBadge } from './components/TenantBadge'
 // Imports dynamiques par page : chaque page (et recharts, embarqué par Dashboard/Esg/
 // Watchlist/Compare) forme un chunk séparé, exclu du bundle d'entrée (Sprint 123).
 const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
@@ -48,7 +49,7 @@ function NavItem({ to, label }: { to: string; label: string }) {
 }
 
 function AppShell() {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, logout, user } = useAuth()
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Raccourci global Ctrl+K / ⌘K pour ouvrir/fermer la palette
@@ -96,6 +97,7 @@ function AppShell() {
                   <span>K</span>
                 </kbd>
               </button>
+              <TenantBadge tenantName={user?.tenant_name} />
               <Button variant="ghost" className="text-sm" onClick={logout}>
                 Déconnexion
               </Button>

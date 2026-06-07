@@ -32,11 +32,15 @@ class UserService:
         hashed = _ph.hash(password)
         tenant = tenant_id or LEGACY_TENANT_ID
         try:
+            # Sous-requête corrélée sur la ligne insérée : un seul aller-retour pour
+            # le nom du tenant (INSERT ... RETURNING ne peut pas faire de JOIN).
             row = await self._pool.fetchrow(
                 """
                 INSERT INTO users (email, hashed_password, tenant_id)
                 VALUES (LOWER($1), $2, $3)
-                RETURNING id, email, role, tenant_id, created_at
+                RETURNING id, email, role, tenant_id, created_at,
+                          (SELECT name FROM tenants WHERE id = users.tenant_id)
+                              AS tenant_name
                 """,
                 email,
                 hashed,
@@ -53,8 +57,9 @@ class UserService:
         Exécute toujours le hash verify pour résister aux attaques par timing.
         """
         row = await self._pool.fetchrow(
-            "SELECT id, email, hashed_password, role, is_active, tenant_id, created_at "
-            "FROM users WHERE email = LOWER($1)",
+            "SELECT u.id, u.email, u.hashed_password, u.role, u.is_active, u.tenant_id, "
+            "u.created_at, t.name AS tenant_name "
+            "FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = LOWER($1)",
             email,
         )
 
@@ -76,9 +81,11 @@ class UserService:
         return dict(row)
 
     async def get_by_id(self, user_id: UUID) -> dict | None:
-        """Retourne un utilisateur par son UUID ou None s'il est absent."""
+        """Retourne un utilisateur (avec le nom de son tenant) par UUID, ou None."""
         row = await self._pool.fetchrow(
-            "SELECT id, email, role, is_active, tenant_id, created_at FROM users WHERE id = $1",
+            "SELECT u.id, u.email, u.role, u.is_active, u.tenant_id, u.created_at, "
+            "t.name AS tenant_name "
+            "FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = $1",
             user_id,
         )
         return dict(row) if row else None

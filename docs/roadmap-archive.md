@@ -10,6 +10,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 165 — E3-S5 : preuve d'isolation rouge→vert (clôt E3) ✅
+
+**Objectif :** Transformer la preuve d'isolation minimale (1 table, E3-S3) en **matrice cross-tenant exhaustive sur les 6 tables métier**, en rouge→vert, + revue OWASP de la policy RLS. Clôt l'épic E3 (bloqueur n°1, isolation au niveau base).
+
+**Livrables :**
+- `tests/integration/test_rls_isolation.py` — la preuve 1-table devient une **matrice paramétrée** sur les 6 tables (`@pytest.mark.parametrize` sur `_TABLES`, parité verrouillée ↔ migration `0005_business_rls._TABLES`). Pour chaque table, sous rôle **NOSUPERUSER** : (a) **lecture isolée** — A ne voit que A (`USING`) ; (b) **`WITH CHECK`** — A ne peut pas écrire une ligne de B ; (c) **fail-closed** — GUC vide → `NULLIF`→`NULL::uuid` → 0 ligne. Fabrique de payload par table (`_PAYLOADS` + `_build_insert`) gérant les contraintes propres : `watchlist` (index unique **global** `(ticker, workflow)` → marqueurs distincts par tenant), `annotations` (`analysis_id` UNIQUE global → UUID neuf par insertion ; `note` NOT NULL), `analysis_history` (`input_data`/`result` JSONB NOT NULL). Le test E3-S4 (ContextVar→pool→GUC) est conservé.
+- **Aspect rouge→vert prouvé empiriquement** : même requête de lecture → `{A}` sous GUC=A et `{B}` sous GUC=B (les deux lignes existent ; seule la policy masque celle de l'autre). Désactiver la RLS sur une table fait virer le cas au rouge ; la réactiver, au vert — vérifié en session.
+- **Gate CI étendu** (`.github/workflows/ci.yml`) — le `GRANT` du rôle `rls_tester` couvre désormais les **6 tables + `tenants`** + `USAGE ON ALL SEQUENCES` (les BIGSERIAL `esg_score_history`/`alert_history` en dépendent) ; la matrice tourne en gate, pas seulement en local.
+- **Revue OWASP** (`docs/revue-owasp-rls-2026-06.md`, nouveau) — policy passée au crible : injection GUC **non exploitable** (`set_config` en paramètres liés + `UUID(...)` fail-safe legacy), **aucune** fonction `SECURITY DEFINER`, `FORCE RLS` couvre le propriétaire (les 6 tables `ENABLE`+`FORCE` vérifiées runtime). **2 risques résiduels hors code, suivis** : (1) le rôle runtime doit être `NOSUPERUSER`/`NOBYPASSRLS`/non-propriétaire (sinon RLS inerte — `copilote` est superuser+BYPASSRLS) ; (2) `/report` auth-exempté → GUC legacy : **décision = documenter legacy-only**, scoping tenant du token de rapport reporté à un sprint dédié.
+
+**Validation runtime (Postgres 16 local + rôle NOSUPERUSER)** : matrice 6 tables verte (7 tests intégration : 6 paramétrés + threading E3-S4) ; rouge→vert démontré (RLS off → rouge, on → vert) ; état RLS des 6 tables vérifié en base (`ENABLE`+`FORCE`+1 policy `ALL` USING==WITH CHECK).
+
+**Version** : 10.52.0
+**Tests** : 2 063 backend collectés (2 042 passés, 20 skipped [+5 : matrice 6 tables, skippée hors PG migré], 1 xfailed) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (aucun prompt skill ni orchestrateur touché — tests d'intégration RLS uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (matrice prouve les 3 propriétés par table, rouge→vert causal et non vacuous, `WITH CHECK` ne peut pas passer à vide [payloads par ailleurs valides, zéro contrainte CHECK collatérale], grants CI suffisants tables+séquences, doc OWASP factuellement cohérente) — 1 finding cosmétique traité (docstring : privilèges requis SELECT/INSERT/UPDATE/DELETE) ; **qualité** : aucun changement justifié (paramétrage + `_build_insert` retirent déjà la duplication ; connexion par test préférée à un savepoint partagé).
+
 ### Sprint 164 — E3-S4 : threading tenant bout-en-bout ✅
 
 **Objectif :** Faire circuler le tenant **authentifié** depuis l'entrée de requête jusqu'aux écritures DB et au cache Redis, pour que l'isolation RLS (Sprint 163) protège les **vrais** tenants — plus seulement le palier legacy. 4ᵉ marche de l'épic E3.
