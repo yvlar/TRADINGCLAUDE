@@ -51,6 +51,10 @@ class InvalidWebhookSignatureError(Exception):
     """Signature `Stripe-Signature` absente, malformée ou invalide → 400 au niveau endpoint."""
 
 
+class NoStripeCustomerError(Exception):
+    """Le tenant n'a pas de `stripe_customer_id` (jamais passé au checkout) → 409 au niveau endpoint."""
+
+
 class StripeService:
     """Pilote Stripe : checkout, vérification de signature, synchronisation de plan."""
 
@@ -104,6 +108,27 @@ class StripeService:
             client_reference_id=str(tenant_id),
             subscription_data={"metadata": {"tenant_id": str(tenant_id)}},
             metadata={"tenant_id": str(tenant_id)},
+        )
+        return session["url"]
+
+    async def create_billing_portal_session(self, tenant_id: UUID, *, return_url: str) -> str:
+        """Crée une session du Billing Portal Stripe pour le tenant et retourne son URL.
+
+        Contrairement au checkout, on ne crée jamais le customer ici : un tenant sans
+        `stripe_customer_id` n'a jamais souscrit → `NoStripeCustomerError` (409) plutôt que
+        de fabriquer un customer vide.
+        """
+        row = await self._db.fetchrow(
+            "SELECT stripe_customer_id FROM subscriptions WHERE tenant_id = $1::uuid",
+            str(tenant_id),
+        )
+        if row is None or not row["stripe_customer_id"]:
+            raise NoStripeCustomerError(f"Aucun customer Stripe pour le tenant {tenant_id}")
+        session = await asyncio.to_thread(
+            stripe.billing_portal.Session.create,
+            api_key=self._secret_key,
+            customer=row["stripe_customer_id"],
+            return_url=return_url,
         )
         return session["url"]
 

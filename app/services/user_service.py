@@ -40,7 +40,9 @@ class UserService:
                 VALUES (LOWER($1), $2, $3)
                 RETURNING id, email, role, tenant_id, created_at,
                           (SELECT name FROM tenants WHERE id = users.tenant_id)
-                              AS tenant_name
+                              AS tenant_name,
+                          (SELECT plan FROM tenants WHERE id = users.tenant_id)
+                              AS plan
                 """,
                 email,
                 hashed,
@@ -58,7 +60,7 @@ class UserService:
         """
         row = await self._pool.fetchrow(
             "SELECT u.id, u.email, u.hashed_password, u.role, u.is_active, u.tenant_id, "
-            "u.created_at, t.name AS tenant_name "
+            "u.created_at, t.name AS tenant_name, t.plan AS plan "
             "FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.email = LOWER($1)",
             email,
         )
@@ -84,7 +86,7 @@ class UserService:
         """Retourne un utilisateur (avec le nom de son tenant) par UUID, ou None."""
         row = await self._pool.fetchrow(
             "SELECT u.id, u.email, u.role, u.is_active, u.tenant_id, u.created_at, "
-            "t.name AS tenant_name "
+            "t.name AS tenant_name, t.plan AS plan "
             "FROM users u JOIN tenants t ON u.tenant_id = t.id WHERE u.id = $1",
             user_id,
         )

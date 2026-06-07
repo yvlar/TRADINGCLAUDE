@@ -19,6 +19,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const ComparePage = lazy(() => import('./pages/ComparePage'))
 const EsgPage = lazy(() => import('./pages/EsgPage'))
 const SearchPage = lazy(() => import('./pages/SearchPage'))
+const BillingPage = lazy(() => import('./pages/BillingPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const RegisterPage = lazy(() => import('./pages/RegisterPage'))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
@@ -80,6 +81,7 @@ function AppShell() {
               <NavItem to="/esg" label="ESG" />
               <NavItem to="/recherche" label="Recherche" />
               <NavItem to="/alerts" label="Alertes" />
+              <NavItem to="/facturation" label="Facturation" />
               <NavItem to="/admin" label="Admin" />
             </nav>
           )}
@@ -182,6 +184,14 @@ function AppShell() {
               element={
                 <ProtectedRoute>
                   <AlertsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/facturation"
+              element={
+                <ProtectedRoute>
+                  <BillingPage />
                 </ProtectedRoute>
               }
             />

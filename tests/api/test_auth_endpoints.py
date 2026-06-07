@@ -16,6 +16,7 @@ def _make_user(
     email: str = "test@test.com",
     role: str = "reader",
     tenant_name: str = "Acme Capital",
+    plan: str = "free",
 ) -> dict:
     """Fabrique un dict utilisateur pour les mocks."""
     return {
@@ -25,6 +26,7 @@ def _make_user(
         "is_active": True,
         "tenant_id": uuid.uuid4(),  # présent depuis Sprint 161 (RETURNING/SELECT)
         "tenant_name": tenant_name,  # nom du tenant exposé au Sprint 169 (JOIN tenants)
+        "plan": plan,  # plan du tenant exposé au Sprint 173 (JOIN tenants)
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "hashed_password": "$argon2id$v=19$m=65536,t=2,p=2$hash$hash",
     }
@@ -97,6 +99,7 @@ async def test_register_success(auth_client):
     # Le tenant est exposé dès l'inscription (Sprint 169) — construit via create_user.
     assert "tenant_id" in data["user"]
     assert data["user"]["tenant_name"] == "Acme Capital"
+    assert data["user"]["plan"] == "free"
 
 
 @pytest.mark.asyncio
@@ -132,6 +135,7 @@ async def test_login_success(auth_client):
     # Le tenant est exposé à la connexion (Sprint 169) — construit via authenticate.
     assert "tenant_id" in data["user"]
     assert data["user"]["tenant_name"] == "Acme Capital"
+    assert data["user"]["plan"] == "free"
 
 
 @pytest.mark.asyncio
@@ -198,6 +202,19 @@ async def test_me_expose_le_tenant(auth_client, _mock_user_service):
     data = response.json()
     assert data["tenant_id"] == str(user["tenant_id"])
     assert data["tenant_name"] == "Espace Démo"
+
+
+@pytest.mark.asyncio
+async def test_me_expose_le_plan(auth_client, _mock_user_service):
+    """Preuve d'acceptation Sprint 173 : /auth/me porte le plan du tenant."""
+    user = _make_user(plan="pro")
+    _mock_user_service.get_by_id.return_value = user
+    response = await auth_client.get(
+        "/auth/me",
+        cookies={"access_token": "fake-jwt-access-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["plan"] == "pro"
 
 
 @pytest.mark.asyncio
