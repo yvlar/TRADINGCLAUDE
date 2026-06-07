@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-06 — Sprint 167 complété**
+**Dernière mise à jour : 2026-06-07 — Sprint 168 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.54.0 |
+| **Version** | 10.55.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 168 — E4-S3 clés API rattachées au tenant (`api_keys.tenant_id` + résolution tenant sur le chemin Bearer) |
-| **Dernier sprint complété** | Sprint 167 — E4-S2 quotas : table de référence `plan_limits` (bornes par plan) + `tenants.plan` (FK), `QuotaService` (compteur mensuel Redis, borne dure fail-open), `429` au dépassement sur `/analyze`+`/analyze-stream` (cache hit ne consomme pas) + borne `max_screener_tickers` par tenant sur `/screen`, bandeau quota frontend ✅ |
+| **Sprint actif** | Sprint 169 — E4-S4 exposition du tenant dans `/auth/me` (`tenant_id` + nom du tenant dans la réponse publique) |
+| **Dernier sprint complété** | Sprint 168 — E4-S3 clés API rattachées au tenant : `api_keys.tenant_id` (migration `0008`, hors RLS — table d'authn lue avant le contexte tenant), exposé sur `ApiKeyRecord` + rattaché au tenant courant à la création, et `BearerTokenMiddleware` pose `request.state.tenant_id` sur le chemin clé API (symétrique au chemin JWT) → ContextVar/RLS/quota/metering ciblent le tenant de la clé ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -43,7 +43,7 @@
 - `GET`/`PUT /preferences/screener` — préférences Screener (tri + filtres) liées au compte authentifié, table `user_preferences` (JSONB, PK `(user_id, key)`) ; 401 si non authentifié, fallback localStorage côté client (Sprint 124)
 - `POST /auth/forgot-password` — token réinitialisation itsdangerous 1h (anti-énumération) (Sprint Login)
 - `POST /auth/reset-password` — réinitialisation mot de passe avec token signé (Sprint Login)
-- `POST /admin/keys` — créer une clé API (admin only) (Sprint 62)
+- `POST /admin/keys` — créer une clé API (admin only) (Sprint 62) ; la clé est **rattachée au tenant courant** (`api_keys.tenant_id`, Sprint 168) — une requête authentifiée par cette clé s'exécute sous le tenant propriétaire (ContextVar/RLS/quota/metering), plus le tenant legacy
 - `GET /admin/keys` — lister toutes les clés (admin only) (Sprint 62)
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
 - `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
@@ -89,6 +89,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 168 — E4-S3 : clés API rattachées au tenant ✅
+
+**Objectif :** Fermer le dernier trou de la multi-tenance — une requête authentifiée par **clé API** (chemin Bearer) doit s'exécuter sous le tenant **propriétaire de la clé**, pas le tenant legacy. Prérequis pour facturer/quota-borner les appels programmatiques (M4). 3ᵉ marche de l'épic E4.
+
+**Livrables :**
+- `alembic/versions/0008_api_keys_tenant_id.py` (nouveau, chaîné après `0007_plan_limits`) — `api_keys.tenant_id UUID NOT NULL REFERENCES tenants(id)` (backfill-avant-NOT-NULL : ADD nullable → UPDATE legacy → SET NOT NULL, pattern Sprint 162/0004) + index `idx_api_keys_tenant`. **Décision documentée** : `api_keys` **reste hors RLS** — c'est la table d'authn lue par le middleware **avant** que le contexte tenant existe (c'est elle qui le pose) ; si elle était sous RLS, `validate_key` tournerait sous le GUC legacy par défaut et ne verrait jamais les clés des autres tenants → authn cassée. Sa colonne `tenant_id` sert à **résoudre** le tenant, pas à isoler la table. N'entre donc PAS dans la matrice RLS (reste 7 tables). Downgrade : index → colonne.
+- `app/services/api_key_service.py` — `ApiKeyRecord.tenant_id` exposé ; le `SELECT` de `validate_key` et de `list_keys` le retourne ; `create_key(..., tenant_id=None)` rattache la clé au tenant courant via `resolve_tenant` (ContextVar, défaut legacy hors contexte) — même pattern param→ContextVar que `UsageEventService` (bind `str(tenant)` + cast `$5::uuid`).
+- `app/middleware/auth.py` — `BearerTokenMiddleware` pose `request.state.tenant_id = str(record.tenant_id)` sur le chemin clé API (validation réussie), **symétrique au chemin JWT**. Le `TenantContextMiddleware` (E3-S4) pose alors le ContextVar → GUC RLS + quotas (E4-S2) + metering (E4-S1) + écritures défaultent au tenant de la clé. Fallbacks clé env (record `None`) → aucun `tenant_id` posé → legacy.
+- **CI** (`.github/workflows/ci.yml`) — le `GRANT` du rôle NOSUPERUSER `rls_tester` couvre désormais `api_keys` ; le gate migré exécute `test_api_key_tenant_integration.py` en plus de la matrice RLS.
+
+**Validation runtime (Postgres 16 local migré + rôle NOSUPERUSER)** : `upgrade head` → `api_keys.tenant_id NOT NULL` + FK + index, **hors RLS** (pas de policy) ; **threading prouvé bout-en-bout via le chemin réel** (`test_api_key_tenant_integration.py`) — une requête HTTP `Bearer <token>` d'une clé du tenant B écrit dans `watchlist` **sous B** (ligne visible sous B, masquée sous legacy par la RLS), pas le tenant legacy ; chemin middleware → ContextVar → setup du pool → GUC → RLS.
+
+**Version** : 10.55.0
+**Tests** : 2 152 backend collectés (2 124 passés, 27 skipped [+1 : intégration clé API tenant, skippée hors PG migré], 1 xfailed — +16 : forme migration `0008` [chaînage, colonne+FK+backfill+SET NOT NULL, index, **hors RLS**, downgrade ordre inverse, UUID legacy == constante], unitaires `api_key_service` [`validate_key` expose `tenant_id`, `create_key` rattache au tenant explicite / courant / défaut legacy], threading middleware [clé valide → `request.state.tenant_id` = tenant de la clé ; clé du tenant legacy → legacy ; fallback clé env → legacy], intégration PG migré [écriture sous B via le chemin réel]) ; `ruff`/`mypy app/` verts ; **frontend 449 Vitest verts** (inchangé) + typecheck/ESLint verts ; **pas d'eval** (aucun prompt de skill ni l'orchestrateur de skills touché — résolution de tenant au niveau middleware/service uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (migration conforme [hors RLS confirmé, FK `tenants(id)`, backfill-avant-NOT-NULL, UUID legacy verrouillé], threading symétrique au chemin JWT prouvé, fallbacks clé env → legacy sans crash, `validate_key` lit toute clé car `api_keys` hors RLS, type `str(tenant_id)` cohérent avec `set_current_tenant`, intégration non-vacuous) — 0 finding CRITICAL/MAJOR/MINOR, 2 NIT traités (assertion de test épinglée en position ; clé créée via clé env admin = legacy, design documenté) ; **qualité** (`/simplify`) : diff idiomatique (réutilise les patterns `0004`/`0007`/`UsageEventService`/chemin JWT), 1 finding convergent appliqué (bind `str(tenant)` + cast `::uuid` pour symétrie cross-service), duplication `_execute_each` des migrations conservée (isolation délibérée des artefacts figés).
 
 ### Sprint 167 — E4-S2 : quotas par plan + quota screener par tenant ✅
 
@@ -136,25 +151,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.52.0
 **Tests** : 2 063 backend collectés (2 042 passés, 20 skipped [+5 : matrice 6 tables, skippée hors PG migré], 1 xfailed) ; `ruff`/`mypy app/` verts ; frontend inchangé ; **pas d'eval** (aucun prompt skill ni orchestrateur touché — tests d'intégration RLS uniquement). Revue indépendante à contexte frais : **correctness CLEAN** (matrice prouve les 3 propriétés par table, rouge→vert causal et non vacuous, `WITH CHECK` ne peut pas passer à vide [payloads par ailleurs valides, zéro contrainte CHECK collatérale], grants CI suffisants tables+séquences, doc OWASP factuellement cohérente) — 1 finding cosmétique traité (docstring : privilèges requis SELECT/INSERT/UPDATE/DELETE) ; **qualité** : aucun changement justifié (paramétrage + `_build_insert` retirent déjà la duplication ; connexion par test préférée à un savepoint partagé).
-
-### Sprint 164 — E3-S4 : threading tenant bout-en-bout ✅
-
-**Objectif :** Faire circuler le tenant **authentifié** depuis l'entrée de requête jusqu'aux écritures DB et au cache Redis, pour que l'isolation RLS (Sprint 163) protège les **vrais** tenants — plus seulement le palier legacy. 4ᵉ marche de l'épic E3.
-
-**Décision d'architecture — source unique `ContextVar` :** un seul `ContextVar` `current_tenant` (`app/db/tenant_context.py`) alimente **à la fois** le GUC RLS (couche DB) **et** la colonne applicative `tenant_id` (les 6 sites d'écriture défaultent à `tenant_id or get_current_tenant()`). La colonne écrite égale donc toujours le GUC → le `WITH CHECK` des policies est satisfait par construction, sans threading profond de la pile d'appels (≈15 niveaux) ni risque de divergence à deux sources sous RLS.
-
-**Livrables :**
-- `app/middleware/tenant.py` (nouveau) — `TenantContextMiddleware`, **ASGI pur** (pas `BaseHTTPMiddleware`) monté en couche la plus interne : lit `scope["state"]["tenant_id"]` (posé par `BearerTokenMiddleware`), `set`/`reset` du ContextVar dans la **même tâche** que l'endpoint → propagation fiable aux acquisitions de connexion, reset en `finally` (zéro fuite inter-requêtes sous concurrence). Défaut legacy : requêtes non authentifiées / clés API / chemins exemptés.
-- `app/db/tenant_context.py` — `ContextVar` + `get/set/reset_current_tenant` ; `apply_tenant_context` (setup du pool, rejoué à chaque acquire) lit désormais `get_current_tenant()` au lieu de la constante figée. `set_current_tenant` fail-safe : claim absent/malformé → legacy.
-- **Claim JWT `tenant_id`** : `auth_token_service.create_access_token` porte le tenant (optionnel — token sans claim → legacy en aval) ; threadé depuis `user.tenant_id` aux 3 sites (register/login/refresh). `BearerTokenMiddleware` expose `request.state.tenant_id`.
-- **6 sites d'écriture** (`core.py::_persist` + `watchlist`/`annotation`/`esg_history`/`composite_history`/`alert_history`) : défaut `tenant_id or get_current_tenant()`.
-- **Cache Redis préfixé tenant** : `analysis_cache._cache_key` → `analysis:{tenant}:{ticker}:{workflow}:{hash}` ; `invalidate()` ciblé sur le tenant courant — un tenant ne sert jamais l'analyse cachée d'un autre.
-- **Quotas screener par tenant (M3)** : **différés à un sprint E4 dédié** (hors périmètre du threading — décision de cadrage).
-
-**Validation runtime (Postgres 16 local + rôle NOSUPERUSER `rls_tester`)** : preuve d'isolation de **deux tenants réels** via le chemin réel du sprint (`set_current_tenant` → `apply_tenant_context` setup du pool → GUC → RLS), pas le GUC constant legacy — A n'écrit/ne lit que A, B que B. Non-régression du `ContextVar` sous concurrence (`asyncio.gather` de deux tenants) ; cache : deux tenants, même ticker/workflow/ratios → 2 clés, aucun hit croisé ; rétrocompat non-auth/worker → legacy.
-
-**Version** : 10.51.0
-**Tests** : 2 058 backend collectés (2 042 passés, 15 skipped [+1 : isolation threading runtime, skippée hors PG migré], 1 xfailed — +19 : ContextVar set/reset/concurrence + valeur invalide, `apply_tenant_context` tenant courant, middleware ASGI [résolution scope/legacy/reset-on-raise/passthrough], claim JWT présent/absent, threading write-site sans param, isolation cache cross-tenant + non-hit croisé, isolation runtime 2 tenants réels) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché — seul `_persist` côté écriture DB).
 
 ---
 

@@ -125,6 +125,11 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
                 record = await api_key_service.validate_key(token)
                 if record is not None:
                     request.state.api_key_record = record
+                    # Résout le tenant propriétaire de la clé (E4-S3) → lu par
+                    # TenantContextMiddleware ; symétrique au chemin JWT (cookie, plus bas).
+                    # ContextVar/RLS/quota/metering ciblent alors le tenant de la clé,
+                    # plus le tenant legacy.
+                    request.state.tenant_id = str(record.tenant_id)
                     try:
                         await api_key_service.record_usage(record.id)
                     except Exception:

@@ -10,6 +10,25 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 164 — E3-S4 : threading tenant bout-en-bout ✅
+
+**Objectif :** Faire circuler le tenant **authentifié** depuis l'entrée de requête jusqu'aux écritures DB et au cache Redis, pour que l'isolation RLS (Sprint 163) protège les **vrais** tenants — plus seulement le palier legacy. 4ᵉ marche de l'épic E3.
+
+**Décision d'architecture — source unique `ContextVar` :** un seul `ContextVar` `current_tenant` (`app/db/tenant_context.py`) alimente **à la fois** le GUC RLS (couche DB) **et** la colonne applicative `tenant_id` (les 6 sites d'écriture défaultent à `tenant_id or get_current_tenant()`). La colonne écrite égale donc toujours le GUC → le `WITH CHECK` des policies est satisfait par construction, sans threading profond de la pile d'appels (≈15 niveaux) ni risque de divergence à deux sources sous RLS.
+
+**Livrables :**
+- `app/middleware/tenant.py` (nouveau) — `TenantContextMiddleware`, **ASGI pur** (pas `BaseHTTPMiddleware`) monté en couche la plus interne : lit `scope["state"]["tenant_id"]` (posé par `BearerTokenMiddleware`), `set`/`reset` du ContextVar dans la **même tâche** que l'endpoint → propagation fiable aux acquisitions de connexion, reset en `finally` (zéro fuite inter-requêtes sous concurrence). Défaut legacy : requêtes non authentifiées / clés API / chemins exemptés.
+- `app/db/tenant_context.py` — `ContextVar` + `get/set/reset_current_tenant` ; `apply_tenant_context` (setup du pool, rejoué à chaque acquire) lit désormais `get_current_tenant()` au lieu de la constante figée. `set_current_tenant` fail-safe : claim absent/malformé → legacy.
+- **Claim JWT `tenant_id`** : `auth_token_service.create_access_token` porte le tenant (optionnel — token sans claim → legacy en aval) ; threadé depuis `user.tenant_id` aux 3 sites (register/login/refresh). `BearerTokenMiddleware` expose `request.state.tenant_id`.
+- **6 sites d'écriture** (`core.py::_persist` + `watchlist`/`annotation`/`esg_history`/`composite_history`/`alert_history`) : défaut `tenant_id or get_current_tenant()`.
+- **Cache Redis préfixé tenant** : `analysis_cache._cache_key` → `analysis:{tenant}:{ticker}:{workflow}:{hash}` ; `invalidate()` ciblé sur le tenant courant — un tenant ne sert jamais l'analyse cachée d'un autre.
+- **Quotas screener par tenant (M3)** : **différés à un sprint E4 dédié** (hors périmètre du threading — décision de cadrage).
+
+**Validation runtime (Postgres 16 local + rôle NOSUPERUSER `rls_tester`)** : preuve d'isolation de **deux tenants réels** via le chemin réel du sprint (`set_current_tenant` → `apply_tenant_context` setup du pool → GUC → RLS), pas le GUC constant legacy — A n'écrit/ne lit que A, B que B. Non-régression du `ContextVar` sous concurrence (`asyncio.gather` de deux tenants) ; cache : deux tenants, même ticker/workflow/ratios → 2 clés, aucun hit croisé ; rétrocompat non-auth/worker → legacy.
+
+**Version** : 10.51.0
+**Tests** : 2 058 backend collectés (2 042 passés, 15 skipped [+1 : isolation threading runtime, skippée hors PG migré], 1 xfailed — +19 : ContextVar set/reset/concurrence + valeur invalide, `apply_tenant_context` tenant courant, middleware ASGI [résolution scope/legacy/reset-on-raise/passthrough], claim JWT présent/absent, threading write-site sans param, isolation cache cross-tenant + non-hit croisé, isolation runtime 2 tenants réels) ; `ruff`/`mypy app/` verts ; frontend inchangé ; pas d'eval (aucun prompt skill ni orchestrateur de skills touché — seul `_persist` côté écriture DB).
+
 ### Sprint 163 — E3-S3 : Row-Level Security PostgreSQL sur les 6 tables métier ✅
 
 **Objectif :** Poser l'**isolation au niveau base** — `ENABLE ROW LEVEL SECURITY` + policy `tenant_id = current_setting('app.tenant_id')` sur les 6 tables métier, et injecter le GUC `app.tenant_id` par connexion au pool. Le mécanisme RLS + son câblage de contexte ; la matrice d'isolation exhaustive 6 tables relève d'E3-S5. 3ᵉ marche de l'épic E3.
