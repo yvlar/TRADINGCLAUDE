@@ -48,7 +48,7 @@ describe('LoginPage', () => {
 
   it('appelle authLogin avec email et mot de passe et redirige', async () => {
     vi.mocked(authApi.authLogin).mockResolvedValue({
-      user: { id: 'uuid-1', email: 'test@test.com', role: 'reader', created_at: '2026-01-01T00:00:00Z' },
+      user: { id: 'uuid-1', email: 'test@test.com', role: 'reader', tenant_id: 'tenant-1', tenant_name: 'Acme', created_at: '2026-01-01T00:00:00Z' },
       message: 'Connexion réussie',
     })
 

@@ -7,16 +7,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.models.tenant import LEGACY_TENANT_ID
-from app.services.user_service import UserService
+from app.models.tenant import LEGACY_TENANT_ID, LEGACY_TENANT_NAME
+from app.services.user_service import UserService, _ph
 
 
-def _fake_row(tenant_id) -> dict:
+def _fake_row(tenant_id, tenant_name: str = "Acme Capital") -> dict:
     return {
         "id": uuid.uuid4(),
         "email": "alice@test.com",
         "role": "reader",
         "tenant_id": tenant_id,
+        "tenant_name": tenant_name,
         "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
 
@@ -57,3 +58,51 @@ async def test_create_user_remonte_tenant_id_dans_le_dict(service):
     result = await svc.create_user("alice@test.com", "Password123!")
 
     assert "tenant_id" in result
+
+
+async def test_create_user_returning_inclut_le_nom_du_tenant(service):
+    svc, pool = service
+    pool.fetchrow.return_value = _fake_row(LEGACY_TENANT_ID, LEGACY_TENANT_NAME)
+
+    result = await svc.create_user("alice@test.com", "Password123!")
+
+    assert result["tenant_name"] == LEGACY_TENANT_NAME
+    # Sous-requête corrélée sur tenants présente dans le RETURNING.
+    sql = pool.fetchrow.await_args.args[0]
+    assert "tenants" in sql and "tenant_name" in sql
+
+
+async def test_get_by_id_retourne_tenant_name_via_join(service):
+    svc, pool = service
+    pool.fetchrow.return_value = _fake_row(LEGACY_TENANT_ID, LEGACY_TENANT_NAME)
+
+    result = await svc.get_by_id(uuid.uuid4())
+
+    assert result is not None
+    assert result["tenant_id"] == LEGACY_TENANT_ID
+    assert result["tenant_name"] == LEGACY_TENANT_NAME
+    sql = pool.fetchrow.await_args.args[0]
+    assert "JOIN tenants" in sql
+
+
+async def test_get_by_id_absent_retourne_none(service):
+    svc, pool = service
+    pool.fetchrow.return_value = None
+
+    assert await svc.get_by_id(uuid.uuid4()) is None
+
+
+async def test_authenticate_retourne_tenant_name_via_join(service):
+    svc, pool = service
+    password = "Password123!"
+    row = _fake_row(LEGACY_TENANT_ID, LEGACY_TENANT_NAME)
+    row["hashed_password"] = _ph.hash(password)
+    row["is_active"] = True
+    pool.fetchrow.return_value = row
+
+    result = await svc.authenticate("alice@test.com", password)
+
+    assert result is not None
+    assert result["tenant_name"] == LEGACY_TENANT_NAME
+    sql = pool.fetchrow.await_args.args[0]
+    assert "JOIN tenants" in sql

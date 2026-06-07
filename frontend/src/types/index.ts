@@ -779,6 +779,8 @@ export interface User {
   id: string
   email: string
   role: string
+  tenant_id: string
+  tenant_name: string
   created_at: string
 }
 
