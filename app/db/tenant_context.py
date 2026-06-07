@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from uuid import UUID
 
@@ -57,6 +59,21 @@ def set_current_tenant(tenant_id: UUID | str | None) -> Token[UUID]:
 def reset_current_tenant(token: Token[UUID]) -> None:
     """Restaure la valeur précédente du ContextVar (appelé en `finally` par le middleware)."""
     _current_tenant.reset(token)
+
+
+@contextmanager
+def tenant_scope(tenant_id: UUID | str | None) -> Iterator[None]:
+    """Exécute le bloc sous le tenant donné puis restaure le contexte (hygiène ContextVar).
+
+    Primitive « run under tenant » pour les sites hors requête HTTP (workers ciblant un tenant) :
+    le middleware pose/réinitialise déjà le ContextVar par requête. Le GUC RLS en dérive à chaque
+    acquisition de connexion (`apply_tenant_context`).
+    """
+    token = set_current_tenant(tenant_id)
+    try:
+        yield
+    finally:
+        reset_current_tenant(token)
 
 
 async def apply_tenant_context(conn: asyncpg.Connection) -> None:

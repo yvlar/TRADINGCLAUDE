@@ -12,7 +12,7 @@ import anthropic
 import asyncpg
 import redis
 
-from app.db.tenant_context import apply_tenant_context
+from app.db.tenant_context import apply_tenant_context, tenant_scope
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.rag.client import RagClient
@@ -23,6 +23,7 @@ from app.services.composite_alert import CompositeAlertService
 from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
 from app.services.report import ReportService
+from app.services.retention_service import RetentionService
 from app.services.screener import ScreenerService
 from app.services.slack_service import SlackService
 from app.services.watchlist_service import WatchlistService
@@ -752,6 +753,75 @@ def run_esg_degradation_check(self) -> dict:
         "Fin vérification dégradation ESG — %d alerte(s) déclenchée(s)", nb_alertes
     )
     return {"nb_alertes": nb_alertes}
+
+
+async def _execute_retention_purge() -> dict:
+    """Purge la rétention par plan pour TOUS les tenants, chacun sous son contexte RLS.
+
+    `tenants` est une table parente **hors RLS** : sa lecture (liste de tous les tenants) ne dépend
+    d'aucun contexte. Pour chaque tenant, on pose `set_current_tenant` puis on appelle le service de
+    purge sous ce contexte (le pool rejoue `apply_tenant_context` → GUC RLS à chaque acquire). Le DELETE
+    ne touche donc que les lignes périmées de CE tenant. **Best-effort** : l'échec d'un tenant
+    (loggé) n'avorte pas la purge des autres.
+    """
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
+    try:
+        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
+        service = RetentionService(db_pool)
+        by_tenant: dict[str, dict[str, Any]] = {}
+        total_deleted = 0
+        for row in tenant_rows:
+            tenant_id = row["id"]
+            # GUC unique source de vérité : sous `tenant_scope`, `purge_tenant()` résout le plan
+            # ET scope le DELETE par le même contexte tenant (pas de double source à diverger).
+            try:
+                with tenant_scope(tenant_id):
+                    result = await service.purge_tenant()
+            except Exception:
+                logger.exception("Erreur de purge de rétention pour le tenant %s", tenant_id)
+                continue
+            if result is None:
+                continue
+            by_tenant[str(tenant_id)] = {
+                "plan": result.plan,
+                "retention_days": result.retention_days,
+                "deleted_by_table": result.deleted_by_table,
+                "total_deleted": result.total_deleted,
+            }
+            total_deleted += result.total_deleted
+        logger.info(
+            "Purge de rétention — %d tenant(s) purgé(s), %d ligne(s) supprimée(s)",
+            len(by_tenant),
+            total_deleted,
+        )
+        return {
+            "tenants_purged": len(by_tenant),
+            "total_deleted": total_deleted,
+            "by_tenant": by_tenant,
+        }
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_retention_purge", bind=True)
+def run_retention_purge(self) -> dict:
+    """
+    Tâche Celery — purge quotidienne des données au-delà de la rétention du plan de chaque tenant.
+    Planifiée tous les jours à 03h00 UTC (heure creuse) via Celery beat.
+    """
+    logger.info("Début purge de rétention par plan")
+    result = asyncio.run(_execute_retention_purge())
+    logger.info(
+        "Fin purge de rétention — %d tenant(s), %d ligne(s) supprimée(s)",
+        result.get("tenants_purged", 0),
+        result.get("total_deleted", 0),
+    )
+    return result
 
 
 @celery_app.task(name="run_scheduled_screener", bind=True)

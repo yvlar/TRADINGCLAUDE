@@ -21,12 +21,17 @@ celery_app.conf.update(
     result_expires=86400,
 )
 
+# Purge de rétention par plan — tous les jours à 03h00 UTC (heure creuse, avant les autres tâches)
 # Re-analyse hebdomadaire de la watchlist — tous les dimanches à 07h00 UTC
 # Vérification quotidienne des alertes prix — tous les jours à 08h00 UTC
 # Rapport PDF hebdomadaire par email — tous les dimanches à 09h00 UTC (après 07h00 + 08h00)
 # Vérification quotidienne alertes composite_score — tous les jours à 10h00 UTC
 # Screener hebdomadaire watchlist — tous les dimanches à 11h00 UTC (après les autres tâches)
 celery_app.conf.beat_schedule = {
+    "run-retention-purge-daily": {
+        "task": "run_retention_purge",
+        "schedule": crontab(hour=3, minute=0),
+    },
     "run-watchlist-analysis-weekly": {
         "task": "run_watchlist_analysis",
         "schedule": crontab(hour=7, minute=0, day_of_week=0),
