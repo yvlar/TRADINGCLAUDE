@@ -268,10 +268,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Démarrer le serveur Vite (:5173)
+      - name: Construire le frontend (build de prod)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Démarrer Vite preview (:5173, assets pré-compilés)
         working-directory: frontend
         run: |
-          npm run dev &
+          npm run preview -- --port 5173 &
           npx --yes wait-on@8 http://localhost:5173 --timeout 60000
 
       - name: Lancer les tests E2E
