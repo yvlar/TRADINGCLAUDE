@@ -43,6 +43,7 @@ def _api_key_row(key_id: uuid.UUID) -> dict:
     return {
         "id": key_id, "name": "Marie", "role": "reader", "active": True,
         "created_at": _NOW, "last_used_at": None, "expires_at": None,
+        "tenant_id": uuid.UUID("22222222-2222-2222-2222-222222222222"),
     }
 
 
