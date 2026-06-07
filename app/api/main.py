@@ -21,6 +21,7 @@ from app.api.endpoints.analyze_stream import router as analyze_stream_router
 from app.api.endpoints.annotations import router as annotations_router
 from app.api.endpoints.auth import router as auth_router
 from app.api.endpoints.backtest import router as backtest_router
+from app.api.endpoints.billing import router as billing_router
 from app.api.endpoints.compare import router as compare_router
 from app.api.endpoints.composite_history import router as composite_history_router
 from app.api.endpoints.esg_history import router as esg_history_router
@@ -78,6 +79,7 @@ from app.services.quota_service import QuotaExceededError, QuotaService
 from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
+from app.services.stripe_service import StripeService
 from app.services.usage_event_service import UsageEventService
 from app.services.user_service import UserService
 from app.services.watchlist_pdf_service import WatchlistPdfService
@@ -379,6 +381,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     auth_token_service = AuthTokenService(db_pool=db_pool, redis_client=redis_pool)
     password_reset_service = PasswordResetService()
 
+    # Facturation Stripe (E4-S7) — désactivée tant que les clés ne sont pas configurées.
+    stripe_price_by_plan = {
+        plan: price
+        for plan, env in (("free", "STRIPE_PRICE_FREE"), ("pro", "STRIPE_PRICE_PRO"))
+        if (price := os.environ.get(env))
+    }
+    stripe_service = StripeService(
+        db_pool=db_pool,
+        secret_key=os.environ.get("STRIPE_SECRET_KEY"),
+        webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
+        price_by_plan=stripe_price_by_plan,
+    )
+
     app.state.audit_log_service = audit_log_service
     app.state.usage_event_service = usage_event_service
     app.state.alert_history_service = alert_history_service
@@ -409,6 +424,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.user_service = user_service
     app.state.auth_token_service = auth_token_service
     app.state.password_reset_service = password_reset_service
+    app.state.stripe_service = stripe_service
 
     logger.info("Copilote financier démarré — version %s", _VERSION)
     yield
@@ -469,6 +485,7 @@ app.include_router(analyze_stream_router)
 app.include_router(composite_history_router)
 app.include_router(esg_history_router)
 app.include_router(backtest_router)
+app.include_router(billing_router)
 app.include_router(evals_router)
 app.include_router(export_router)
 app.include_router(extract_router)

@@ -37,6 +37,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/auth/reset-password",
         "/auth/mfa/setup",
         "/auth/mfa/verify",
+        # Webhook Stripe (E4-S7) : appelant externe sans cookie ni token CSRF — authn par
+        # signature `Stripe-Signature` uniquement (cf. EXEMPT_PATHS de l'auth middleware).
+        "/billing/webhook",
     }
 
     CSRF_EXEMPT_PREFIXES: ClassVar[tuple[str, ...]] = (

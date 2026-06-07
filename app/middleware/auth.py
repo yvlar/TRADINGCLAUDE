@@ -42,6 +42,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         "/auth/reset-password",
         "/auth/mfa/setup",
         "/auth/mfa/verify",
+        # Webhook Stripe (E4-S7) : entrée non authentifiée — sa seule authn est la
+        # signature `Stripe-Signature`, vérifiée dans l'endpoint. Exempté du chemin Bearer/JWT.
+        "/billing/webhook",
     }
     EXEMPT_PREFIXES: ClassVar[tuple[str, ...]] = ("/telemetry", "/report", "/ws")
 

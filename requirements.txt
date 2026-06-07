@@ -28,3 +28,5 @@ email-validator>=2.1.0
 # Migrations versionnées (E2-S1) — SQLAlchemy[asyncio] tire greenlet + driver async
 alembic>=1.13.0
 sqlalchemy[asyncio]>=2.0.0
+# Facturation Stripe (E4-S7) — abonnements + webhooks ; SDK officiel
+stripe>=11.0.0

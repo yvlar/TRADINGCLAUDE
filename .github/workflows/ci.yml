@@ -210,12 +210,19 @@ jobs:
               # plan_limits : table de référence GLOBALE (hors RLS) lue par la purge de
               # rétention (RetentionService join tenants ⨝ plan_limits, E4-S6) — SELECT seul.
               await c.execute("GRANT SELECT ON plan_limits TO rls_tester")
+              # subscriptions/stripe_events : tables de facturation HORS RLS (E4-S7) lues/
+              # écrites par le webhook sous le tenant legacy — la preuve d'acceptation Stripe
+              # (free→pro) les exerce via le rôle NOSUPERUSER.
+              await c.execute(
+                  "GRANT SELECT, INSERT, UPDATE, DELETE ON subscriptions, stripe_events "
+                  "TO rls_tester"
+              )
               await c.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO rls_tester")
               await c.close()
           asyncio.run(main())
           PY
 
-      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention (rôle NOSUPERUSER)
+      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention + webhook Stripe (rôle NOSUPERUSER)
         env:
           RLS_TEST_DATABASE_URL: postgresql://rls_tester:rls_tester@localhost:5432/copilote
         run: >-
@@ -223,6 +230,7 @@ jobs:
           tests/integration/test_api_key_tenant_integration.py
           tests/integration/test_usage_aggregate_rls.py
           tests/integration/test_retention_purge_rls.py
+          tests/integration/test_stripe_billing_webhook.py
           -m integration -q --tb=short
 
   test-e2e:
