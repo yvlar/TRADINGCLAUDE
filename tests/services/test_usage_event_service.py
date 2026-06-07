@@ -140,9 +140,43 @@ class TestRecord:
 class TestAppendOnly:
 
     def test_service_n_expose_aucune_mutation(self):
-        """Append-only : `record` (write) + `aggregate` (read), aucun update ni delete."""
+        """Append-only : `record` (write) + `aggregate`/`count_window` (read), aucun update ni delete."""
         methods = {m for m in dir(UsageEventService) if not m.startswith("_")}
-        assert methods == {"record", "aggregate"}
+        assert methods == {"record", "aggregate", "count_window"}
+
+
+class TestCountWindow:
+
+    @pytest.mark.asyncio
+    async def test_count_window_retourne_le_compte(self):
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={"nb": 42})
+        svc = UsageEventService(db_pool=pool)
+
+        start = datetime(2026, 6, 5, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 6, tzinfo=timezone.utc)
+        nb = await svc.count_window(start, end)
+
+        assert nb == 42
+        # Les bornes de fenêtre sont passées telles quelles ($1 inclus, $2 exclus).
+        assert pool.fetchrow.call_args.args[1] == start
+        assert pool.fetchrow.call_args.args[2] == end
+
+    @pytest.mark.asyncio
+    async def test_count_window_borne_haute_exclusive_sans_filtre_tenant(self):
+        """Borne `< end` (jamais de double comptage) ; isolation par RLS (aucun WHERE tenant_id)."""
+        pool = AsyncMock()
+        pool.fetchrow = AsyncMock(return_value={"nb": 0})
+        svc = UsageEventService(db_pool=pool)
+
+        await svc.count_window(
+            datetime(2026, 6, 5, tzinfo=timezone.utc),
+            datetime(2026, 6, 6, tzinfo=timezone.utc),
+        )
+
+        query = pool.fetchrow.call_args.args[0]
+        assert "created_at >= $1 AND created_at < $2" in query
+        assert "tenant_id" not in query
 
 
 class TestAggregate:

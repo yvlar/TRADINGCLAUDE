@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import anthropic
@@ -26,6 +26,8 @@ from app.services.report import ReportService
 from app.services.retention_service import RetentionService
 from app.services.screener import ScreenerService
 from app.services.slack_service import SlackService
+from app.services.stripe_service import StripeService
+from app.services.usage_event_service import UsageEventService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
@@ -820,6 +822,159 @@ def run_retention_purge(self) -> dict:
         "Fin purge de rétention — %d tenant(s), %d ligne(s) supprimée(s)",
         result.get("tenants_purged", 0),
         result.get("total_deleted", 0),
+    )
+    return result
+
+
+def _previous_utc_day() -> tuple[datetime, datetime]:
+    """Fenêtre de report = le jour UTC complet précédent : `[hier 00:00, aujourd'hui 00:00)`.
+
+    Borne haute exclusive (`< period_end`) : aucun événement n'est compté dans deux fenêtres.
+    period_end (≈ minuit passé) reste dans la tolérance Stripe (≤ 35 j dans le passé).
+    """
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return today - timedelta(days=1), today
+
+
+async def _report_tenant_window(
+    db_pool: asyncpg.Pool,
+    stripe_service: StripeService,
+    usage_service: UsageEventService,
+    tenant_id: Any,
+    customer_id: str,
+    period_start: datetime,
+    period_end: datetime,
+) -> int | None:
+    """Rapporte la consommation d'un tenant sur la fenêtre, une seule fois (idempotence).
+
+    Retourne la quantité rapportée à Stripe, 0 si la fenêtre était vide (réservée mais sans appel),
+    ou None si la fenêtre avait déjà été rapportée (aucune action). Ordre **anti-double-facturation** :
+    on réserve d'abord `usage_report_log` (`ON CONFLICT DO NOTHING` = barrière), puis seulement on
+    pousse vers Stripe. Une fenêtre déjà réservée n'est jamais re-rapportée.
+    """
+    # Quantité comptée SOUS le contexte RLS du tenant (le GUC scope `usage_events` à ce tenant).
+    with tenant_scope(tenant_id):
+        quantity = await usage_service.count_window(period_start, period_end)
+
+    # Réservation idempotente (table HORS RLS, contexte legacy) : la PK (tenant_id, period_start)
+    # rejette tout 2ᵉ report de la même fenêtre. On mémorise la quantité pour l'audit/réconciliation.
+    claimed = await db_pool.fetchrow(
+        """
+        INSERT INTO usage_report_log (tenant_id, period_start, period_end, quantity)
+        VALUES ($1::uuid, $2, $3, $4)
+        ON CONFLICT (tenant_id, period_start) DO NOTHING
+        RETURNING tenant_id
+        """,
+        str(tenant_id),
+        period_start,
+        period_end,
+        quantity,
+    )
+    if claimed is None:
+        return None  # fenêtre déjà rapportée → pas de re-report
+    if quantity <= 0:
+        return 0  # fenêtre réservée (traitée) mais rien à facturer → aucun appel Stripe
+
+    await stripe_service.report_usage(
+        customer_id,
+        quantity,
+        timestamp=int(period_end.timestamp()),
+        identifier=f"usage:{tenant_id}:{period_start.date().isoformat()}",
+    )
+    return quantity
+
+
+async def _execute_usage_reporting() -> dict:
+    """Pousse la consommation métrée de la fenêtre précédente vers Stripe, par tenant abonné.
+
+    `subscriptions` est HORS RLS : sa lecture (tenants abonnés) ne dépend d'aucun contexte. Pour
+    chaque tenant ayant un abonnement `active` avec customer + souscription Stripe, on rapporte la
+    fenêtre via `_report_tenant_window` (idempotent). **Best-effort** : l'échec d'un tenant (loggé)
+    n'avorte pas le report des autres. No-op global si la facturation à l'usage n'est pas configurée.
+    """
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
+    try:
+        stripe_service = StripeService(
+            db_pool=db_pool,
+            secret_key=os.environ.get("STRIPE_SECRET_KEY"),
+            webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
+            price_by_plan={},  # non utilisé pour le report d'usage (cible un meter, pas un price)
+            meter_event_name=os.environ.get("STRIPE_METER_EVENT_NAME"),
+        )
+        if not stripe_service.is_metered_configured:
+            logger.info("Facturation à l'usage désactivée (meter absent) — run_usage_reporting ignoré")
+            return {"disabled": True, "reported": 0, "skipped": 0, "total_quantity": 0}
+
+        usage_service = UsageEventService(db_pool)
+        period_start, period_end = _previous_utc_day()
+
+        rows = await db_pool.fetch(
+            """
+            SELECT tenant_id, stripe_customer_id
+            FROM subscriptions
+            WHERE status = 'active'
+              AND stripe_subscription_id IS NOT NULL
+              AND stripe_customer_id IS NOT NULL
+            """
+        )
+        reported = 0
+        skipped = 0
+        total_quantity = 0
+        for row in rows:
+            tenant_id = row["tenant_id"]
+            try:
+                quantity = await _report_tenant_window(
+                    db_pool,
+                    stripe_service,
+                    usage_service,
+                    tenant_id,
+                    row["stripe_customer_id"],
+                    period_start,
+                    period_end,
+                )
+            except Exception:
+                logger.exception("Échec du report d'usage Stripe pour le tenant %s", tenant_id)
+                continue
+            if quantity:
+                reported += 1
+                total_quantity += quantity
+            else:
+                # None (déjà rapporté) ou 0 (fenêtre vide) : aucun metered record poussé.
+                skipped += 1
+        logger.info(
+            "Report d'usage métré — %d tenant(s) rapporté(s), %d ignoré(s), %d unité(s)",
+            reported,
+            skipped,
+            total_quantity,
+        )
+        return {
+            "disabled": False,
+            "reported": reported,
+            "skipped": skipped,
+            "total_quantity": total_quantity,
+        }
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_usage_reporting", bind=True)
+def run_usage_reporting(self) -> dict:
+    """
+    Tâche Celery — report quotidien de la consommation métrée vers Stripe (metered usage records).
+    Planifiée tous les jours à 02h00 UTC (heure creuse, avant la purge de rétention 03h00) via beat.
+    No-op si la facturation à l'usage (meter Stripe) n'est pas configurée.
+    """
+    logger.info("Début report d'usage métré vers Stripe")
+    result = asyncio.run(_execute_usage_reporting())
+    logger.info(
+        "Fin report d'usage métré — %d tenant(s) rapporté(s), %d unité(s)",
+        result.get("reported", 0),
+        result.get("total_quantity", 0),
     )
     return result
 

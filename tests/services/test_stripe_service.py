@@ -27,6 +27,18 @@ def _service(pool: AsyncMock, *, secret="sk_test_x", webhook="whsec_x") -> Strip
     )
 
 
+def _metered_service(
+    pool: AsyncMock, *, secret="sk_test_x", webhook="whsec_x", meter="tc_usage"
+) -> StripeService:
+    return StripeService(
+        pool,
+        secret_key=secret,
+        webhook_secret=webhook,
+        price_by_plan=_PRICES,
+        meter_event_name=meter,
+    )
+
+
 def _sub_event(
     event_type: str,
     tenant_id: str,
@@ -65,6 +77,16 @@ class TestConfig:
         assert svc.plan_for_price("price_pro") == "pro"
         assert svc.plan_for_price("price_inconnu") == "free"
         assert svc.plan_for_price(None) == "free"
+
+    def test_is_metered_configured_exige_cle_et_meter(self):
+        """La facturation à l'usage est active seulement si clé secrète ET meter présents."""
+        assert _metered_service(AsyncMock()).is_metered_configured is True
+        # Webhook absent n'empêche pas le report (le report pousse, il ne reçoit pas).
+        assert _metered_service(AsyncMock(), webhook=None).is_metered_configured is True
+        assert _metered_service(AsyncMock(), meter=None).is_metered_configured is False
+        assert _metered_service(AsyncMock(), secret=None).is_metered_configured is False
+        # Sans meter configuré (constructeur S172), report désactivé.
+        assert _service(AsyncMock()).is_metered_configured is False
 
 
 class TestVerifyEvent:
@@ -167,6 +189,49 @@ class TestBillingPortal:
         svc = _service(pool)
         with pytest.raises(NoStripeCustomerError):
             await svc.create_billing_portal_session(uuid.uuid4(), return_url="https://app")
+
+
+class TestReportUsage:
+    """report_usage pousse un MeterEvent (API meters >=15) ou no-op si non configuré."""
+
+    @pytest.mark.asyncio
+    async def test_report_usage_pousse_meter_event_avec_quantite(self):
+        svc = _metered_service(AsyncMock())
+        with patch("app.services.stripe_service.stripe") as st:
+            st.billing.MeterEvent.create = MagicMock(return_value={"identifier": "x"})
+            reported = await svc.report_usage(
+                "cus_1", 7, timestamp=1_700_000_000, identifier="usage:t:2026-06-06"
+            )
+        assert reported is True
+        _, kwargs = st.billing.MeterEvent.create.call_args
+        assert kwargs["event_name"] == "tc_usage"
+        # La quantité voyage en str dans le payload (clé `value` du meter), customer dans `stripe_customer_id`.
+        assert kwargs["payload"] == {"stripe_customer_id": "cus_1", "value": "7"}
+        assert kwargs["timestamp"] == 1_700_000_000
+        assert kwargs["identifier"] == "usage:t:2026-06-06"
+        # La clé secrète est passée par appel, jamais via le global stripe.api_key.
+        assert kwargs["api_key"] == "sk_test_x"
+
+    @pytest.mark.asyncio
+    async def test_report_usage_omet_timestamp_identifier_si_absents(self):
+        """timestamp/identifier sont NotRequired côté SDK — on ne les passe pas s'ils sont None."""
+        svc = _metered_service(AsyncMock())
+        with patch("app.services.stripe_service.stripe") as st:
+            st.billing.MeterEvent.create = MagicMock()
+            await svc.report_usage("cus_1", 3)
+        _, kwargs = st.billing.MeterEvent.create.call_args
+        assert "timestamp" not in kwargs
+        assert "identifier" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_report_usage_noop_si_non_configure(self):
+        """Meter absent → aucun appel Stripe, retourne False (facturation à l'usage désactivée)."""
+        svc = _metered_service(AsyncMock(), meter=None)
+        with patch("app.services.stripe_service.stripe") as st:
+            st.billing.MeterEvent.create = MagicMock()
+            reported = await svc.report_usage("cus_1", 5, timestamp=1)
+        assert reported is False
+        st.billing.MeterEvent.create.assert_not_called()
 
 
 class TestHandleEvent:

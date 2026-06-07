@@ -140,6 +140,25 @@ class UsageEventService:
             daily_cost={row["day"]: round(float(row["cost"]), 6) for row in daily_rows},
         )
 
+    async def count_window(self, start: datetime, end: datetime) -> int:
+        """Compte les événements de consommation du tenant courant dans `[start, end)` (lecture seule).
+
+        Unité facturable de la facturation à l'usage (E4-S9) : chaque ligne `usage_events` = une
+        exécution de skill métrée. Aucun filtre `WHERE tenant_id` — l'isolation vient de la RLS (GUC
+        `app.tenant_id` posé par connexion) : le compte ne porte que sur le tenant courant. Borne
+        haute exclusive pour ne jamais compter deux fois un événement à la frontière de deux fenêtres.
+        """
+        row = await self._db.fetchrow(
+            """
+            SELECT COUNT(*) AS nb
+            FROM usage_events
+            WHERE created_at >= $1 AND created_at < $2
+            """,
+            start,
+            end,
+        )
+        return int(row["nb"])
+
 
 def _row_to_event(row: asyncpg.Record) -> UsageEvent:
     return UsageEvent(
