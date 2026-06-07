@@ -46,6 +46,11 @@ class Persona:
 # Mot de passe conforme à la politique d'inscription (≥ 12, maj/min/chiffre/spécial).
 _DEFAULT_PWD = "Test1234!@#$"
 
+# Nom du tenant legacy — `tenants.name` du backfill (`0003_tenants.py`). Le vrai `UserService`
+# résout ce nom par JOIN (Sprint 169) ; les endpoints lisent `user["tenant_name"]` (accès direct,
+# pas `.get`) → l'absence de la clé lèverait un KeyError → 500 et casserait tout le flux d'auth E2E.
+_LEGACY_TENANT_NAME = "Legacy"
+
 PERSONAS: dict[str, Persona] = {
     "empty": Persona(
         cle="empty",
@@ -154,6 +159,7 @@ class InMemoryUserService:
             "role": persona.role,
             "is_active": persona.is_active,
             "tenant_id": LEGACY_TENANT_ID,
+            "tenant_name": _LEGACY_TENANT_NAME,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[persona.email.lower()] = user_id
@@ -161,7 +167,7 @@ class InMemoryUserService:
 
     @staticmethod
     def _public(row: dict, *, with_hash: bool = False) -> dict:
-        keys = ["id", "email", "role", "is_active", "tenant_id", "created_at"]
+        keys = ["id", "email", "role", "is_active", "tenant_id", "tenant_name", "created_at"]
         if with_hash:
             keys.append("hashed_password")
         return {k: row[k] for k in keys if k in row}
@@ -183,6 +189,7 @@ class InMemoryUserService:
             "role": "reader",
             "is_active": True,
             "tenant_id": tenant_id or LEGACY_TENANT_ID,
+            "tenant_name": _LEGACY_TENANT_NAME,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[norm] = user_id
