@@ -1,14 +1,14 @@
-# Sprint 171 — E4-S6 : purge de rétention par plan (`retention_days`)
+# Sprint 172 — E4-S7 : intégration Stripe Billing (abonnements + facturation à l'usage)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.57.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.58.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (170, E4-S5) a rendu le metering **actionnable** : `GET /usage?days=30` agrège `usage_events` scopé tenant (total coût/tokens + ventilation par skill + série quotidienne) via `UsageEventService.aggregate(days)`, sous la RLS (pas de `WHERE tenant_id`). L'épic **E4** dispose maintenant du socle complet : metering (S166), quotas (S167), clés-tenant (S168), tenant exposé (S169) et **agrégation de consommation** (S170). Prochaine marche : **appliquer `retention_days`** — la colonne posée au S167 mais jamais appliquée. État courant complet (version, endpoints, compteurs, fonctionnalités actives) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (171, E4-S6) a rendu `plan_limits.retention_days` **actionnable** : une tâche Celery quotidienne (`run_retention_purge`, 03h00 UTC) purge, pour chaque tenant **sous son contexte RLS** (`tenant_scope`), les tables historiques au-delà de la rétention de son plan (free=30/pro=365) ; `usage_events` (facturation), `watchlist` et `annotations` exclus. L'épic **E4** dispose maintenant du socle complet côté infra : metering (S166), quotas (S167), clés-tenant (S168), tenant exposé (S169), agrégation `GET /usage` (S170) et **rétention par plan** (S171). Prochaine marche : **convertir ce socle en revenu réel** — brancher Stripe. État courant complet (version, endpoints, compteurs, fonctionnalités actives) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Validation DB en session web** : un PostgreSQL 16 local peut être démarré (binaires dans `/usr/lib/postgresql/16/bin`). Postgres refuse de tourner en root → user dédié. Recette validée aux sprints 158-170 :
+> **Validation DB en session web** : un PostgreSQL 16 local peut être démarré (binaires dans `/usr/lib/postgresql/16/bin`). Postgres refuse de tourner en root → user dédié. Recette validée aux sprints 158-171 :
 > ```bash
 > useradd -m pguser 2>/dev/null || true; mkdir -p /tmp/pgdata /tmp/pgrun; chown pguser /tmp/pgdata /tmp/pgrun
 > runuser -u pguser -- /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -U copilote --auth=trust -A trust
@@ -16,63 +16,65 @@ Le dernier sprint (170, E4-S5) a rendu le metering **actionnable** : `GET /usage
 > runuser -u pguser -- /usr/lib/postgresql/16/bin/createdb -h 127.0.0.1 -p 5433 -U copilote copilote
 > DATABASE_URL=postgresql://copilote@127.0.0.1:5433/copilote .venv/bin/alembic upgrade head
 > ```
-> ⚠️ `alembic`/`sqlalchemy[asyncio]`/`mypy` sont dans `requirements.txt` mais **pas toujours installés dans `.venv`** : `.venv/bin/pip install "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0" mypy` avant tests de migration/mypy. Le frontend peut nécessiter `cd frontend && npm install` (node_modules absent du conteneur).
-> ⚠️ **Sprint sans migration attendue** : `retention_days` existe déjà (`alembic/versions/0007_plan_limits.py:58`, seed free=30/pro=365 lignes 44-45). C'est un sprint **tâche Celery + service de purge** — lecture du plan de chaque tenant + DELETE scopé. **Aucune table/colonne nouvelle attendue.**
-> ⚠️ **RLS + purge** : `analysis_history`, `usage_events`, `composite_score_history`, `esg_score_history`, `alert_history`, `annotations`, `watchlist` sont **sous RLS**. Un DELETE doit tourner **sous le contexte tenant** (ContextVar/GUC posé par `apply_tenant_context`) pour ne purger que les lignes du tenant ciblé — sinon la policy fail-closed renvoie 0 ligne. La tâche doit **itérer tenant par tenant** en posant `set_current_tenant(tenant_id)` (cf. `tests/conftest.py` `as_tenant`). Décision à documenter : **`usage_events` est la rétention de FACTURATION** — faut-il la purger avec la même borne que les analyses, ou la conserver plus longtemps (la carte S166 note « rétention facturation ≠ rétention analyse ») ? Trancher explicitement.
+> ⚠️ `alembic`/`sqlalchemy[asyncio]`/`mypy` sont dans `requirements.txt` mais **pas toujours installés dans `.venv`** : `.venv/bin/pip install "alembic>=1.13.0" "sqlalchemy[asyncio]>=2.0.0" mypy` avant tests de migration/mypy. Le SDK Stripe (`stripe`) devra être ajouté à `requirements.txt` et installé.
+> ⚠️ **Webhooks Stripe = entrée non authentifiée** : la signature `Stripe-Signature` (HMAC via `STRIPE_WEBHOOK_SECRET`) est la SEULE authentification — vérifier la signature **avant** tout traitement, sinon n'importe qui peut forger un événement de paiement. L'endpoint webhook doit être exempté de l'auth middleware (cf. `EXEMPT_PREFIXES`, `app/middleware/auth.py:46`) MAIS sa sécurité repose entièrement sur la vérification de signature.
+> ⚠️ **Aucune clé Stripe en dur** : `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/price IDs via `.env` + `.env.example` (valeurs factices) — cf. `.claude/rules/securite.md`.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.57.0)
-2. `.claude/rules/gotchas-operationnels.md` (édition `app/workers/**` — tâches Celery, timeouts, parallélisme) et `.claude/rules/tests-pyramide.md` (nouvelle tâche worker → tests unitaires sur la logique de purge + intégration sous PG migré ; patch `call_claude_with_retry` si applicable ; rôle NOSUPERUSER pour prouver le scoping RLS de la purge)
-3. **Code de référence vérifié cette session** : `alembic/versions/0007_plan_limits.py` — `retention_days INTEGER NOT NULL` (`:58`), seed `free`=30/`pro`=365 (`:44-45`), posé mais **inappliqué** (`:25`, à transformer en politique réelle) · `app/workers/celery_app.py` — `beat_schedule` (`:29`), patron `crontab(...)` (ex. `:48` `run_scheduled_screener` dimanche 11h00) où enregistrer la tâche planifiée de purge · `app/workers/tasks.py` — patron de tâche `@celery_app.task(name=..., bind=True)` (ex. `run_scheduled_screener` `:757-758`) à cloner · `app/db/tenant_context.py` — `set_current_tenant`/`apply_tenant_context` pour exécuter la purge **sous chaque tenant** · `tests/conftest.py` — `as_tenant` (`:56`) pour les tests de scoping
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.58.0)
+2. `.claude/rules/securite.md` (clés Stripe dans `.env`/`.env.example`, pas de secret dans les logs/traces — central pour un sprint d'intégration de paiement) et `.claude/rules/api-architecture.md` (nouveau routeur `1 router par domaine`, async/`httpx`, montage dans `app/api/main.py`, `cost_usd` — édition `app/**`)
+3. **Code de référence à vérifier en début de session (anti-hallucination)** : `usage_events` (S166) = source de vérité de la conso à facturer ; `GET /usage` (`app/api/endpoints/usage.py:9-12`, créé S170) agrège déjà cost/tokens par tenant ; `plan_limits(plan, …, retention_days)` + FK `tenants.plan` (`alembic/versions/0007_plan_limits.py:58,65`) = mapping plan↔borne ; `api_keys.tenant_id` (S168). **Toute l'intégration Stripe (SDK, table d'abonnement, webhooks, mapping plan↔price, clés `.env`) est à CRÉER.**
 
 ---
 
-## TÂCHE — Sprint 171 (E4-S6) : purge de rétention par plan
+## TÂCHE — Sprint 172 (E4-S7) : intégration Stripe Billing
 
-**Objectif** : transformer `plan_limits.retention_days` (colonne dormante depuis S167) en **politique réelle** — une tâche Celery planifiée qui, pour chaque tenant, supprime les données au-delà de la fenêtre de rétention de **son plan**. Différenciation free (30 j) / pro (365 j) + hygiène/conformité des données.
+**Objectif** : convertir le socle metering+quotas+agrégation (S166-S171) en **revenu réel** — brancher Stripe pour (a) l'abonnement d'un tenant à un plan (`free`/`pro`) et (b) la facturation à l'usage à partir de `usage_events`, avec les webhooks de cycle de vie. Dernière marche de M4 (monétisation).
 
 ### Spécification
-1. **Service de purge** (`app/services/` — nouveau, ex. `retention_service.py`) — méthode qui, **pour un tenant donné et sous son contexte (RLS)**, supprime les lignes plus vieilles que `retention_days` de son plan. Borne temporelle : `created_at < NOW() - (retention_days || ' days')::interval` (cohérent avec le patron `interval` de `get_metrics`/`aggregate`). Résout le plan du tenant via le join `tenants ⨝ plan_limits` (patron `QuotaService._resolve_limits`). **Décider/documenter le périmètre des tables purgées** : `analysis_history` au minimum ; trancher explicitement le sort de `usage_events` (rétention facturation — candidate à une borne distincte / non purgée ce sprint) et des tables dérivées (`composite_score_history`, `esg_score_history`, `alert_history`, `annotations`).
-2. **Tâche Celery planifiée** (`app/workers/tasks.py` + `app/workers/celery_app.py`) — `@celery_app.task` clonée sur le patron `run_scheduled_screener` : itère sur **tous les tenants** (lecture hors RLS de `tenants`, table parente), pose `set_current_tenant(tenant_id)` pour chacun, appelle le service de purge sous ce contexte, agrège un compte de lignes supprimées par tenant/table (retour structuré pour les logs). Enregistrer dans `beat_schedule` (`celery_app.py:29`) à une cadence raisonnable (ex. quotidienne, heure creuse). **Best-effort par tenant** : l'échec d'un tenant ne doit pas avorter la purge des autres.
-3. **Borne de sécurité** : ne jamais purger si `retention_days` est `NULL`/absent (fail-safe — un plan mal configuré ne doit pas tout supprimer) ; DELETE toujours scopé par `created_at` ET par le contexte tenant (jamais de `DELETE FROM table` sans clause).
+1. **SDK + configuration** — ajouter `stripe` à `requirements.txt` ; clés `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, et le mapping plan↔price (`STRIPE_PRICE_FREE`/`STRIPE_PRICE_PRO` ou table de correspondance) dans `.env` + `.env.example` (valeurs factices). Client Stripe initialisé via env, jamais hardcodé.
+2. **Migration** — table `subscriptions` (ou colonnes sur `tenants`) reliant un tenant à son `stripe_customer_id` / `stripe_subscription_id` / statut (`active`/`past_due`/`canceled`) + `plan` courant. **Décider/documenter** : table d'association vs colonnes sur `tenants` (cohérent avec la décision « option a » du S167 pour `tenants.plan`). RLS : `subscriptions` est-elle scopée tenant (entre dans la matrice) ou table de référence d'authn comme `api_keys` (hors RLS) ? Trancher explicitement.
+3. **Service `StripeService`** (`app/services/`) — création de session de checkout (souscription à un plan), résolution `tenant ↔ customer`, et **synchronisation du plan** : à la réception d'un événement d'abonnement, mettre à jour `tenants.plan` (le `QuotaService`/purge en dépendent déjà). Facturation à l'usage : pousser la conso agrégée (`GET /usage` / `UsageEventService.aggregate`) vers Stripe (metered usage records) — ou documenter le report de la partie metered si trop large pour ce sprint.
+4. **Endpoint webhook** (`app/api/endpoints/`, nouveau routeur, monté dans `main.py`) — `POST /billing/webhook` : **vérifier la signature `Stripe-Signature`** (`STRIPE_WEBHOOK_SECRET`) AVANT tout traitement (rejet 400 si invalide), puis router les événements (`customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed` → dunning). Exempté de l'auth middleware (`EXEMPT_PREFIXES`) — sécurité = signature uniquement. Idempotence : un même `event.id` ne doit pas être traité deux fois.
+5. **Sécurité/observabilité** — aucune clé/secret Stripe dans les logs JSON ni les traces Langfuse ; erreurs 500 assainies (corrélation_id), `str(exc)` jamais exposé.
 
 ### Tests / validation
-- **Unitaires** (`tests/services/`) : la borne `retention_days` est respectée (ligne à J-31 purgée pour free=30, ligne à J-29 conservée) ; plan absent/`NULL` → aucune purge ; résolution plan→bornes correcte (asyncpg mocké).
-- **Intégration** (`tests/integration/`, gated `RLS_TEST_DATABASE_URL` + rôle NOSUPERUSER) : sur PG migré, la purge sous le contexte du tenant A ne supprime **que** les lignes périmées de A (lignes de B intactes, lignes récentes de A intactes) — prouver le scoping RLS de la purge. Ajouter au gate CI (`.github/workflows/ci.yml`).
-- **Worker** (`tests/workers/`) : la tâche itère sur les tenants, pose le contexte, agrège les comptes ; best-effort (un tenant en échec n'interrompt pas les autres).
+- **Unitaires** (`tests/services/`) : `StripeService` avec le SDK mocké — checkout session créée, mapping plan↔price, synchro `tenants.plan` sur événement d'abonnement, idempotence par `event.id`.
+- **Intégration** (`tests/api/` ou `tests/integration/`) : `POST /billing/webhook` — **signature invalide → 400 sans effet** ; signature valide → traitement (mocke la vérification SDK ou utilise un secret de test) ; `tenants.plan` mis à jour ; double livraison du même event → idempotent.
+- **Migration** (`tests/`) : forme de la table `subscriptions`/colonnes, chaînage Alembic, décision RLS prouvée (dans ou hors matrice selon le choix), downgrade.
 - Suite `pytest` (hors e2e/evals) + `ruff` + `mypy app/` verts. **Eval** : aucun prompt de skill touché → pas d'eval (le dire explicitement).
-- **Preuve d'acceptation observable** : exécuter la purge sur PG migré avec des lignes datées artificiellement et **constater** le nombre de lignes restantes par tenant (périmées supprimées, récentes conservées, isolation tenant respectée).
+- **Preuve d'acceptation observable** : sur PG migré, simuler un événement `customer.subscription.updated` (plan free→pro) signé et **constater** `tenants.plan='pro'` ; webhook à signature forgée → 400 et aucune mutation.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E4 — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 172 — E4-S7 : intégration Stripe Billing (abonnements + usage)
-**Objectif** : brancher Stripe (abonnement par plan + facturation à l'usage depuis `usage_events`), webhooks de cycle de vie (souscription, paiement, dunning), mapping plan↔price.
-**Complexité** : Élevée.
-**Justification** : convertit le socle metering+quotas+clés-tenant (166-168) + agrégation (170) en revenu réel (B1/B2 du plan directeur) ; dernière marche de M4.
-**Référence** : `usage_events` (S166), `plan_limits`/`tenants.plan` (`alembic/versions/0007_plan_limits.py:58,65`, vérifié) et `api_keys.tenant_id` (S168) sont les socles ; `GET /usage` (`app/api/endpoints/usage.py`, créé S170) fournit l'agrégation à facturer. Toute l'intégration Stripe (SDK, webhooks, mapping plan↔price, `.env` clés Stripe) est **à créer**.
+### Sprint 173 — E4-S8 : page « Facturation » frontend
+**Objectif** : page React consolidant la consommation (`GET /usage`), le plan courant (`tenant.plan`) et le quota restant du mois en un tableau de bord de facturation lisible, avec bouton « Gérer l'abonnement » (Stripe portal).
+**Complexité** : Moyenne.
+**Justification** : donne une surface produit au socle E4 + à l'intégration Stripe (S172) ; transforme la facturation en self-service.
+**Référence** : `GET /usage` créé au S170 (`app/api/endpoints/usage.py:9-12`, vérifié) ; `UsageResponse`/`UsageBySkill` dans `app/models/usage.py` ; `QuotaBanner` existe (`frontend/src/components/QuotaBanner.tsx`, vérifié) ; `SkillCostPieChart`/`DailyCostTrendChart` existent (`frontend/src/components/`, vérifié via `ls`). La page `BillingPage` + son **client typé `frontend/src/api/usage.ts`** (absent, vérifié via `ls` → **à créer**) sont à créer.
 
-### Sprint 173 — E4-S8 : provisionnement de clés API par tenant (admin self-service)
-**Objectif** : permettre à un admin de tenant de créer des clés rattachées à **son** tenant via `CreateKeyRequest` (aujourd'hui `create_key` hérite du tenant courant via le ContextVar, mais une clé env-admin retombe sur legacy — NIT S168).
+### Sprint 174 — E4-S9 : provisionnement de clés API par tenant (admin self-service)
+**Objectif** : permettre à un admin de tenant de créer des clés rattachées à **son** tenant via un champ `tenant_id` optionnel sur `CreateKeyRequest` (aujourd'hui `create_key` hérite du tenant courant via le ContextVar ; une clé env-admin retombe sur legacy).
 **Complexité** : Faible.
 **Justification** : rend le rattachement tenant des clés (S168) pilotable côté produit, prérequis d'un onboarding multi-tenant.
-**Référence** : `create_key(...)` rattache au tenant courant (`app/services/api_key_service.py:75`, S168, vérifié) ; l'endpoint `POST /admin/keys` (`app/api/endpoints/admin.py:76`) délègue à `service.create_key(...)` (`:90`) **sans** `tenant_id` explicite (vérifié). L'ajout d'un champ `tenant_id` optionnel à `CreateKeyRequest` + sa validation (admin ne crée que pour son tenant) sont **à créer**.
-
-### Sprint 174 — E4-S9 : page « Facturation » frontend
-**Objectif** : page React consolidant la consommation (`GET /usage`), le plan courant (`tenant.plan`) et le quota restant du mois (bandeau S167) en un tableau de bord de facturation lisible.
-**Complexité** : Moyenne.
-**Justification** : donne une surface produit au socle E4 (metering+quotas+agrégation) ; point d'entrée naturel avant l'intégration Stripe (S172).
-**Référence** : `GET /usage` créé au S170 (`app/api/endpoints/usage.py`, `UsageResponse`/`UsageBySkill` dans `app/models/usage.py`, vérifié) ; `QuotaBanner` existe (`frontend/src/components/QuotaBanner.tsx`, vérifié) ; `SkillCostPieChart`/`DailyCostTrendChart` existent (`frontend/src/components/`, vérifié via `ls`). La page `BillingPage` + son client typé `usage.ts` (différé du S170) sont **à créer**.
+**Référence** : `create_key(...)` rattache au tenant courant (`app/services/api_key_service.py:82`, S168, vérifié) ; l'endpoint `POST /admin/keys` (`app/api/endpoints/admin.py:82`) délègue à `service.create_key(...)` (`:90`) **sans** `tenant_id` explicite (vérifié). L'ajout d'un champ `tenant_id` optionnel à `CreateKeyRequest` + sa validation (admin ne crée que pour son tenant) sont **à créer**.
 
 ### Sprint 175 — E4-S10 : scoping tenant du token de rapport (`/report`)
 **Objectif** : faire passer les endpoints `/report` (auth-exemptés, donc sous tenant legacy via GUC par défaut) sous le contexte tenant du demandeur — risque résiduel n°2 de la revue OWASP RLS.
 **Complexité** : Moyenne.
 **Justification** : ferme le dernier trou d'isolation documenté (`docs/revue-owasp-rls-2026-06.md`) — un rapport ne doit refléter que les données du tenant qui le demande.
-**Référence** : `/report` est exempté de l'auth middleware (`app/middleware/auth.py` `EXEMPT_PREFIXES = ("/telemetry", "/report", "/ws")`, vérifié) → GUC legacy par défaut ; la décision « legacy-only documentée » est tracée dans `docs/revue-owasp-rls-2026-06.md` (risque résiduel n°2). Un token de rapport portant le tenant + le threading du contexte sont **à créer**.
+**Référence** : `/report` est exempté de l'auth middleware (`app/middleware/auth.py:46` `EXEMPT_PREFIXES = ("/telemetry", "/report", "/ws")`, vérifié) → GUC legacy par défaut ; la décision « legacy-only documentée » est tracée dans `docs/revue-owasp-rls-2026-06.md` (existe, vérifié). Un token de rapport portant le tenant + le threading du contexte (réutilisant `tenant_scope`, `app/db/tenant_context.py`, créé S171) sont **à créer**.
+
+### Sprint 176 — E5-S1 : threading tenant des analyses planifiées (workers metrés)
+**Objectif** : faire tourner les analyses planifiées (screener/alertes/watchlist) **sous le tenant propriétaire** plutôt que sous legacy, afin de les metrer dans `usage_events` (aujourd'hui chemin worker non metré, déféré au S166).
+**Complexité** : Élevée.
+**Justification** : ferme le dernier trou de facturation — la conso planifiée d'un tenant doit lui être imputée ; réutilise la primitive `tenant_scope` posée au S171.
+**Référence** : le chemin worker tourne sous legacy (commentaire `app/workers/tasks.py` `_build_orchestrator` « analyses planifiées sous tenant legacy — déféré », vérifié S166) ; `tenant_scope` (`app/db/tenant_context.py`, créé S171, vérifié) est la primitive d'exécution par-tenant ; `watchlist` porte déjà `tenant_id` (RLS, S163-165). Le threading du tenant propriétaire de chaque entrée watchlist vers l'orchestrateur + l'injection du `UsageEventService` au worker sont **à créer**.
 
 ---
 
@@ -80,16 +82,16 @@ Le dernier sprint (170, E4-S5) a rendu le metering **actionnable** : `GET /usage
 
 ```
 Tu es un développeur Python/TypeScript senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md
-(v10.57.0), .claude/rules/gotchas-operationnels.md et tests-pyramide.md.
-Sprint actif : 171 — E4-S6 (purge de rétention par plan). Créer un service de purge qui, sous le
-contexte de chaque tenant (RLS, set_current_tenant), supprime les lignes au-delà de
-plan_limits.retention_days (free=30/pro=365, 0007_plan_limits.py:58) ; borne created_at < NOW() -
-(retention_days || ' days')::interval ; trancher le sort de usage_events (rétention facturation).
-Tâche Celery planifiée clonée sur run_scheduled_screener (tasks.py:757) + beat_schedule
-(celery_app.py:29), itérant tenant par tenant, best-effort. Aucune migration attendue.
-Démarre un Postgres local (recette dans ce fichier) et PROUVE le scoping RLS de la purge (rôle
-NOSUPERUSER, tenant A ne purge que ses lignes périmées, B intact) + la borne retention_days.
+(v10.58.0), .claude/rules/securite.md et api-architecture.md.
+Sprint actif : 172 — E4-S7 (intégration Stripe Billing). Brancher Stripe : SDK + clés .env
+(STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET/price IDs, + .env.example factice), migration
+subscriptions (trancher RLS in/out), StripeService (checkout + synchro tenants.plan), endpoint
+POST /billing/webhook VÉRIFIANT la signature Stripe-Signature AVANT traitement (exempté auth,
+EXEMPT_PREFIXES auth.py:46) + idempotence par event.id, facturation à l'usage depuis usage_events
+(GET /usage, S170) ou report documenté de la partie metered.
+Démarre un Postgres local (recette dans ce fichier) et PROUVE : webhook signé free→pro met
+tenants.plan='pro' ; signature forgée → 400 sans mutation.
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; borne retention_days respectée + isolation
-RLS de la purge prouvée + fail-safe retention_days NULL (aucune purge).
+GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; signature vérifiée avant traitement +
+idempotence event.id + synchro tenants.plan prouvée + aucune clé Stripe dans les logs/traces.
 ```
