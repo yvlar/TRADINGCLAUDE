@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-08 — Sprint 193 complété**
+**Dernière mise à jour : 2026-06-08 — Sprint 194 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.80.0 |
+| **Version** | 10.81.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 194 — E5 : helper front partagé `extractDetailMessage` (dé-duplication des parseurs d'erreur) |
-| **Dernier sprint complété** | Sprint 193 — Ops : helper de test RLS partagé. Le harnais d'intégration RLS dupliqué est extrait dans **une** source partagée `tests/integration/_rls_fixtures.py` : (1) l'**inventaire unique des 7 tables RLS** (`RLS_TABLES`) remplace les 2 définitions (`_RLS_TABLES` + `_TABLES`) **et** l'import croisé `test_force_rls → test_revoke_public_rls` (couplage inter-tests brisé) ; (2) le **harnais de skip `APP_DATABASE_URL`** (`pytest.mark.integration` + `skipif`) exposé une fois et réutilisé par les **3** fichiers réellement identiques (`test_revoke_public_rls`, `test_force_rls`, `test_app_runtime_rls`). **Nuance de réconciliation** : la carte annonçait 4 fichiers au harnais `APP_DATABASE_URL` — **faux**, `test_rls_isolation.py` utilise un env var **distinct** (`RLS_TEST_DATABASE_URL`, reason différente) → seul son inventaire de tables est centralisé, son garde de skip est **laissé intact** (sémantique préservée). **Décision tranchée** : `asyncpg.connect()` **non** abstrait en fixture (3 fichiers en connexion simple vs pool+casts par-table de `test_rls_isolation` → fixture générique fragile). **Refactor de tests pur** (zéro `app/`) : 15 tests RLS restent skippés proprement hors PG, 0 erreur de collection. **Revue indépendante à contexte frais** (correctness « ship it » 0 finding, 4/4 critères MET + qualité 0 APPLY). ✅ |
+| **Sprint actif** | Sprint 195 — E5 : test de flux re-connexion cross-tenant (compléter S190) |
+| **Dernier sprint complété** | Sprint 194 — E5 : helper front partagé `extractDetailMessage`. La logique de parsing du corps `detail` d'une réponse d'erreur (objet structuré `{message,…}` / tableau de validation Pydantic `[{loc,msg}]` / string) — **répétée et divergente** entre `request` (`client.ts`, array-first), `streamAnalyze` (`analyze.ts`, object-first → un tableau **retombait** sur le fallback) et `authFetch` (`auth.ts`, array-first) — est extraite dans **un seul** helper typé `extractDetailMessage` (`frontend/src/api/errorDetail.ts`), ordre de gardes canonique **array-first**. **Réconciliation carte↔code (anti-hallucination)** : la carte nommait **3** sites ; un **4ᵉ** (`authFetch`, `auth.ts:52`) dupliquait aussi l'aplatissement Pydantic → folé dans le helper (l'acceptation « un seul site » l'exige). `quotaDetailFromError` (`QuotaBanner.tsx`) laissé **distinct** (finalité = validation de forme typée `QuotaErrorDetail`, pas extraction de message). **Changement de comportement assumé** : le chemin SSE aplatit désormais un `detail` tableau au lieu de le perdre (testé). **Comportement observable préservé** : 429 quota (objet) + 422 validation (tableau) → message identique à avant (assertions Vitest) ; `ApiError(status, message, detail)` transporte toujours le `detail` brut (contrat S189 inchangé). **Sprint frontend seul** (zéro `app/`, pas d'eval, pas de `mypy`). Preuve d'acceptation : `grep` = **un seul** site d'aplatissement (`errorDetail.ts`). ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -97,6 +97,30 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 194 — E5 : helper front partagé `extractDetailMessage` (dé-duplication des parseurs d'erreur) ✅
+
+**Objectif :** Fermer une note qualité **écartée aux revues S189/S192** (split pré-existant des parseurs `detail`, hors périmètre des deltas de l'époque) et toujours ouverte. Plusieurs sites parsaient le même contrat d'erreur (`detail` = objet structuré | tableau de validation Pydantic | string) mais **dans un ordre de gardes différent** — un risque de dérive silencieuse à chaque évolution du contrat d'erreur backend. Centraliser donne **un seul** point de décision « comment extraire un message lisible d'un corps `detail` ». **Sprint frontend seul** (TypeScript, zéro `app/`, pas de backend, pas d'eval, pas de `mypy`).
+
+**Réconciliation carte↔code (anti-hallucination) :** la carte nommait **3** sites divergents — `request` (`client.ts:22`, parsing `:52-76`, **array-first**), `streamAnalyze` (`analyze.ts:147`, parsing `:171-188`, **object-first** → un tableau **retombait** sur le fallback), `quotaDetailFromError` (`QuotaBanner.tsx:14`). **Prémisse incomplète détectée par `grep`** : un **4ᵉ** site, `authFetch` (`auth.ts:52-58`), dupliquait **aussi** l'aplatissement Pydantic (`loc.slice(1).join('.')`) — non mentionné par la carte ni par S189. L'acceptation « il n'existe plus **qu'un** site implémentant l'aplatissement » l'exige : `authFetch` est folé dans le helper (pas un STOP — une expansion que le critère d'acceptation impose lui-même). Type miroir `QuotaErrorDetail` (`types/index.ts:916`) et `ApiError.detail?: unknown` (`client.ts:9`) confirmés.
+
+**Décision tranchée — ordre de gardes canonique array-first :** choisi (le plus complet, celui de `client.ts`) et appliqué à `request`, `streamAnalyze` et `authFetch`. Supprime la divergence `analyze.ts` (un `detail` tableau y est désormais aplati au lieu de retomber sur `statusText`) — **changement de comportement assumé** pour le chemin SSE sur un `detail` tableau (rare : le 429 quota porte un objet ; testé). Le fold `authFetch` est une amélioration stricte (un objet sans `message` part vers `error`/fallback au lieu de `[object Object]`).
+
+**Décision tranchée — `quotaDetailFromError` laissé distinct :** sa finalité n'est pas l'extraction d'un message mais la **validation de forme typée** (`plan`/`used`/`limit` → `QuotaErrorDetail`). Aucune primitive de message à partager ; le helper ne la remplacerait pas. Cohérent avec la philosophie « ne pas sur-abstraire ».
+
+**Livrables :**
+- `frontend/src/api/errorDetail.ts` (nouveau) — `extractDetailMessage(body: unknown, fallback: string): { message: string; detail: unknown }` gérant les 3 formes (tableau Pydantic aplati `champ : msg | …` ; objet `detail.message ?? error ?? fallback` ; string `detail ?? error ?? fallback`) + `flattenPydanticErrors` privé. Zéro `any`. Retourne le `detail` brut (transporté tel quel par `ApiError`).
+- `frontend/src/api/client.ts` — `request` délègue à `extractDetailMessage` ; logique inline (array/objet/string) retirée. `ApiError(status, message, detail)` reçoit toujours le `detail` brut (contrat S189 inchangé).
+- `frontend/src/api/analyze.ts` — `streamAnalyze` délègue au helper (même ordre array-first) ; commentaire du changement de comportement SSE.
+- `frontend/src/api/auth.ts` — `authFetch` délègue au helper (4ᵉ site réconcilié) ; `AuthApiError` ne transporte pas de `detail` → seul `message` est utilisé.
+- `frontend/src/__tests__/errorDetail.test.ts` (nouveau) — 10 tests sur les 3 formes + replis (`error`/`statusText`, corps vide/null/non-objet, `detail` null) + parité 429/422.
+- `frontend/src/__tests__/streamAnalyzeError.test.ts` (nouveau) — 2 tests (mock `fetch`) : le chemin SSE aplatit un `detail` tableau 422 (changement assumé) ; 429 objet inchangé + `detail` brut conservé.
+- `frontend/src/__tests__/authFetchError.test.ts` (nouveau) — 2 tests (mock `fetch`) : `detail` string inchangé ; `detail` tableau Pydantic aplati comme les autres sites.
+
+**Preuve d'acceptation observable** : `grep "slice(1).join"` = **un seul** site (`errorDetail.ts`) ; `grep "Array.isArray" src/api/` = un seul (`errorDetail.ts`) ; un 429 quota (objet) et une 422 (tableau) produisent le **même message qu'avant** (assertions Vitest) ; le chemin SSE aplatit désormais un `detail` tableau (assertion Vitest). **Pas de Docker/navigateur live** dans le conteneur web → preuve par tests unitaires + composant (mock `fetch`).
+
+**Version** : 10.81.0
+**Tests** : **frontend 514 Vitest** (mesuré `vitest list | wc -l` = 514 ; **+15** : `errorDetail` 11 + `streamAnalyzeError` 2 + `authFetchError` 2) ; `tsc --noEmit` + ESLint (0/0) verts. **Backend non touché** (zéro `app/`/`tests/` → CI backend inchangé, 2 368 collectés). **Revue indépendante à contexte frais (sous-agents dédiés, 2 passes correctness + qualité, nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« ship it »**, 0 BLOCKER/MAJOR, **6/6 critères MET** ; 1 NIT **appliqué** (cast latent `as string` du branch `else` remplacé par `typeof detail === 'string' ? detail : error ?? fallback` — zéro coercition trompeuse d'un non-string dans `message: string` ; +1 test number/boolean/empty-array). **2ᵉ passe** sur le diff corrigé — **« ship »**, 0 finding (précédence `??`/ternaire vérifiée, parité 429/422 préservée, empty-array routé par `Array.isArray` confirmé) ; 1 NIT doc **appliqué** (commentaire du helper nommait `quotaDetailFromError` au lieu de `authFetch`). **Qualité** (`/simplify`) — **0 APPLY** : garde de coercition `unknown→ErrorBody` minimale (nécessaire au bord `json()`), `quotaDetailFromError` distinct confirmé (validateur de forme, pas extracteur de message), `flattenPydanticErrors` à la bonne altitude.
 
 ### Sprint 193 — Ops : helper de test RLS partagé (réduction de la duplication des harnais d'intégration) ✅
 
