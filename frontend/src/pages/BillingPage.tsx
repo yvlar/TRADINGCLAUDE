@@ -10,7 +10,7 @@ import { SkillCostPieChart } from '../components/SkillCostPieChart'
 import { DailyCostTrendChart } from '../components/DailyCostTrendChart'
 import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
 import { useAuth } from '../contexts/AuthContext'
-import { getUsage } from '../api/usage'
+import { getUsage, getUsageReporting } from '../api/usage'
 import { createCheckout, openPortal } from '../api/billing'
 import { ApiError } from '../api/client'
 import type { UsageBySkill } from '../types'
@@ -18,6 +18,12 @@ import type { UsageBySkill } from '../types'
 /** Convertit la ventilation par skill en dict {skill: coût} attendu par SkillCostPieChart. */
 function bySkillToCostMap(bySkill: UsageBySkill[]): Record<string, number> {
   return Object.fromEntries(bySkill.map((s) => [s.skill, s.cost_usd]))
+}
+
+/** Formate le curseur de report (ISO) en date locale fr-CA, ou un libellé neutre si jamais rapporté. */
+function formatReportedThrough(reportedThrough: string | null): string {
+  if (reportedThrough === null) return 'Aucun report effectué pour le moment'
+  return `Rapporté à Stripe jusqu'au ${new Date(reportedThrough).toLocaleDateString('fr-CA')}`
 }
 
 /** Message d'erreur assaini : 503 → facturation indisponible, sinon le détail renvoyé. */
@@ -55,6 +61,11 @@ export default function BillingPage() {
   const usage = useQuery({
     queryKey: ['usage', 30],
     queryFn: () => getUsage(30),
+  })
+
+  const reporting = useQuery({
+    queryKey: ['usage-reporting'],
+    queryFn: () => getUsageReporting(),
   })
 
   const [actionLoading, setActionLoading] = useState(false)
@@ -191,6 +202,38 @@ export default function BillingPage() {
                     <DailyCostTrendChart dailyCost={usage.data.daily_cost} />
                   </div>
                 </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Facturation à l'usage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {reporting.isLoading ? (
+              <div data-testid="billing-reporting-loading">
+                <Skeleton className="h-[80px] w-full" />
+              </div>
+            ) : reporting.isError ? (
+              <p className="text-sm text-muted-foreground" data-testid="billing-reporting-error">
+                Facturation à l'usage indisponible pour le moment.
+              </p>
+            ) : reporting.data ? (
+              <div className="space-y-3" data-testid="billing-usage-reporting">
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    En attente du prochain cycle
+                  </p>
+                  <p className="text-2xl font-bold tabular-nums" data-testid="billing-reporting-pending">
+                    {reporting.data.pending_events.toLocaleString('fr-CA')}
+                    <span className="ml-1 text-sm font-normal text-muted-foreground">unité(s)</span>
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground" data-testid="billing-reporting-through">
+                  {formatReportedThrough(reporting.data.reported_through)}
+                </p>
               </div>
             ) : null}
           </CardContent>

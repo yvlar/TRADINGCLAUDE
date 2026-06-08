@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -182,6 +183,19 @@ class StripeService:
             params["identifier"] = identifier
         await asyncio.to_thread(stripe.billing.MeterEvent.create, **params)
         logger.info("Usage métré rapporté à Stripe — customer %s, %d unité(s)", customer_id, quantity)
+
+    async def get_usage_reported_through(self, tenant_id: UUID) -> datetime | None:
+        """Curseur de report d'usage du tenant (None si jamais rapporté ou pas d'abonnement).
+
+        Lecture **scopée applicativement** par `tenant_id` : `subscriptions` est HORS RLS (cf.
+        migration 0009) — pas de filtre RLS à invoquer, on filtre explicitement. Exposé à
+        `GET /usage/reporting` pour rendre le curseur worker (`run_usage_reporting`) visible au client.
+        """
+        row = await self._db.fetchrow(
+            "SELECT usage_reported_through FROM subscriptions WHERE tenant_id = $1::uuid",
+            str(tenant_id),
+        )
+        return row["usage_reported_through"] if row is not None else None
 
     async def _get_or_create_customer(self, tenant_id: UUID) -> str:
         """Retourne le `stripe_customer_id` du tenant, le créant (et le persistant) au besoin."""

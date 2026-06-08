@@ -1,64 +1,54 @@
-# Sprint 179 — E5-S2 : facturation à l'usage côté UI (compteur de report)
+# Sprint 180 — E5-S3 : audit log côté UI (page Admin)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.65.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.66.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (178, E4-S12) a câblé le **retour de checkout Stripe** sur `BillingPage` : `AuthContext` expose un `refreshUser()` (re-`authMe()` + `setUser`), et `BillingPage` lit `?status=success|cancel` → bandeau de confirmation + `refreshUser()` une seule fois (garde-fou `useRef`) pour repiloter le CTA checkout↔portail dès la synchro `tenants.plan`. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (179, E5-S2) a rendu la **facturation à l'usage transparente** : endpoint `GET /usage/reporting` (authentifié, lecture seule) exposant le curseur `subscriptions.usage_reported_through` + `pending_events` (`count_events_in_window`), et une carte « Facturation à l'usage » sur `BillingPage`. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Travail MIXTE backend + frontend** : ce sprint ajoute **un endpoint de lecture** (état du curseur de report Stripe) et **un rendu UI** sur `/facturation`. GATES : backend `pytest` (hors e2e/evals) + `ruff` + `mypy app/` ; frontend `cd frontend && npm test` (Vitest) + `npm run typecheck` (0) + ESLint (0/0). ⚠️ Le venv web peut manquer des deps backend (`stripe`, `alembic`, `sqlalchemy`, `mako`, `mypy`) → `bash scripts/setup-web-session.sh` ou `.venv/bin/pip install -r requirements.txt` si un import échoue. ⚠️ `frontend/node_modules` peut être absent au démarrage → `cd frontend && npm ci`.
+> **Travail FRONTEND dominant** : ce sprint ajoute **un client typé + une surface UI** ; l'endpoint backend `GET /admin/audit-log` **existe déjà** (S160). GATES : frontend `cd frontend && npm test` (Vitest) + `npm run typecheck` (0) + ESLint (0/0). Backend touché seulement si un ajustement de l'endpoint s'avère nécessaire (sinon `pytest` reste vert par non-régression). ⚠️ Le venv web peut manquer des deps backend → `.venv/bin/pip install -r requirements.txt` (+ `mypy` non pinné : `.venv/bin/pip install mypy`) si un import échoue. ⚠️ `frontend/node_modules` peut être absent → `cd frontend && npm ci`.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.65.0)
-2. `.claude/rules/api-architecture.md` (nouvel endpoint FastAPI : modèle `cost_usd`, async/await, lifespan) **et** `.claude/rules/conventions-frontend.md` (React 18, TS strict, structure pages/composants, zéro `any`) **et** `.claude/rules/tests-pyramide.md` (test d'intégration obligatoire pour un nouvel endpoint ; test composant happy path + erreur).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.66.0)
+2. `.claude/rules/conventions-frontend.md` (React 18, TS strict, structure pages/composants, zéro `any`, `data-testid` sur éléments interactifs) **et** `.claude/rules/tests-pyramide.md` (test composant obligatoire : happy path + cas d'erreur ; mock du client API).
 3. **Code de référence à vérifier en début de session (anti-hallucination)** :
-   - Le curseur `subscriptions.usage_reported_through` est **lu et avancé par le worker** `run_usage_reporting` (`app/workers/tasks.py:906` SELECT, `:920` lecture `since`, `:943` UPDATE — vérifié) ; il n'est exposé par **aucun endpoint** → l'endpoint de lecture est **À CRÉER**.
-   - `UsageEventService.count_events_in_window(since, until)` **existe déjà** (Sprint 174, contrat append-only `{record, aggregate, count_events_in_window}` — `COUNT(*)` des `usage_events` sur `(since, until]`, isolation RLS, aucun `WHERE tenant_id`) — c'est lui qui comptera les événements **non encore rapportés** (`(usage_reported_through, now]`). Vérifier sa signature dans `app/services/usage_event_service.py` avant de l'appeler.
-   - `GET /usage` agrège déjà `usage_events` pour le tenant courant (`app/api/endpoints/usage.py:29` → `service.aggregate(days)`, authentifié, RLS — vérifié) ; le client typé frontend est `getUsage()` (`frontend/src/api/usage.ts:5`, vérifié). Le nouvel endpoint suit le **même patron** (auth `_get_current_user`, RLS, response_model Pydantic).
-   - **Décision RLS du curseur** : la table `subscriptions` est **HORS RLS** (Sprint 172 — le webhook auth-exempté tourne sous legacy). L'endpoint de lecture devra donc **scoper explicitement** au tenant courant (`WHERE tenant_id = get_current_tenant()` applicatif, **pas** la RLS) — contrairement à `usage_events` qui est sous RLS. **Ne pas supposer** que la RLS protège `subscriptions` : la vérifier (`grep -n "subscriptions" alembic/versions/0009_stripe_billing.py` pour confirmer l'absence de `ENABLE ROW LEVEL SECURITY`) avant d'écrire la requête.
+   - `GET /admin/audit-log` **existe déjà** : route `app/api/endpoints/admin.py:159`, handler `list_audit_log` `:163` (`limit` borné 1-200 → 422, `_require_admin`, `service.list_recent(limit)` — vérifié). Renvoie `list[AuditLogEntry]`.
+   - Modèle `AuditLogEntry` (`app/services/audit_log_service.py:16`, vérifié) : `id: UUID`, `tenant_id: UUID | None`, `user_id: UUID | None`, `action: str`, `cible_type: str`, `cible_id: str | None`, `metadata: dict`, `created_at: datetime`. **Le type frontend `AuditLogEntry` est À CRÉER** dans `frontend/src/types/index.ts` (miroir snake_case, zéro `any`).
+   - Le client typé `frontend/src/api/admin.ts` (vérifié : `listApiKeys`/`createApiKey`/`revokeApiKey`) n'a **aucune** fonction audit-log → `getAuditLog(limit?)` est **À CRÉER** (patron `apiClient.request<AuditLogEntry[]>('/admin/audit-log?limit=…')`).
+   - La page `frontend/src/pages/AdminPage.tsx` (vérifiée, existe — gestion des clés API) est la **surface UI à étendre** ; pas de nouvelle route à créer.
 
 ---
 
-## TÂCHE — Sprint 179 (E5-S2) : exposer la consommation rapportée vs en attente sur `/facturation`
+## TÂCHE — Sprint 180 (E5-S3) : exposer le journal d'audit dans la page Admin
 
-**Objectif** : rendre la facturation à l'usage (S174) **transparente pour le client** — sur `/facturation`, afficher « X unités déjà rapportées à Stripe (jusqu'au <date>), Y unités en attente du prochain cycle ». Aujourd'hui le curseur `usage_reported_through` n'est visible que côté worker ; le client ne sait pas ce qui a été facturé ni ce qui reste à facturer.
+**Objectif** : la conformité (Loi 25) exige une traçabilité **consultable**. Le journal d'audit append-only (`audit_log`, S160) enregistre les mutations métier (watchlist, annotation, clé API) avec le `tenant_id` effectif (S175), mais n'a **aucune surface UI** — un admin ne peut pas le lire sans requête SQL. Ce sprint ajoute une table filtrable dans la page Admin.
 
 ### Spécification
 
-1. **Endpoint backend `GET /usage/reporting`** (ou `GET /billing/usage-report` — choisir et justifier) — authentifié (`_get_current_user`, 401 sinon), retourne pour le **tenant courant** :
-   - `reported_through: datetime | None` — valeur de `subscriptions.usage_reported_through` (None si jamais rapporté ou pas d'abonnement).
-   - `pending_events: int` — `count_events_in_window(reported_through, now())` (les `usage_events` non encore poussés à Stripe). Si `reported_through` est None → tout l'historique (cohérent avec le contrat `since=None` du service).
-   - **Lecture du curseur scopée applicativement** au tenant courant (`subscriptions` HORS RLS — voir anti-hallucination) ; le `count_events_in_window` reste sous RLS (poser/vérifier le contexte tenant). Réutiliser le `StripeService`/un service `subscriptions` existant plutôt qu'une requête inline si un accès lecture existe déjà (vérifier `app/services/stripe_service.py`).
-   - **503** si la facturation Stripe n'est pas configurée (parité avec `/billing/checkout`/`/billing/portal`), ou réponse neutre `reported_through=None, pending_events=<total>` — trancher et documenter.
-2. **Client typé + rendu UI** — `frontend/src/api/billing.ts` (ou `usage.ts`) : fonction typée appelant le nouvel endpoint, type dans `frontend/src/types/index.ts` (zéro `any`). Sur `BillingPage`, une carte/section « Facturation à l'usage » : compteur `pending_events` + date `reported_through` (format `fr-CA`), `data-testid` dédiés. États chargement (skeleton) / erreur / facturation désactivée (503 → message neutre sans casser la page, comme l'existant).
-3. **Pas de régression** : la page existante (plan, CTA, consommation 30 j, retour de checkout S178) se comporte exactement comme avant.
+1. **Type + client typé frontend** — `frontend/src/types/index.ts` : interface `AuditLogEntry` (miroir snake_case du modèle Pydantic, zéro `any` ; `metadata: Record<string, unknown>`). `frontend/src/api/admin.ts` : `getAuditLog(limit = 50): Promise<AuditLogEntry[]>` appelant `/admin/audit-log?limit=…`.
+2. **UI table dans `AdminPage.tsx`** — une section « Journal d'audit » sous la gestion des clés : table des entrées récentes (colonnes : date `fr-CA`, `action`, `cible_type`, `cible_id`, `tenant_id` tronqué/abrégé). **Filtre côté client** sur `action` et/ou `cible_type` (un `<select>` ou champ de recherche — pas de nouvel endpoint, on filtre la liste déjà chargée). États chargement (skeleton) / erreur / liste vide. `data-testid` dédiés (table, lignes, filtre). Réutiliser les composants `ui/` existants (`Card`, `Table` si présent, `Skeleton`, `Badge`).
+3. **Pas de régression** : la gestion des clés API existante (créer/lister/révoquer) se comporte exactement comme avant.
 
 ### Tests / validation
-- **Backend (intégration obligatoire, `tests/api/`)** : nouvel endpoint → 401 sans session ; tenant courant avec curseur posé → `reported_through` + `pending_events` corrects (mock du service / pool) ; sans abonnement → None + total ; 503 si Stripe non configuré (si retenu). Patch des appels Stripe/DB selon `tests-pyramide.md`.
-- **Frontend (composant Vitest `BillingPage`)** : section « à l'usage » rendue avec `pending_events`/`reported_through` mockés ; état chargement ; état erreur ; 503 → message neutre. Mock du nouveau client + `useAuth`/`useSearchParams` (déjà mockés dans `BillingPage.test.tsx`).
-- `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff` + `mypy app/` ; `cd frontend && npm test` + `npm run typecheck` (0) + ESLint (0/0). **Pas d'eval** (aucun prompt de skill ni l'orchestrateur de skills touché — endpoint de lecture + UI) → le dire.
-- **Preuve d'acceptation observable** : appeler le nouvel endpoint pour un tenant ayant N `usage_events` dont K déjà rapportés (`usage_reported_through` posé entre les deux) → `pending_events == N-K` ; la `BillingPage` montée avec ce mock affiche « K rapportées / N-K en attente ».
+- **Frontend (composant Vitest `AdminPage`)** : table rendue avec des entrées mockées (`getAuditLog` mocké) ; filtre par `action` réduit les lignes affichées ; état chargement ; état erreur ; liste vide → message neutre. Mock du client `api/admin.ts` (patron `tests-pyramide.md`).
+- **Backend** : aucun changement attendu sur l'endpoint (déjà testé S160) ; si un ajustement s'avère nécessaire (ex. champ manquant), ajouter un test d'intégration. Sinon, le DIRE explicitement (pas de nouveau test backend = endpoint réutilisé tel quel).
+- `cd frontend && npm test` + `npm run typecheck` (0) + ESLint (0/0) ; si backend touché : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff` + `mypy app/`. **Pas d'eval** (aucun prompt de skill ni l'orchestrateur de skills touché).
+- **Preuve d'acceptation observable** : `AdminPage` montée avec N entrées d'audit mockées affiche N lignes ; un filtre `action='api_key.create'` réduit la table aux seules entrées correspondantes.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 180 — E5-S3 : audit log côté UI (page Admin)
-**Objectif** : exposer le journal d'audit (`GET /admin/audit-log`, S160) dans la page Admin — table filtrable des mutations métier (watchlist, annotation, clé API), enrichie du `tenant_id` effectif (S175).
-**Complexité** : Faible.
-**Justification** : la conformité (Loi 25) exige une traçabilité consultable ; le backend existe depuis S160 mais n'a aucune surface UI.
-**Référence** : `GET /admin/audit-log` existe (`app/api/endpoints/admin.py:159` route `/audit-log`, handler `list_audit_log` `:163`, vérifié) ; le composant React + le client typé sont **à créer**.
-
 ### Sprint 181 — E5-S4 : metering du screener planifié + alertes composites (reliquat S177)
 **Objectif** : étendre le threading tenant + metering (S177) aux deux chemins worker encore sous legacy — `run_scheduled_screener` et `run_composite_alert_check` — qui lisent la watchlist via `WatchlistService.list_entries()` sous le tenant legacy.
 **Complexité** : Moyenne.
 **Justification** : ferme le dernier reliquat de conso planifiée non facturée ; complète l'objectif E5-S1.
-**Référence** : `_execute_scheduled_screener` (`app/workers/tasks.py:513`) et `_execute_composite_alert_check` (`app/workers/tasks.py:419`) appellent `wl_service.list_entries()` (`:526`, `:359`, vérifié) sans `tenant_scope` ; `_build_orchestrator(*, with_metering=True)` existe déjà (S177, `app/workers/tasks.py:65`, vérifié) — la restructuration d'itération tenant par chemin est **à créer**.
+**Référence** : `_execute_scheduled_screener` (`app/workers/tasks.py:513`) et `_execute_composite_alert_check` (`app/workers/tasks.py:419`) appellent `wl_service.list_entries()` (`:526`, `:359`, vérifié) sans `tenant_scope` ; `_build_orchestrator(*, with_metering=True)` existe déjà (S177, `app/workers/tasks.py:65`, vérifié) et `_analyze_watchlist_entries` (`:168`, vérifié) est le patron d'itération tenant à cloner — la restructuration par chemin est **à créer**.
 
 ### Sprint 182 — Ops : rôle runtime `NOSUPERUSER`/`NOBYPASSRLS` (risque résiduel n°1)
 **Objectif** : matérialiser le rôle de connexion applicatif `app_runtime` (`NOSUPERUSER`, `NOBYPASSRLS`, non-propriétaire) pour les pools API + workers, et réserver `copilote` (superuser) aux seules migrations Alembic.
@@ -72,22 +62,29 @@ Le dernier sprint (178, E4-S12) a câblé le **retour de checkout Stripe** sur `
 **Justification** : S178 resync une seule fois au montage ; si le webhook met `tenants.plan` à jour quelques secondes plus tard, le CTA reste périmé jusqu'au prochain `authMe()`. Fermer cette fenêtre rend l'upgrade instantané.
 **Référence** : `refreshUser()` existe (`frontend/src/contexts/AuthContext.tsx`, créé S178, vérifié) ; le canal WebSocket live du Dashboard (`frontend/src/api/ws.ts`, à vérifier) et un signal serveur de changement de plan sont **à créer / à vérifier**.
 
+### Sprint 184 — E5-S6 : badge de plan + quota restant dans le header
+**Objectif** : exposer en continu (header global) le plan courant et le quota d'analyses restant du mois, lus depuis `user.plan` (S173) et un compteur de quota.
+**Complexité** : Faible.
+**Justification** : rend la consommation visible hors de `/facturation` — incite à l'upgrade au point d'usage.
+**Référence** : `user.plan` exposé par `GET /auth/me` (S173, vérifié dans `ROADMAP.md` « État courant ») ; le `QuotaService` applique une borne dure (`app/services/quota_service.py`, à vérifier) mais **n'expose aucun endpoint de lecture du compteur restant** → un `GET /quota` (ou champ sur `/usage`) est **à créer**, ainsi que le composant header.
+
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python/React senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.65.0),
-.claude/rules/api-architecture.md, conventions-frontend.md et tests-pyramide.md.
-Sprint actif : 179 — E5-S2 (facturation à l'usage côté UI). Le curseur subscriptions.usage_reported_through
-est lu/avancé par le worker run_usage_reporting (tasks.py:906/920/943) mais exposé par AUCUN endpoint ;
-UsageEventService.count_events_in_window(since, until) existe déjà (S174) ; subscriptions est HORS RLS
-(scoper le curseur applicativement, pas via RLS — vérifier 0009_stripe_billing.py).
-À FAIRE : endpoint GET authentifié retournant {reported_through, pending_events=count_events_in_window(
-reported_through, now)} scopé au tenant courant ; client typé + section UI « à l'usage » sur BillingPage
-(compteur + date, états chargement/erreur/503). Tests : intégration endpoint (401/curseur/sans abo/503) +
-composant Vitest BillingPage. Backend + frontend touchés, pas d'eval.
+Tu es un développeur React/Python senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.66.0),
+.claude/rules/conventions-frontend.md et tests-pyramide.md.
+Sprint actif : 180 — E5-S3 (audit log côté UI). L'endpoint GET /admin/audit-log existe DÉJÀ
+(admin.py:159, handler list_audit_log :163, list[AuditLogEntry], _require_admin, limit 1-200) ;
+le modèle AuditLogEntry est à audit_log_service.py:16 (id/tenant_id/user_id/action/cible_type/
+cible_id/metadata/created_at). Le type frontend AuditLogEntry, le client getAuditLog() dans
+api/admin.ts, et la table UI dans AdminPage.tsx sont À CRÉER.
+À FAIRE : type + client typés (zéro any) ; section « Journal d'audit » dans AdminPage : table
+(date fr-CA, action, cible_type, cible_id, tenant_id) + filtre client sur action/cible_type ;
+états chargement/erreur/vide ; data-testid dédiés. Tests : composant Vitest AdminPage (table
+rendue, filtre réduit les lignes, chargement, erreur, vide). Frontend dominant, pas d'eval.
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : pytest (hors e2e/evals) + ruff + mypy app/ ; npm test + npm run typecheck (0) + ESLint (0/0).
-Preuve : N usage_events dont K rapportés → endpoint renvoie pending_events == N-K ; BillingPage l'affiche.
+GATES : npm test + npm run typecheck (0) + ESLint (0/0) ; (backend pytest+ruff+mypy si touché).
+Preuve : AdminPage montée avec N entrées mockées affiche N lignes ; filtre action réduit la table.
 ```

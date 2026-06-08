@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -28,3 +30,18 @@ class UsageResponse(BaseModel):
     by_skill: list[UsageBySkill]
     # coût USD total par jour (clé YYYY-MM-DD), même forme que MetricsResponse.daily_cost
     daily_cost: dict[str, float]
+
+
+class UsageReportingResponse(BaseModel):
+    """État du report d'usage vers Stripe pour le tenant courant (E5-S2).
+
+    Rend visible côté client le curseur `subscriptions.usage_reported_through` (jusqu'ici
+    interne au worker `run_usage_reporting`) : quelle consommation a déjà été poussée à
+    Stripe et combien d'événements restent à facturer au prochain cycle.
+    """
+
+    # Borne de la dernière fenêtre déjà rapportée à Stripe ; None = jamais rapporté (ou pas
+    # d'abonnement) → `pending_events` couvre alors tout l'historique du tenant.
+    reported_through: datetime | None
+    # Événements `usage_events` non encore poussés à Stripe : COUNT sur `(reported_through, now]`.
+    pending_events: int

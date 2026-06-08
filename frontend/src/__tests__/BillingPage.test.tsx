@@ -5,9 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BillingPage from '../pages/BillingPage'
 import { ApiError } from '../api/client'
-import type { UsageResponse, User } from '../types'
+import type { UsageReporting, UsageResponse, User } from '../types'
 
-vi.mock('../api/usage', () => ({ getUsage: vi.fn() }))
+vi.mock('../api/usage', () => ({ getUsage: vi.fn(), getUsageReporting: vi.fn() }))
 vi.mock('../api/billing', () => ({ createCheckout: vi.fn(), openPortal: vi.fn() }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 
@@ -18,7 +18,7 @@ vi.mock('react-router-dom', () => ({
   useSearchParams: () => [mockSearchParams, mockSetSearchParams] as const,
 }))
 
-import { getUsage } from '../api/usage'
+import { getUsage, getUsageReporting } from '../api/usage'
 import { createCheckout, openPortal } from '../api/billing'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -34,6 +34,11 @@ const _USAGE: UsageResponse = {
     { skill: 'buffett_quality', cost_usd: 0.0434, tokens_input: 1000, tokens_output: 500, events: 1 },
   ],
   daily_cost: { '2026-06-06': 0.1234 },
+}
+
+const _REPORTING: UsageReporting = {
+  reported_through: '2026-06-01T12:00:00Z',
+  pending_events: 7,
 }
 
 function _user(plan: string): User {
@@ -71,6 +76,7 @@ describe('BillingPage', () => {
     vi.clearAllMocks()
     mockSearchParams = new URLSearchParams()
     vi.mocked(getUsage).mockResolvedValue(_USAGE)
+    vi.mocked(getUsageReporting).mockResolvedValue(_REPORTING)
     setAuth('free')
     // Stub de window.location : la redirection CTA assigne `href` (jsdom ne navigue pas).
     Object.defineProperty(window, 'location', {
@@ -193,6 +199,40 @@ describe('BillingPage', () => {
     expect(screen.queryByTestId('billing-cancel-banner')).not.toBeInTheDocument()
     expect(mockRefreshUser).not.toHaveBeenCalled()
     expect(mockSetSearchParams).not.toHaveBeenCalled()
+  })
+
+  it('section « à l\'usage » : affiche les unités en attente et la date de report (preuve d\'acceptation)', async () => {
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-usage-reporting')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('billing-reporting-pending')).toHaveTextContent('7')
+    // reported_through formaté en fr-CA (YYYY-MM-DD) — preuve : K rapportées jusqu'au <date>.
+    expect(screen.getByTestId('billing-reporting-through')).toHaveTextContent('2026-06-01')
+  })
+
+  it('section « à l\'usage » sans report (reported_through null) → libellé neutre', async () => {
+    vi.mocked(getUsageReporting).mockResolvedValue({ reported_through: null, pending_events: 42 })
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-reporting-pending')).toHaveTextContent('42')
+    })
+    expect(screen.getByTestId('billing-reporting-through')).toHaveTextContent('Aucun report')
+  })
+
+  it('section « à l\'usage » : squelette pendant le chargement', () => {
+    vi.mocked(getUsageReporting).mockReturnValue(new Promise<UsageReporting>(() => {}))
+    render(<BillingPage />, { wrapper })
+    expect(screen.getByTestId('billing-reporting-loading')).toBeInTheDocument()
+  })
+
+  it('section « à l\'usage » : message neutre si la requête échoue (sans casser la page)', async () => {
+    vi.mocked(getUsageReporting).mockRejectedValue(new ApiError(503, 'off'))
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-reporting-error')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Facturation')).toBeInTheDocument()
   })
 
   it('après refresh renvoyant plan pro, le CTA bascule checkout → portail', async () => {
