@@ -51,6 +51,12 @@ _DEFAULT_PWD = "Test1234!@#$"
 # pas `.get`) → l'absence de la clé lèverait un KeyError → 500 et casserait tout le flux d'auth E2E.
 _LEGACY_TENANT_NAME = "Legacy"
 
+# Plan par défaut du tenant — `tenants.plan DEFAULT 'free'` (`0007_plan_limits.py`). Le vrai
+# `UserService` le résout par JOIN (Sprint 173) ; les endpoints lisent `user["plan"]` (accès
+# direct, pas `.get` — `auth.py` /me/login/register) → l'absence de la clé lèverait un KeyError
+# → 500 et casserait tout le flux d'auth E2E (même piège que `tenant_name`, régression S173).
+_DEFAULT_PLAN = "free"
+
 PERSONAS: dict[str, Persona] = {
     "empty": Persona(
         cle="empty",
@@ -160,6 +166,7 @@ class InMemoryUserService:
             "is_active": persona.is_active,
             "tenant_id": LEGACY_TENANT_ID,
             "tenant_name": _LEGACY_TENANT_NAME,
+            "plan": _DEFAULT_PLAN,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[persona.email.lower()] = user_id
@@ -167,7 +174,7 @@ class InMemoryUserService:
 
     @staticmethod
     def _public(row: dict, *, with_hash: bool = False) -> dict:
-        keys = ["id", "email", "role", "is_active", "tenant_id", "tenant_name", "created_at"]
+        keys = ["id", "email", "role", "is_active", "tenant_id", "tenant_name", "plan", "created_at"]
         if with_hash:
             keys.append("hashed_password")
         return {k: row[k] for k in keys if k in row}
@@ -190,6 +197,7 @@ class InMemoryUserService:
             "is_active": True,
             "tenant_id": tenant_id or LEGACY_TENANT_ID,
             "tenant_name": _LEGACY_TENANT_NAME,
+            "plan": _DEFAULT_PLAN,
             "created_at": datetime.now(timezone.utc),
         }
         self._by_email[norm] = user_id
