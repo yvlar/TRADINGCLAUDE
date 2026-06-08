@@ -1,94 +1,93 @@
-# Sprint 184 — E5-S6 : badge de plan + quota restant dans le header
+# Sprint 185 — E5-S7 : threading tenant à travers la frontière Celery (`run_full_analysis`)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.70.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.71.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (183, E5-S5) a fermé la fenêtre de CTA périmé sur `/facturation` : après un retour de checkout `?status=success`, un **polling court borné** (frontend seul, 3 s × ≤10 itérations) re-`refreshUser()` jusqu'à la bascule `tenants.plan`, puis le CTA passe checkout→portail **sans rechargement** (décision tranchée vs push WebSocket — l'infra WS Dashboard n'a ni auth ni ciblage tenant). État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (184, E5-S6) a exposé le quota mensuel dans le header : endpoint `GET /quota` (authentifié, lecture seule, fail-open neutre) + `QuotaService.read_status()` + badge `QuotaBadge`. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Travail MIXTE backend + frontend** : un petit endpoint de lecture du compteur de quota restant + un composant header (badge plan + quota). GATES : backend `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check` + `mypy app/ --ignore-missing-imports` ; frontend `cd frontend && npm test` (Vitest) + `npm run typecheck` (`tsc --noEmit` 0 erreur) + ESLint (0/0). ⚠️ Le venv web peut manquer des deps backend → `.venv/bin/pip install -r requirements.txt` si un import échoue ; `node_modules` frontend peut être absent → `cd frontend && npm ci`. **Pas de Docker/PG/Redis/navigateur live** dans le conteneur web → l'isolation RLS et le compteur Redis se prouvent par tests (endpoint avec services mockés + composant), pas par un essai live.
+> **Travail BACKEND/WORKER seul** : threading + metering du **dernier chemin d'analyse encore sous tenant legacy**. GATES : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check` + `mypy app/ --ignore-missing-imports`. ⚠️ Le venv web peut manquer des deps → `.venv/bin/pip install -r requirements.txt` si un import échoue (`stripe`, `mypy` notamment). **Pas de Docker/PG/Redis/navigateur live** dans le conteneur web → la propagation tenant à travers Celery se prouve par tests (capture de `get_current_tenant()` au site d'analyse + test d'intégration RLS skippé hors PG), pas par un essai live. **Frontend non touché** (aucun fichier `frontend/` modifié → non-régression par construction).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.70.0)
-2. `.claude/rules/conventions-frontend.md` (React 18 / TS strict / structure pages-composants) **et** `.claude/rules/tests-pyramide.md` (test composant happy-path + erreur, `vi.mock` ; nouvel endpoint FastAPI = test d'intégration obligatoire).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.71.0)
+2. `.claude/rules/gotchas-operationnels.md` (services/workers — timeouts, `max_parallel`, threading tenant) **et** `.claude/rules/tests-pyramide.md` (patch obligatoire de `call_claude_with_retry` ; nouveau comportement worker = test d'intégration ; marqueur `@pytest.mark.integration` pour les tests PG réels). Accessoirement `.claude/rules/conventions-python.md` (async/await, pas de `time.sleep`).
 3. **Code de référence à vérifier en début de session (anti-hallucination)** :
-   - **`user.plan`** est exposé par `GET /auth/me` (S173) et threadé jusqu'au frontend (`user?.plan` lu dans `BillingPage.tsx:40`, `User.plan` dans `types/index.ts`, vérifié). Le header rend déjà `TenantBadge` (`frontend/src/App.tsx:102`, vérifié) — point d'insertion naturel du badge de plan.
-   - **`QuotaService`** existe (`app/services/quota_service.py:67`, vérifié) avec `max_analyses_per_month` (`PlanLimits.:44`), borne dure `check()` (`:105`), `increment()` (`:125`) et un **compteur mensuel Redis** `quota:{tenant}:{YYYY-MM}` (`_month_key` `:168`, `_current_count` `:96`, vérifié). **MAIS aucun getter « restant » ni endpoint de lecture** n'est exposé : le compteur n'est lu qu'en interne par `check()`. → un **`GET /quota`** (plan + utilisé + limite + restant + reset) et la méthode de lecture associée sur `QuotaService` sont **à créer**.
-   - **`plan_limits`** (table de référence globale, `alembic/versions/0007_plan_limits.py`) porte `max_analyses_per_month` par plan (`free`/`pro`) — résolu par `_resolve_limits()` (`quota_service.py:74`, JOIN `tenants`↔`plan_limits`, vérifié). Réutiliser cette résolution plutôt que de re-requêter.
-   - **À TRANCHER et documenter dans le bloc ROADMAP** : (a) **nouvel endpoint `GET /quota`** (router dédié, sémantique « état de quota » distincte de `GET /usage` qui agrège `usage_events`) **vs** (b) **champ ajouté à `GET /usage`** (un seul appel pour la page Facturation, mais couple deux sémantiques : consommation facturable durable vs borne d'application éphémère). Le compteur de quota est **Redis éphémère** (fenêtre mensuelle, fail-open), `usage_events` est **durable par skill** — privilégier un endpoint distinct sauf raison forte. Vérifier le contrat auth + RLS de `GET /usage` (`app/api/endpoints/usage.py`) avant de décider du home.
+   - **`run_full_analysis`** (tâche Celery synchrone) est défini `app/workers/tasks.py:143` (vérifié) ; il appelle `asyncio.run(_execute_analysis(request_dict))` (`tasks.py:156`, vérifié). Il est **déclenché via `.delay()`** depuis la boucle d'alerte prix `app/workers/tasks.py:301` (vérifié) — un `for ticker in alerted` qui construit un `AnalyzeRequest` et l'envoie au broker.
+   - **Le problème** : le `ContextVar` `current_tenant` (`app/db/tenant_context.py`) **ne traverse pas le broker Celery** (sérialisation JSON de la tâche). `run_full_analysis` tourne donc sous le **tenant legacy par défaut**, et `_execute_analysis` n'est **pas** métré (il ne passe pas par `_build_orchestrator(with_metering=True)`). → c'est le dernier chemin d'analyse non imputé à un tenant (cf. ROADMAP « Reste sous legacy »).
+   - **Le patron de référence à cloner** : les chemins planifiés (`_execute_watchlist_analysis` `tasks.py:229`, screener `:417`, composite) énumèrent `SELECT id FROM tenants ORDER BY created_at` (pool hors-RLS) puis, **sous `with tenant_scope(tenant_id)`** (`tasks.py:245/454`, vérifié), exécutent le travail avec `_build_orchestrator(with_metering=True)` (`tasks.py:66`, vérifié). MAIS `run_full_analysis` n'énumère **pas** les tenants — il analyse **un seul ticker** pour **un seul tenant** (celui qui possède l'alerte). Le tenant doit donc être **capturé au site `.delay()`** (`tasks.py:301`) et **propagé en argument de tâche**, pas re-dérivé d'une énumération.
+   - **À TRANCHER et documenter dans le bloc ROADMAP** : **(a)** ajouter un paramètre `tenant_id: str` à la signature `run_full_analysis` (et au `.delay(...)`) puis, dans le corps, `with tenant_scope(tenant_id):` autour de `_execute_analysis`, avec un orchestrateur **métré** — **vs (b)** sérialiser le tenant dans `request_dict`. Privilégier **(a)** : argument explicite, plus lisible et testable que de surcharger le payload de requête métier ; rétrocompat à assurer si d'autres appelants de `run_full_analysis` existent (vérifier : `grep -rn "run_full_analysis" app/ tests/`). Vérifier **sous quel contexte tenant tourne la boucle d'alerte prix** au site `:301` (est-elle déjà par-tenant sous `tenant_scope`, ou legacy ?) avant de décider d'où vient le `tenant_id` capturé.
 
 ---
 
-## TÂCHE — Sprint 184 : badge de plan + quota restant dans le header
+## TÂCHE — Sprint 185 : threading tenant à travers la frontière Celery
 
-**Objectif** : rendre la consommation visible **en continu, hors de `/facturation`** — exposer dans le header global le plan courant et le quota d'analyses restant du mois, pour inciter à l'upgrade au point d'usage.
+**Objectif** : faire en sorte que `run_full_analysis` (déclenché par une alerte prix) tourne **sous le tenant propriétaire** de l'alerte et soit **métré** dans `usage_events`, fermant le dernier chemin d'analyse sous tenant legacy.
 
 ### Spécification
 
-1. **Endpoint de lecture du quota** (selon la décision tranchée) : `GET /quota` **authentifié** (cookie JWT → 401 sinon), retourne le plan du tenant courant, le nombre d'analyses **utilisées** ce mois, la **limite** `max_analyses_per_month`, le **restant** (`max(0, limit − used)`), et le **reset** (date de bascule du mois UTC). **Lecture seule** — n'incrémente jamais le compteur. **Fail-open cohérent** avec `QuotaService` : si Redis est indisponible ou le plan non résolu, renvoyer une réponse neutre (ex. `used=0` / restant = limite, ou un indicateur `unlimited`/`unknown` honnête) plutôt qu'une erreur — ne jamais casser le header.
-2. **Méthode de lecture sur `QuotaService`** : ajouter un getter `read_status()`/`get_remaining()` (nom au choix) qui **réutilise** `_resolve_limits()` + `_current_count()` (ne pas dupliquer la résolution de plan ni la clé Redis `_month_key`). Retourne un dataclass/typed dict `(plan, used, limit, remaining, reset_at)`.
-3. **Composant header** : un badge compact près de `TenantBadge` (`App.tsx:102`) affichant le plan (ex. `Badge` du design system, réutiliser le pattern `TenantBadge`/`billing-plan-badge`) + le quota restant (« N analyses restantes » ou « N/M »). Masqué proprement si non authentifié ou si la donnée est absente (rétrocompat). Client typé `frontend/src/api/` + type dans `types/index.ts` (zéro `any`). États : chargement discret (pas de skeleton bloquant le header), erreur silencieuse (le header ne doit jamais casser).
-4. **Zéro régression** : `TenantBadge`, le CTA de `/facturation` et le polling S183 restent inchangés ; pas de nouvel appel sur le chemin chaud `/analyze`.
+1. **Capture du tenant au site `.delay()`** (`tasks.py:301`) : déterminer le `tenant_id` propriétaire de l'alerte/du ticker (selon le contexte tenant de la boucle d'alerte prix — à vérifier en début de session) et le passer en argument à `run_full_analysis.delay(...)`.
+2. **Restauration côté worker** : `run_full_analysis` accepte le `tenant_id`, pose `with tenant_scope(tenant_id):` autour de l'exécution, et utilise un orchestrateur **métré** (`with_metering=True`, comme les chemins planifiés) afin que la consommation soit imputée au bon tenant. La RLS (lecture/écriture `analysis_history`) et le metering dérivent du GUC `app.tenant_id`.
+3. **Rétrocompatibilité** : si `run_full_analysis` est appelé par d'autres sites (à vérifier par `grep`), préserver leur comportement (param optionnel avec repli legacy documenté, ou mise à jour de tous les appelants). Best-effort : un échec de metering n'avorte jamais l'analyse (cohérent avec S166).
+4. **Zéro régression** : le statut Redis du job (`pending`/`running`/`done`/`failed`), le retry transitoire (`self.retry`, `tasks.py:164`) et le contrat de `_execute_analysis` restent inchangés.
 
 ### Tests / validation
-- **Backend** (`tests/api/test_quota_endpoint.py`) : 401 sans session ; tenant `free` avec K analyses utilisées → `used=K`, `remaining=limit−K`, `reset_at` = bascule de mois ; **fail-open** Redis indisponible → réponse neutre (pas de 500) ; lecture **non-incrémentante** (le compteur Redis ne bouge pas après l'appel — vérifier via mock/`call_args`). Réutilisation de `_resolve_limits` prouvée (plan résolu depuis `plan_limits`).
-- **Frontend** (`*.test.tsx`) : le badge rend plan + restant depuis la donnée mockée ; masqué si non authentifié / donnée absente ; erreur de fetch → header intact (pas de crash). Tests **non-vacuous**.
-- Gates : backend `pytest` + `ruff` + `mypy` ; frontend Vitest + `tsc --noEmit` + ESLint (0/0). **Pas d'eval** (endpoint de lecture + UI, aucun prompt de skill ni l'orchestrateur de skills touché).
-- **Preuve d'acceptation observable** : un tenant `free` ayant consommé K analyses voit dans le header « plan FREE · (M−K) analyses restantes », et un appel `GET /quota` renvoie `{plan, used:K, limit:M, remaining:M−K, reset_at}` **sans** modifier le compteur Redis.
+- **Worker** (`tests/workers/`) : `run_full_analysis` appelé avec un `tenant_id` → capture de `get_current_tenant()` au site `_execute_analysis`/`screen()` **== le tenant passé** (non-vacuous via `_TENANT != LEGACY_TENANT_ID`) ; orchestrateur construit avec `with_metering=True` ; `tenant_scope` restauré après la tâche (ContextVar revenu au défaut). Patch de `call_claude_with_retry` obligatoire (cf. tests-pyramide).
+- **Intégration RLS** (skippé hors PG migré, exécuté en CI, marqueur `@pytest.mark.integration`) : une alerte prix d'un tenant B → l'analyse résultante apparaît dans `usage_events`/`analysis_history` **imputée à B**, masquée sous legacy. Ajouter le fichier au gate RLS NOSUPERUSER (`.github/workflows/ci.yml`, comme `test_scheduled_metering_rls.py`).
+- Gates : `pytest` + `ruff` + `mypy`. **Pas d'eval** (worker + threading tenant — aucun prompt de skill ni l'orchestrateur de skills modifié ; `_execute_analysis` réutilisé tel quel).
+- **Preuve d'acceptation observable** : après une alerte prix sur un ticker d'un tenant B, un `usage_event` (et la ligne `analysis_history`) est imputé à B — prouvé sans PG par capture du tenant au site d'analyse, et bout-en-bout par le test d'intégration RLS.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 185 — E5-S7 : threading tenant à travers la frontière Celery (`run_full_analysis`)
-**Objectif** : faire passer le `tenant_id` à travers le `.delay()` Celery pour que `run_full_analysis` (déclenché par une alerte prix) tourne sous le tenant propriétaire et soit métré — dernier chemin d'analyse encore sous legacy.
-**Complexité** : Élevée.
-**Justification** : le ContextVar ne traverse pas le broker → le passage de tenant à travers la sérialisation Celery est un sujet distinct des sprints worker planifiés (qui partagent un seul process async).
-**Référence** : `run_full_analysis` défini (`app/workers/tasks.py:143`, vérifié) et déclenché via `.delay()` (`tasks.py:301`, vérifié) reste sous legacy ; la propagation du `tenant_id` dans l'argument de tâche + sa restauration via `tenant_scope` côté worker sont **à créer**.
-
 ### Sprint 186 — Ops : durcissement du provisioning DB (propriété des objets + revoke PUBLIC)
 **Objectif** : compléter S182 en garantissant que `app_runtime` n'est **propriétaire** d'aucune table (sinon il pourrait `ALTER … DISABLE ROW LEVEL SECURITY`) et en révoquant les privilèges `PUBLIC` par défaut sur le schéma.
 **Complexité** : Moyenne.
-**Justification** : `NOSUPERUSER`/`NOBYPASSRLS` ne suffit pas si le rôle runtime **possède** les tables — un propriétaire peut désactiver `FORCE ROW LEVEL SECURITY`. Non-propriété explicitement exigée par `docs/revue-owasp-rls-2026-06.md` §2.4 (vérifié, `:53`).
+**Justification** : `NOSUPERUSER`/`NOBYPASSRLS` ne suffit pas si le rôle runtime **possède** les tables — un propriétaire peut désactiver `FORCE ROW LEVEL SECURITY`. Non-propriété explicitement exigée par `docs/revue-owasp-rls-2026-06.md` §2.3 (vérifié, `:48-49`).
 **Référence** : la propriété actuelle des tables revient à `copilote` (créées par Alembic sous cette DSN — **à vérifier** via `\dt`/`pg_class.relowner` en CI) ; le revoke `PUBLIC` et la garantie de non-propriété de `app_runtime` sont **à créer**. La migration `0011_app_runtime_role.py` (S182, vérifiée présente) est le point d'extension naturel.
 
 ### Sprint 187 — Refactor : `create_runtime_pool()` (couplage DSN runtime + setup RLS inséparable)
 **Objectif** : consolider les **10 sites** `asyncpg.create_pool(resolve_app_database_url(), …, setup=apply_tenant_context)` en un seul helper `create_runtime_pool(*, min_size, max_size)` (`app/db/`) — rendre **impossible** de créer un pool runtime qui résout le bon rôle mais oublie le hook de contexte tenant (ou l'inverse).
 **Complexité** : Moyenne.
 **Justification** : finding d'altitude de la revue S182 — le sprint a centralisé la résolution de DSN mais a laissé les 10 `create_pool` copiés ; le couplage DSN+setup est l'invariant de sécurité. Reporté de S182 car le ripple touche les mocks `patch("app.workers.tasks.asyncpg.create_pool", …)` de **nombreux tests workers** (à re-pointer sur le nouveau home) — hors diff S182.
-**Référence** : 9 `create_pool` dans `app/workers/tasks.py` + 1 dans `app/api/main.py:172` (vérifié) ; `resolve_app_database_url()` (`app/utils/security_config.py:17`, S182) et `apply_tenant_context` (`app/db/tenant_context.py:79`) existent — le helper et la migration des mocks de test sont **à créer**.
+**Référence** : 9 `create_pool` dans `app/workers/tasks.py` (vérifié, `grep -c`) + 1 dans `app/api/main.py:173` (vérifié) ; `resolve_app_database_url()` (`app/utils/security_config.py:17`, vérifié) et `apply_tenant_context` (`app/db/tenant_context.py:79`, vérifié) existent — le helper et la migration des mocks de test sont **à créer**.
 
 ### Sprint 188 — E5-S8 : bornes de quota visibles à l'erreur 429 (UX d'upgrade)
 **Objectif** : quand `/analyze` ou `/screen` renvoie `429` (quota dépassé), afficher côté frontend un message d'upgrade ciblé (plan courant, borne atteinte, lien `/facturation`) plutôt qu'une erreur générique.
 **Complexité** : Faible.
 **Justification** : transforme le mur de quota en point de conversion ; complète le badge S184 (visibilité continue) par une incitation **au moment du blocage**.
-**Référence** : `QuotaExceededError` (`app/services/quota_service.py:49`, vérifié) porte déjà `plan`/`used`/`limit`/`retry_after_s` ; le mapping `429` existe côté endpoints et `QuotaBanner` (`frontend/src/components/QuotaBanner.tsx`, réutilisé dans `BillingPage.tsx:11`) est le composant d'accroche — l'enrichissement du corps `429` (champs structurés) et le routage du `QuotaBanner` vers `/facturation` sont **à créer/vérifier**.
+**Référence** : `QuotaExceededError` (`app/services/quota_service.py:64`, vérifié — porte `plan`/`used`/`limit`/`retry_after_s`) ; `QuotaBanner` (`frontend/src/components/QuotaBanner.tsx`, vérifié présent ; importé dans `BillingPage.tsx:11`, utilisé `:179`) est le composant d'accroche — l'enrichissement du corps `429` (champs structurés) et le routage du `QuotaBanner` vers `/facturation` sont **à créer/vérifier**.
+
+### Sprint 189 — E5-S9 : nettoyage du cache react-query à la déconnexion (hygiène cross-tenant)
+**Objectif** : vider le cache react-query (`queryClient.clear()`/`removeQueries`) lors du `logout` pour qu'une re-connexion sous un autre tenant sur la même session SPA ne serve jamais de données périmées du tenant précédent (`usage`, `usage-reporting`, etc.).
+**Complexité** : Faible.
+**Justification** : finding cross-tenant de la revue S184 — généralisé. S184 a scopé `['quota', tenantId]` par tenant au cas par cas ; les clés `['usage']`/`['usage-reporting']` (`BillingPage.tsx`) restent non scopées et non purgées au logout. Une purge unique au logout couvre tout le cache d'un coup (altitude supérieure au scoping par-clé).
+**Référence** : `logout` est défini dans `frontend/src/contexts/AuthContext.tsx:56` (vérifié, `useCallback`) — il `setUser(null)` puis navigue ; il n'importe pas `useQueryClient`. Le `QueryClientProvider` global vit dans `frontend/src/main.tsx` (vérifié). L'injection de `useQueryClient` dans `AuthProvider` + l'appel de purge au logout sont **à créer**.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python/React senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.70.0),
-.claude/rules/conventions-frontend.md et tests-pyramide.md.
-Sprint actif : 184 — E5-S6 badge de plan + quota restant dans le header.
-Aujourd'hui le quota d'analyses (QuotaService, compteur Redis quota:{tenant}:{YYYY-MM}) n'est
-lisible qu'en interne par check() — aucun endpoint ne l'expose ; le header rend TenantBadge mais
-pas le plan ni le restant.
-À TRANCHER d'abord : nouvel endpoint GET /quota (recommandé, sémantique distincte de /usage) VS
-champ ajouté à GET /usage. Documenter la décision dans le bloc ROADMAP.
-À FAIRE : (1) getter de lecture sur QuotaService réutilisant _resolve_limits + _current_count
-(plan/used/limit/remaining/reset_at, JAMAIS d'incrément) ; (2) GET /quota authentifié, fail-open
-neutre si Redis/plan indisponible ; (3) badge header (plan + restant) près de TenantBadge, masqué
-proprement si non-auth/donnée absente ; (4) zéro régression sur le chemin chaud /analyze.
-Tests : test_quota_endpoint.py (401, used/remaining/reset, fail-open, lecture non-incrémentante)
-+ composant header. Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : backend pytest + ruff + mypy ; frontend Vitest + tsc --noEmit + ESLint 0/0. Pas d'eval.
-Preuve : header affiche « FREE · (M−K) analyses restantes » ; GET /quota renvoie le restant SANS
-modifier le compteur Redis.
+Tu es un développeur Python/React senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.71.0),
+.claude/rules/gotchas-operationnels.md et tests-pyramide.md.
+Sprint actif : 185 — E5-S7 threading tenant à travers la frontière Celery (run_full_analysis).
+Aujourd'hui run_full_analysis (tasks.py:143, déclenché par .delay() au site tasks.py:301 depuis la
+boucle d'alerte prix) tourne sous le tenant LEGACY (le ContextVar current_tenant ne traverse pas le
+broker Celery) et n'est PAS métré → dernier chemin d'analyse non imputé à un tenant.
+À TRANCHER d'abord : (a) ajouter un paramètre tenant_id à run_full_analysis + .delay(), tenant_scope
+dans le corps (recommandé) VS (b) sérialiser le tenant dans request_dict. Documenter dans le bloc ROADMAP.
+À FAIRE : (1) capturer le tenant_id propriétaire au site .delay() (tasks.py:301) ; (2) run_full_analysis
+pose with tenant_scope(tenant_id) autour de _execute_analysis avec _build_orchestrator(with_metering=True) ;
+(3) rétrocompat des autres appelants (grep run_full_analysis) ; (4) zéro régression sur le statut Redis du
+job + retry. Vérifier sous quel contexte tenant tourne la boucle d'alerte prix avant d'implémenter.
+Tests : capture de get_current_tenant()==tenant au site d'analyse (non-vacuous), orchestrateur métré,
+ContextVar restauré + test d'intégration RLS (skippé hors PG, ajouté au gate CI NOSUPERUSER).
+Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
+GATES : pytest + ruff + mypy. Pas d'eval. Preuve : une alerte prix d'un tenant B → usage_event imputé à B.
 ```

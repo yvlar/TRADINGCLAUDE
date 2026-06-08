@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from '../App'
 import { authMe } from '../api/auth'
 import type { User } from '../types'
@@ -10,6 +11,19 @@ vi.mock('../api/auth', () => ({
   authLogout: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Le header rend QuotaBadge (useQuery /quota) une fois authentifié : on neutralise le fetch.
+vi.mock('../api/quota', () => ({ getQuota: vi.fn().mockRejectedValue(new Error('401')) }))
+
+// Le QueryClientProvider vit dans main.tsx (hors de <App/>) : on le fournit ici comme en prod.
+function renderApp() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <App />
+    </QueryClientProvider>,
+  )
+}
+
 describe('App — shell pleine largeur', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -17,7 +31,7 @@ describe('App — shell pleine largeur', () => {
   })
 
   it('rend le conteneur principal avec le shell fluide large', async () => {
-    render(<App />)
+    renderApp()
     const main = await screen.findByTestId('app-main')
     expect(main.className).toContain('max-w-shell')
     expect(main.className).toContain('mx-auto')
@@ -25,7 +39,7 @@ describe('App — shell pleine largeur', () => {
   })
 
   it('affiche le titre de l’application', async () => {
-    render(<App />)
+    renderApp()
     expect(await screen.findByText('Copilote Financier IA')).toBeInTheDocument()
   })
 
@@ -41,7 +55,7 @@ describe('App — shell pleine largeur', () => {
     }
     vi.mocked(authMe).mockResolvedValue(user)
 
-    render(<App />)
+    renderApp()
     const badge = await screen.findByTestId('tenant-badge')
     expect(badge).toHaveTextContent('Espace Démo')
   })

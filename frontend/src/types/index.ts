@@ -902,6 +902,16 @@ export interface UsageReporting {
   pending_events: number
 }
 
+// ---- État du quota mensuel /quota (E5-S6) — miroir de QuotaStatusResponse ----
+export interface QuotaStatus {
+  plan: string
+  used: number
+  // null = plan non résolu côté serveur (fail-open) → le client n'affiche pas de borne
+  limit: number | null
+  remaining: number | null
+  reset_at: string // ISO 8601 — bascule du compteur mensuel (1er du mois suivant UTC)
+}
+
 // ---- Recherche sémantique RAG (Sprint 106) ----
 export interface SemanticSearchResult {
   source: string

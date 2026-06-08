@@ -32,6 +32,7 @@ from app.api.endpoints.jobs import router as jobs_router
 from app.api.endpoints.monthly_report import router as monthly_report_router
 from app.api.endpoints.performance import router as performance_router
 from app.api.endpoints.preferences import router as preferences_router
+from app.api.endpoints.quota import router as quota_router
 from app.api.endpoints.report import router as report_router
 from app.api.endpoints.screen import router as screen_router
 from app.api.endpoints.screener_report import router as screener_report_router
@@ -495,6 +496,7 @@ app.include_router(extract_router)
 app.include_router(performance_router)
 app.include_router(preferences_router)
 app.include_router(jobs_router)
+app.include_router(quota_router)
 app.include_router(report_router)
 app.include_router(screen_router)
 app.include_router(semantic_search_router)

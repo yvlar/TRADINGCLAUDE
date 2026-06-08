@@ -7,6 +7,7 @@ import { Button } from './components/ui/button'
 import { CommandPalette } from './components/CommandPalette'
 import { Disclaimer } from './components/Disclaimer'
 import { TenantBadge } from './components/TenantBadge'
+import { QuotaBadge } from './components/QuotaBadge'
 // Imports dynamiques par page : chaque page (et recharts, embarqué par Dashboard/Esg/
 // Watchlist/Compare) forme un chunk séparé, exclu du bundle d'entrée (Sprint 123).
 const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
@@ -100,6 +101,7 @@ function AppShell() {
                 </kbd>
               </button>
               <TenantBadge tenantName={user?.tenant_name} />
+              <QuotaBadge tenantId={user?.tenant_id} />
               <Button variant="ghost" className="text-sm" onClick={logout}>
                 Déconnexion
               </Button>
