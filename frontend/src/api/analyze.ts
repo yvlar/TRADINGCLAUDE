@@ -170,11 +170,21 @@ export async function* streamAnalyze(body: AnalyzeRequest): AsyncGenerator<SSEEv
 
   if (!response.ok) {
     let message = response.statusText
+    let detail: unknown
     try {
-      const errBody = (await response.json()) as { detail?: string; error?: string }
-      message = errBody.detail ?? errBody.error ?? message
+      const errBody = (await response.json()) as { detail?: unknown; error?: string }
+      detail = errBody.detail
+      if (errBody.detail !== null && typeof errBody.detail === 'object' && !Array.isArray(errBody.detail)) {
+        // Corps structuré (ex. 429 quota) : message extrait, objet conservé pour le front.
+        message = (errBody.detail as { message?: string }).message ?? errBody.error ?? message
+      } else if (typeof errBody.detail === 'string') {
+        message = errBody.detail
+      } else {
+        // Tableau (erreurs de validation Pydantic) ou autre : pas de coercition en string trompeuse.
+        message = errBody.error ?? message
+      }
     } catch { /* ignore */ }
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, message, detail)
   }
 
   if (!response.body) {

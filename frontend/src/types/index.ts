@@ -912,6 +912,15 @@ export interface QuotaStatus {
   reset_at: string // ISO 8601 — bascule du compteur mensuel (1er du mois suivant UTC)
 }
 
+// ---- Corps structuré du 429 quota (E5-S8) — miroir du detail de quota_exceeded_http ----
+export interface QuotaErrorDetail {
+  message: string
+  plan: string
+  used: number
+  limit: number
+  remaining: number
+}
+
 // ---- Recherche sémantique RAG (Sprint 106) ----
 export interface SemanticSearchResult {
   source: string

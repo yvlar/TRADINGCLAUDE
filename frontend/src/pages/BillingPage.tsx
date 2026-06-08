@@ -8,7 +8,7 @@ import { Skeleton } from '../components/ui/skeleton'
 import { PageTransition } from '../components/PageTransition'
 import { SkillCostPieChart } from '../components/SkillCostPieChart'
 import { DailyCostTrendChart } from '../components/DailyCostTrendChart'
-import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
+import { QuotaBanner, isQuotaError, quotaDetailFromError } from '../components/QuotaBanner'
 import { useAuth } from '../contexts/AuthContext'
 import { getUsage, getUsageReporting } from '../api/usage'
 import { createCheckout, openPortal } from '../api/billing'
@@ -176,7 +176,10 @@ export default function BillingPage() {
               </div>
             ) : usage.isError ? (
               isQuotaError(usage.error) ? (
-                <QuotaBanner message="Quota mensuel d'analyses atteint pour votre plan." />
+                <QuotaBanner
+                  message="Quota mensuel d'analyses atteint pour votre plan."
+                  detail={quotaDetailFromError(usage.error)}
+                />
               ) : (
                 <p className="text-sm text-destructive" data-testid="billing-usage-error">
                   Impossible de charger la consommation.
