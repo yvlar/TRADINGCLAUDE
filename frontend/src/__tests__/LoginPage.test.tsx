@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '../contexts/AuthContext'
 import { ProtectedRoute } from '../components/ProtectedRoute'
 import LoginPage from '../pages/LoginPage'
@@ -16,9 +17,11 @@ import * as authApi from '../api/auth'
 
 function wrap(ui: React.ReactElement, { initialEntries = ['/login'] } = {}) {
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
-      <AuthProvider>{ui}</AuthProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <AuthProvider>{ui}</AuthProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
@@ -97,21 +100,23 @@ describe('LoginPage', () => {
 describe('ProtectedRoute', () => {
   it('redirige vers /login si non authentifié (après résolution async)', async () => {
     render(
-      <MemoryRouter initialEntries={['/']}>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<div>Page login</div>} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <div>Contenu protégé</div>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </AuthProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/']}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<div>Page login</div>} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <div>Contenu protégé</div>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
     await waitFor(() => {
       expect(screen.getByText('Page login')).toBeInTheDocument()

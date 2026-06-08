@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '../contexts/AuthContext'
 import RegisterPage from '../pages/RegisterPage'
 
@@ -16,14 +17,16 @@ import * as authApi from '../api/auth'
 
 function wrap(ui: React.ReactElement) {
   return render(
-    <MemoryRouter initialEntries={['/register']}>
-      <AuthProvider>
-        <Routes>
-          <Route path="/register" element={ui} />
-          <Route path="/login" element={<div>Page login</div>} />
-        </Routes>
-      </AuthProvider>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={['/register']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/register" element={ui} />
+            <Route path="/login" element={<div>Page login</div>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   )
 }
 
