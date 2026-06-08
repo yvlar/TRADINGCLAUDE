@@ -118,17 +118,17 @@ async def test_watchlist_manual_analyze(watchlist_client):
 
 @pytest.mark.asyncio
 async def test_watchlist_celery_task_mock():
-    """run_watchlist_analysis traite toutes les entrées de la watchlist."""
+    """run_watchlist_analysis traite toutes les entrées de la watchlist du tenant (E5-S1)."""
     id_bns = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")
     id_msft = uuid.UUID("550e8400-e29b-41d4-a716-446655440001")
+    tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
     mock_orchestrator = AsyncMock()
     mock_response = MagicMock()
     mock_response.graham = None
     mock_orchestrator.run_company_analysis.return_value = mock_response
 
-    mock_pool = AsyncMock()
-    mock_pool.fetch.return_value = [
+    watchlist_rows = [
         {
             "id": id_bns,
             "ticker": "BNS",
@@ -144,6 +144,16 @@ async def test_watchlist_celery_task_mock():
             "score_alerte_min": None,
         },
     ]
+
+    mock_pool = AsyncMock()
+
+    async def _fetch(query, *args):
+        # La tâche énumère d'abord les tenants (hors RLS), puis lit la watchlist de chacun.
+        if "FROM tenants" in query:
+            return [{"id": tenant_id}]
+        return watchlist_rows
+
+    mock_pool.fetch = AsyncMock(side_effect=_fetch)
     mock_pool.execute = AsyncMock()
     mock_pool.close = AsyncMock()
 
