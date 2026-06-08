@@ -1,93 +1,93 @@
-# Sprint 186 — Ops : durcissement du provisioning DB (non-propriété `app_runtime` + revoke PUBLIC)
+# Sprint 187 — Refactor : `create_runtime_pool()` (couplage DSN runtime + setup RLS inséparable)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.72.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.73.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (185, E5-S7) a threadé le tenant à travers la frontière Celery : `run_full_analysis` accepte un `tenant_id` (capturé au site `.delay()`) et tourne sous `tenant_scope` + orchestrateur métré ; la boucle d'alerte prix énumère désormais les tenants → **plus aucun chemin d'analyse sous tenant legacy**. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (186, Ops) a livré la migration `0012` : revoke des privilèges `PUBLIC` par défaut sur le schéma + re-GRANT explicite au seul `app_runtime`, fermant le résidu §2.3 d'OWASP que `0011` (S182) avait différé (non-propriété assertée, jamais transférée). État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Travail BACKEND/INFRA seul (migration Alembic + GRANTs/REVOKEs)** : durcir le provisioning du rôle `app_runtime` (S182). GATES : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check` + `mypy app/ --ignore-missing-imports`. ⚠️ Le venv web peut manquer des deps → `.venv/bin/pip install -r requirements.txt` si un import échoue (`stripe`, `mypy`, `alembic` notamment). **Pas de Docker/PG dans le conteneur web** → la propriété des objets et le revoke `PUBLIC` se prouvent par tests de forme de migration (CI standard) + un test d'intégration RLS sous rôle réel (skippé hors PG migré). **Frontend non touché** (aucun fichier `frontend/` modifié → non-régression par construction).
+> **Travail BACKEND seul (refactor de plomberie, zéro changement de comportement)** : consolider les **10 sites** `asyncpg.create_pool(resolve_app_database_url(), …, setup=apply_tenant_context)` en un helper unique `create_runtime_pool()` (`app/db/`). GATES : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check` + `mypy app/ --ignore-missing-imports`. ⚠️ Le venv web peut manquer des deps → `.venv/bin/pip install -r requirements.txt && .venv/bin/pip install mypy` si un import échoue (`stripe`, `mypy`, `alembic` notamment). **Frontend non touché** (aucun fichier `frontend/` → non-régression par construction). **Pas d'eval** (plomberie de pool — aucun prompt de skill ni l'orchestrateur de skills touché).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.72.0)
-2. `.claude/rules/securite.md` (hygiène secrets — aucun mot de passe dans la migration ; valeurs `.env` factices) **et** `.claude/rules/tests-pyramide.md` (marqueur `@pytest.mark.integration` pour les tests PG réels ; forme de migration testée en CI standard). Accessoirement `.claude/rules/api-architecture.md` (contraintes infra : pools, lifespan).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.73.0)
+2. `.claude/rules/conventions-python.md` (pattern async, imports, docstrings FR) **et** `.claude/rules/tests-pyramide.md` (re-pointage des mocks `patch(...asyncpg.create_pool...)` au nouveau home — le ripple de test est le cœur du sprint). Accessoirement `.claude/rules/api-architecture.md` (contraintes infra : pools, lifespan).
 3. **Code de référence à vérifier en début de session (anti-hallucination)** :
-   - **Migration `0011_app_runtime_role.py`** (vérifiée présente) crée le rôle `app_runtime` (`NOSUPERUSER`/`NOBYPASSRLS`, `LOGIN` sans mot de passe) + GRANTs (7 tables RLS + `tenants`/`api_keys`/`subscriptions`/`stripe_events`, SELECT `plan_limits`, USAGE schéma + séquences). Son docstring **différe explicitement** « la non-propriété explicite + le revoke `PUBLIC` » au **Sprint 186** (vérifié dans l'en-tête du fichier). C'est le point d'extension naturel : ajouter une migration `0012` chaînée.
-   - **Le problème** (`docs/revue-owasp-rls-2026-06.md` §2.3, vérifié `:48-49`) : sans `FORCE`, le **propriétaire** d'une table contourne sa propre RLS ; et un propriétaire peut `ALTER … DISABLE/NO FORCE ROW LEVEL SECURITY`. Les tables sont créées par Alembic sous la DSN `copilote` → **`copilote` en est propriétaire**. Tant que `app_runtime` n'est pas propriétaire (vérifié par construction au S182) le risque est contenu, MAIS il n'est **pas garanti explicitement** ni testé, et les privilèges `PUBLIC` par défaut sur le schéma ne sont pas révoqués.
-   - **À TRANCHER et documenter dans le bloc ROADMAP** : **(a)** une migration `0012` qui `REVOKE ALL ON SCHEMA public FROM PUBLIC` + `REVOKE ALL ON ALL TABLES … FROM PUBLIC` puis re-GRANT explicite au seul `app_runtime` (les GRANTs du S182 restent la source) — **vs (b)** se contenter d'un test d'intégration qui **asserte** la non-propriété de `app_runtime` (`pg_class.relowner`) et l'absence de privilège `PUBLIC` sans rien changer au schéma. Privilégier **(a)** : le revoke `PUBLIC` est un durcissement réel exigé par la revue OWASP §2.3, le test seul ne corrige rien. Vérifier d'abord **qui possède réellement les tables** en CI (`pg_class.relowner` / `\dt`) avant de décider du re-GRANT.
+   - **L'invariant de sécurité dupliqué** : les 10 sites couplent **deux** décisions indissociables — (a) résoudre la DSN runtime via `resolve_app_database_url()` (rôle `app_runtime`, pas `copilote`) et (b) câbler `setup=apply_tenant_context` (hook qui pose le GUC `app.tenant_id` à chaque acquisition). Oublier l'un OU l'autre casse silencieusement l'isolation RLS. Vérifié : **9** `asyncpg.create_pool` dans `app/workers/tasks.py` (lignes 82/345/397/472/663/756/811/898/985, `grep -c` = 9) **tous** avec `setup=apply_tenant_context` + **1** dans `app/api/main.py:173-174` (`min_size=2, max_size=10, setup=apply_tenant_context`). Les workers utilisent uniformément `min_size=1, max_size=3`.
+   - `resolve_app_database_url()` existe (`app/utils/security_config.py:17`, vérifié) ; `apply_tenant_context` existe (`app/db/tenant_context.py:79`, vérifié, `async def`). `app/db/` contient déjà `tenant_context.py` + `provision_app_runtime.py` — **home naturel** du nouveau helper.
+   - **Le ripple de test (cœur du sprint, à ne pas sous-estimer)** : ~**25** occurrences de `patch("app.workers.tasks.asyncpg.create_pool", …)` / `app.workers.tasks.asyncpg` dans `tests/workers/**` et ailleurs (vérifié `grep -rn ... | wc -l` = 25, incl. `tests/api/test_api.py`, `tests/services/test_price_alert.py`, `tests/orchestrator/test_analyze_stream.py`). Si le helper appelle `asyncpg.create_pool` depuis `app/db/`, **tous ces patchs cessent d'intercepter** → ils doivent être re-pointés sur le nouveau symbole (`app.db.<module>.asyncpg.create_pool` ou le helper lui-même). C'est le gros du diff.
 
 ---
 
-## TÂCHE — Sprint 186 : durcissement du provisioning DB
+## TÂCHE — Sprint 187 : helper `create_runtime_pool()`
 
-**Objectif** : garantir **explicitement** que `app_runtime` n'est propriétaire d'aucune table (sinon il pourrait désactiver `FORCE RLS`) et **révoquer les privilèges `PUBLIC` par défaut** sur le schéma, fermant le résidu de §2.3 de la revue OWASP que la migration `0011` (S182) a explicitement différé.
+**Objectif** : rendre **impossible** de créer un pool runtime qui résout le bon rôle mais oublie le hook de contexte tenant (ou l'inverse) — finding d'altitude répété des revues S182 ET S185. Extraire l'invariant DSN+setup dans un seul helper, pour qu'un futur pool ne puisse plus diverger.
 
 ### Spécification
 
-1. **Migration Alembic `0012` chaînée** (`down_revision = "0011_app_runtime_role"`) : `REVOKE ALL ON SCHEMA public FROM PUBLIC` + `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC` (et séquences si pertinent), puis re-GRANT explicite au seul `app_runtime` (réutiliser le périmètre de GRANTs du S182 — ne pas diverger). Idempotente (`REVOKE`/`GRANT` sont idempotents ; pas de `DO $$` requis si pas de garde `IF EXISTS` nécessaire). `downgrade()` re-`GRANT … TO PUBLIC` (retour à l'état Postgres par défaut).
-2. **Garantie de non-propriété** : NE PAS transférer la propriété (les tables restent à `copilote` pour qu'Alembic puisse migrer) ; le livrable est le **revoke PUBLIC** + un test qui **asserte** que `app_runtime` n'est PAS dans `pg_class.relowner` des tables RLS et n'a aucun privilège via `PUBLIC`.
-3. **Hygiène secrets** (`securite.md`) : aucun mot de passe dans la migration (cohérent S182).
+1. **Helper `create_runtime_pool(*, min_size: int, max_size: int) -> asyncpg.Pool`** dans `app/db/` (ex. `app/db/pool.py` ou dans `tenant_context.py` — TRANCHER et documenter ; co-localiser avec `apply_tenant_context` est défendable). Il résout `resolve_app_database_url()` en interne et câble `setup=apply_tenant_context` — l'appelant ne fournit QUE `min_size`/`max_size`. Docstring FR expliquant l'invariant (le WHY : DSN+setup indissociables pour la RLS).
+2. **Remplacer les 10 sites** (`app/api/main.py:173` + 9 dans `app/workers/tasks.py`) par un appel au helper, en **préservant** les tailles existantes (`2/10` pour l'API, `1/3` pour les workers). Aucun changement de comportement runtime.
+3. **Re-pointer tous les mocks de test** (`patch(...asyncpg.create_pool...)`) sur le nouveau home pour qu'ils continuent d'intercepter — la suite doit rester verte. C'est le critère d'acceptation principal.
 
 ### Tests / validation
-- **Forme de migration** (CI standard, sans PG — patron `tests/test_alembic_*.py`) : `0012` chaînée après `0011` ; contient `REVOKE … FROM PUBLIC` ; re-GRANT au seul `app_runtime` ; `upgrade`/`downgrade` appelables.
-- **Intégration RLS** (skippé hors PG migré, marqueur `@pytest.mark.integration`, ajouté au gate NOSUPERUSER `.github/workflows/ci.yml`) : sous le rôle réel `app_runtime`, asserter via `information_schema.role_table_grants` / `has_table_privilege('public', …)` qu'aucun privilège ne provient de `PUBLIC`, et que `app_runtime` n'est propriétaire d'aucune table RLS (`pg_class.relowner`). Vérifier que le runtime conserve bien ses accès (SELECT/INSERT sur les tables RLS via le GRANT explicite).
-- Gates : `pytest` + `ruff` + `mypy`. **Pas d'eval** (infra DB pure — aucun prompt de skill ni l'orchestrateur de skills touché).
-- **Preuve d'acceptation observable** : après `alembic upgrade head`, `app_runtime` a ses accès via GRANT explicite et **zéro** via `PUBLIC` ; un rôle anonyme/`PUBLIC` ne voit plus aucune table. Prouvé en CI sous le rôle réel.
+- **Unitaire** sur le helper : appelé avec `min_size/max_size`, il passe bien `resolve_app_database_url()` comme DSN ET `apply_tenant_context` comme `setup` (mock `asyncpg.create_pool`, asserter les kwargs) — prouve que l'invariant est verrouillé en un point.
+- **Non-régression** : toute la suite workers + API + orchestrateur reste verte après re-pointage des mocks (c'est la preuve que le ripple est correct).
+- Gates : `pytest` + `ruff` + `mypy`. **Pas d'eval**.
+- **Preuve d'acceptation observable** : `grep -c "asyncpg.create_pool(" app/workers/tasks.py app/api/main.py` tombe à **0** (tous les sites passent par le helper) ; un nouvel appel `create_runtime_pool(min_size=1, max_size=3)` suffit à obtenir un pool RLS-correct.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 187 — Refactor : `create_runtime_pool()` (couplage DSN runtime + setup RLS inséparable)
-**Objectif** : consolider les **10 sites** `asyncpg.create_pool(resolve_app_database_url(), …, setup=apply_tenant_context)` en un seul helper `create_runtime_pool(*, min_size, max_size)` (`app/db/`) — rendre **impossible** de créer un pool runtime qui résout le bon rôle mais oublie le hook de contexte tenant (ou l'inverse).
-**Complexité** : Moyenne.
-**Justification** : finding d'altitude répété des revues S182 ET S185 — le couplage DSN+setup est l'invariant de sécurité, copié à l'identique. Reporté car le ripple touche les mocks `patch("app.workers.tasks.asyncpg.create_pool", …)` de **nombreux tests workers** (à re-pointer sur le nouveau home).
-**Référence** : **9** `asyncpg.create_pool` dans `app/workers/tasks.py` (vérifié `grep -c`) + 1 dans `app/api/main.py:173` (vérifié) ; `resolve_app_database_url()` (`app/utils/security_config.py:17`, vérifié) et `apply_tenant_context` (`app/db/tenant_context.py:79`, vérifié) existent — le helper et la migration des mocks de test sont **à créer**.
-
 ### Sprint 188 — Refactor : helper `_for_each_tenant()` (5 copies du squelette énumère-et-scope)
 **Objectif** : extraire le squelette répété `SELECT id FROM tenants ORDER BY created_at` → boucle → `tenant_scope(tenant_id)` → try/except best-effort log-and-continue en un helper async unique (`app/workers/`), appliqué aux chemins planifiés.
 **Complexité** : Moyenne.
-**Justification** : finding d'altitude de la revue S185 — le squelette atteint **5 copies** dans `app/workers/tasks.py`, seuil où la duplication devient dette load-bearing. Les corps divergent (retour `None` / `list[str]` union / `dict`), donc le helper doit accepter un callback et laisser l'agrégation à l'appelant — chantier isolé, hors de tout sprint fonctionnel.
-**Référence** : 5 occurrences de `SELECT id FROM tenants ORDER BY created_at` dans `app/workers/tasks.py` (vérifié, lignes 254/352/495/675/902) — `_execute_watchlist_analysis`, `_execute_price_alert_check`, `_execute_composite_alert_check`, `_execute_scheduled_screener`, `_execute_retention_purge` ; `tenant_scope` (`app/db/tenant_context.py:64`, vérifié). Le helper est **à créer**.
+**Justification** : finding d'altitude des revues S185/S186 — le squelette atteint **5 copies** dans `app/workers/tasks.py`, seuil où la duplication devient dette load-bearing. Les corps divergent (retour `None` / `list[str]` / `dict`), donc le helper doit accepter un callback et laisser l'agrégation à l'appelant.
+**Référence** : 5 occurrences de `SELECT id FROM tenants ORDER BY created_at` dans `app/workers/tasks.py` (vérifié cette session, lignes **254/352/495/675/902**) ; `tenant_scope` (`app/db/tenant_context.py:65`, vérifié). Le helper est **à créer**.
 
 ### Sprint 189 — E5-S8 : bornes de quota visibles à l'erreur 429 (UX d'upgrade)
 **Objectif** : quand `/analyze` ou `/screen` renvoie `429` (quota dépassé), afficher côté frontend un message d'upgrade ciblé (plan courant, borne atteinte, lien `/facturation`) plutôt qu'une erreur générique.
 **Complexité** : Faible.
 **Justification** : transforme le mur de quota en point de conversion ; complète le badge S184 (visibilité continue) par une incitation **au moment du blocage**.
-**Référence** : `QuotaExceededError` (`app/services/quota_service.py:64`, vérifié — porte `plan`/`used`/`limit`/`retry_after_s`) ; `QuotaBanner` (`frontend/src/components/QuotaBanner.tsx`, vérifié présent) est le composant d'accroche — l'enrichissement du corps `429` (champs structurés) et le routage du `QuotaBanner` vers `/facturation` sont **à créer/vérifier**.
+**Référence** : `QuotaExceededError` (`app/services/quota_service.py:64`, vérifié cette session) ; `QuotaBanner` (`frontend/src/components/QuotaBanner.tsx`, vérifié présent) est le composant d'accroche — l'enrichissement du corps `429` (champs structurés) et le routage du `QuotaBanner` vers `/facturation` sont **à créer/vérifier**.
 
 ### Sprint 190 — E5-S9 : nettoyage du cache react-query à la déconnexion (hygiène cross-tenant)
 **Objectif** : vider le cache react-query (`queryClient.clear()`) lors du `logout` pour qu'une re-connexion sous un autre tenant sur la même session SPA ne serve jamais de données périmées du tenant précédent (`usage`, `usage-reporting`, etc.).
 **Complexité** : Faible.
 **Justification** : finding cross-tenant de la revue S184 — généralisé. S184 a scopé `['quota', tenantId]` par tenant au cas par cas ; les clés `['usage']`/`['usage-reporting']` restent non scopées et non purgées au logout. Une purge unique au logout couvre tout le cache d'un coup.
-**Référence** : `logout` est défini dans `frontend/src/contexts/AuthContext.tsx:56` (vérifié, `useCallback`) — il n'importe pas `useQueryClient`. Le `QueryClientProvider` global vit dans `frontend/src/main.tsx:21` (vérifié). L'injection de `useQueryClient` dans `AuthProvider` + l'appel de purge au logout sont **à créer**.
+**Référence** : `logout` défini dans `frontend/src/contexts/AuthContext.tsx:56` (vérifié cette session, `useCallback`) — il n'importe pas `useQueryClient`. Le `QueryClientProvider` global vit dans `frontend/src/main.tsx:21` (vérifié). L'injection de `useQueryClient` dans `AuthProvider` + l'appel de purge au logout sont **à créer**.
+
+### Sprint 191 — Ops : `FORCE RLS` vérifié par test sur les 7 tables (verrou anti-régression)
+**Objectif** : asserter en CI que les 7 tables RLS portent bien `relforcerowsecurity = true` (`pg_class`), pour qu'une future migration qui ajoute une table RLS sans `FORCE` (ou qui le retire) échoue immédiatement.
+**Complexité** : Faible.
+**Justification** : §2.3 d'OWASP repose sur `FORCE` ; aujourd'hui c'est prouvé indirectement (la matrice échouerait), jamais asserté directement. Un test ciblé rend l'invariant explicite et auto-documenté.
+**Référence** : `docs/revue-owasp-rls-2026-06.md` §2.3 (vérifié `:40-45`) note « Les 6 tables portent `FORCE` (vérifié) » ; les 7 tables RLS sont énumérées dans `tests/integration/test_revoke_public_rls.py:32-40` (créé S186). Le test d'assertion `relforcerowsecurity` est **à créer** (peut tourner sous le rôle `copilote` ou en lecture catalogue, pas besoin de NOSUPERUSER).
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python/infra senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.72.0),
-.claude/rules/securite.md et tests-pyramide.md.
-Sprint actif : 186 — Ops durcissement du provisioning DB (non-propriété app_runtime + revoke PUBLIC).
-La migration 0011 (S182) crée le rôle app_runtime (NOSUPERUSER/NOBYPASSRLS) + GRANTs mais DIFFÈRE
-explicitement (cf. son docstring) la non-propriété explicite + le revoke des privilèges PUBLIC par
-défaut sur le schéma — exigés par docs/revue-owasp-rls-2026-06.md §2.3 (sans quoi un propriétaire de
-table peut DISABLE/NO FORCE RLS).
-À TRANCHER d'abord : (a) migration 0012 chaînée REVOKE ALL … FROM PUBLIC + re-GRANT explicite à
-app_runtime (recommandé) VS (b) test d'assertion seul sans changement de schéma. Documenter dans le
-bloc ROADMAP.
-À FAIRE : (1) migration 0012 (down_revision=0011) revoke PUBLIC + re-GRANT au seul app_runtime,
-idempotente, downgrade re-GRANT PUBLIC ; (2) test de forme de migration (CI standard) ; (3) test
-d'intégration RLS sous rôle réel (app_runtime n'est pas propriétaire via pg_class.relowner, zéro
-privilège via PUBLIC, accès conservés via GRANT explicite), ajouté au gate CI NOSUPERUSER.
-Vérifier d'abord QUI possède les tables (pg_class.relowner) en CI avant de décider du re-GRANT.
+Tu es un développeur Python/infra senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.73.0),
+.claude/rules/conventions-python.md et tests-pyramide.md.
+Sprint actif : 187 — Refactor create_runtime_pool() : consolider les 10 sites
+asyncpg.create_pool(resolve_app_database_url(), …, setup=apply_tenant_context) en un helper unique
+dans app/db/, pour rendre IMPOSSIBLE de créer un pool runtime qui oublie la DSN app_runtime OU le
+hook apply_tenant_context (invariant de sécurité RLS, finding répété S182/S185).
+Sites vérifiés : 9 dans app/workers/tasks.py (82/345/397/472/663/756/811/898/985, tous setup=
+apply_tenant_context, min/max 1/3) + 1 dans app/api/main.py:173 (min/max 2/10). resolve_app_database_url
+(app/utils/security_config.py:17) et apply_tenant_context (app/db/tenant_context.py:79) existent.
+⚠️ COEUR DU SPRINT = re-pointer ~25 mocks patch(...asyncpg.create_pool...) (tests/workers/**, tests/api,
+tests/services, tests/orchestrator) sur le nouveau home, sinon ils cessent d'intercepter.
+À TRANCHER : home du helper (app/db/pool.py vs dans tenant_context.py). Documenter dans le bloc ROADMAP.
+À FAIRE : (1) create_runtime_pool(*, min_size, max_size) résout DSN + câble setup ; (2) remplacer les
+10 sites en préservant les tailles ; (3) re-pointer les mocks ; (4) test unitaire du helper (asserte
+DSN=resolve_app_database_url() ET setup=apply_tenant_context).
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : pytest + ruff + mypy. Pas d'eval. Preuve : après upgrade, app_runtime a ses accès via GRANT
-explicite et zéro via PUBLIC.
+GATES : pytest + ruff + mypy. Pas d'eval. Preuve : grep -c "asyncpg.create_pool(" app/workers/tasks.py
+app/api/main.py == 0.
 ```
