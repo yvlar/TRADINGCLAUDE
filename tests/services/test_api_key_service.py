@@ -234,6 +234,40 @@ class TestCreateKey:
             reset_current_tenant(token)
         assert str(_TENANT_ID) in pool.fetchrow.call_args.args
 
+    @pytest.mark.asyncio
+    async def test_create_key_audit_metadata_porte_le_tenant_effectif(self):
+        """E4-S10 : la trace d'audit journalise le tenant_id effectif de la clé créée."""
+        from app.services.audit_log_service import AuditLogService
+
+        row = _make_row(tenant_id=_TENANT_ID)
+        pool = _make_pool(fetchrow_return=row)
+        audit = AsyncMock(spec=AuditLogService)
+        svc = ApiKeyService(db_pool=pool, audit_log=audit)
+        await svc.create_key(name="Marie", tenant_id=_TENANT_ID)
+        metadata = audit.record.call_args.kwargs["metadata"]
+        assert metadata["tenant_id"] == str(_TENANT_ID)
+
+
+# ---------------------------------------------------------------------------
+# Groupe 3b : tenant_exists()
+# ---------------------------------------------------------------------------
+
+
+class TestTenantExists:
+
+    @pytest.mark.asyncio
+    async def test_tenant_exists_vrai_si_ligne_presente(self):
+        pool = _make_pool(fetchrow_return={"?column?": 1})
+        svc = ApiKeyService(db_pool=pool)
+        assert await svc.tenant_exists(_TENANT_ID) is True
+        assert "tenants" in str(pool.fetchrow.call_args)
+
+    @pytest.mark.asyncio
+    async def test_tenant_exists_faux_si_absent(self):
+        pool = _make_pool(fetchrow_return=None)
+        svc = ApiKeyService(db_pool=pool)
+        assert await svc.tenant_exists(_TENANT_ID) is False
+
 
 # ---------------------------------------------------------------------------
 # Groupe 4 : record_usage()
@@ -379,6 +413,179 @@ class TestMiddlewareThreadingTenant:
             resp = await c.get("/whoami", headers={"Authorization": "Bearer env-admin-key"})
         assert resp.status_code == 200
         assert resp.json()["tenant"] == str(LEGACY_TENANT_ID)
+
+
+# ---------------------------------------------------------------------------
+# Groupe 7 : provisionnement de clé par tenant (E4-S10)
+# ---------------------------------------------------------------------------
+
+
+_TENANT_A = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+_TENANT_B = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+
+class _InjectContextASGI:
+    """Shim ASGI pur : pose `scope.state` (tenant + record admin) avant TenantContextMiddleware.
+
+    Pure ASGI (et non `@app.middleware`) délibérément : `set_current_tenant` doit s'exécuter
+    dans la MÊME tâche que l'endpoint pour que `get_current_tenant()` y soit visible.
+    """
+
+    def __init__(self, app, *, tenant_id, api_key_record, user_id=None, user_role=None) -> None:
+        self.app = app
+        self._tenant_id = tenant_id
+        self._record = api_key_record
+        self._user_id = user_id
+        self._user_role = user_role
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            state = scope.setdefault("state", {})
+            state["tenant_id"] = self._tenant_id
+            state["api_key_record"] = self._record
+            # Chemin JWT (cookie) : pose user_id/user_role comme BearerTokenMiddleware.
+            if self._user_id is not None:
+                state["user_id"] = self._user_id
+                state["user_role"] = self._user_role
+        await self.app(scope, receive, send)
+
+
+def _admin_record(tenant_id: uuid.UUID) -> ApiKeyRecord:
+    return ApiKeyRecord(
+        id=_KEY_ID, name="admin", role="admin", active=True, created_at=_NOW,
+        last_used_at=None, expires_at=None, tenant_id=tenant_id,
+    )
+
+
+def _make_tenant_aware_svc(*, tenant_exists: bool = True) -> AsyncMock:
+    """Service mocké dont create_key reflète le tenant_id reçu (None → legacy)."""
+    svc = AsyncMock(spec=ApiKeyService)
+    svc.tenant_exists = AsyncMock(return_value=tenant_exists)
+
+    async def _create(*, name, role, expires_at, tenant_id):
+        effectif = tenant_id if tenant_id is not None else LEGACY_TENANT_ID
+        record = ApiKeyRecord(
+            id=uuid.uuid4(), name=name, role=role, active=True, created_at=_NOW,
+            last_used_at=None, expires_at=expires_at, tenant_id=effectif,
+        )
+        return ("token-clair-xyz", record)
+
+    svc.create_key = AsyncMock(side_effect=_create)
+    return svc
+
+
+def _make_ctx_app(
+    svc: AsyncMock, *, tenant_id, api_key_record, user_id=None, user_role=None
+) -> FastAPI:
+    from app.middleware.tenant import TenantContextMiddleware
+
+    app = FastAPI()
+    app.state.api_key_service = svc
+    app.include_router(admin_router)
+    # TenantContextMiddleware (interne) lit scope.state["tenant_id"] → ContextVar ;
+    # le shim d'injection (externe) doit poser scope.state AVANT → ajouté en dernier.
+    app.add_middleware(TenantContextMiddleware)
+    app.add_middleware(
+        _InjectContextASGI,
+        tenant_id=tenant_id,
+        api_key_record=api_key_record,
+        user_id=user_id,
+        user_role=user_role,
+    )
+    return app
+
+
+class TestProvisionnementParTenant:
+
+    @pytest.mark.asyncio
+    async def test_sans_tenant_id_inchange_tenant_courant(self):
+        """Absent → create_key reçoit tenant_id=None (comportement rétrocompatible)."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(svc, tenant_id=str(_TENANT_A), api_key_record=_admin_record(_TENANT_A))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K"})
+        assert resp.status_code == 201
+        assert svc.create_key.call_args.kwargs["tenant_id"] is None
+        svc.tenant_exists.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_egal_courant_admin_db_201(self):
+        """Admin DB provisionnant pour SON tenant → 201, clé rattachée à ce tenant."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(svc, tenant_id=str(_TENANT_A), api_key_record=_admin_record(_TENANT_A))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_A)})
+        assert resp.status_code == 201
+        assert resp.json()["key"]["tenant_id"] == str(_TENANT_A)
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_different_admin_db_403(self):
+        """Admin DB tentant un tenant arbitraire → 403, aucune création."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(svc, tenant_id=str(_TENANT_A), api_key_record=_admin_record(_TENANT_A))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_B)})
+        assert resp.status_code == 403
+        svc.create_key.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_arbitraire_cle_env_201(self):
+        """Clé env / super-admin (record None) exemptée → provisionne pour tout tenant."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(svc, tenant_id=str(LEGACY_TENANT_ID), api_key_record=None)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_B)})
+        assert resp.status_code == 201
+        assert resp.json()["key"]["tenant_id"] == str(_TENANT_B)
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_inexistant_404_pas_500(self):
+        """Tenant cible absent → 404 propre (pas de violation FK 500), aucune création."""
+        svc = _make_tenant_aware_svc(tenant_exists=False)
+        app = _make_ctx_app(svc, tenant_id=str(LEGACY_TENANT_ID), api_key_record=None)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_B)})
+        assert resp.status_code == 404
+        svc.create_key.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jwt_admin_tenant_id_egal_courant_201(self):
+        """Admin web (JWT, api_key_record=None mais user_id posé) pour SON tenant → 201."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(
+            svc, tenant_id=str(_TENANT_A), api_key_record=None,
+            user_id=str(uuid.uuid4()), user_role="admin",
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_A)})
+        assert resp.status_code == 201
+        assert resp.json()["key"]["tenant_id"] == str(_TENANT_A)
+
+    @pytest.mark.asyncio
+    async def test_jwt_admin_tenant_id_arbitraire_403(self):
+        """Admin web (JWT) N'EST PAS exempté du verrou cross-tenant → 403, aucune création."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(
+            svc, tenant_id=str(_TENANT_A), api_key_record=None,
+            user_id=str(uuid.uuid4()), user_role="admin",
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K", "tenant_id": str(_TENANT_B)})
+        assert resp.status_code == 403
+        svc.create_key.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_jwt_reader_refuse_403(self):
+        """Utilisateur web non-admin (JWT reader) ne doit pas atteindre create_key → 403."""
+        svc = _make_tenant_aware_svc()
+        app = _make_ctx_app(
+            svc, tenant_id=str(_TENANT_A), api_key_record=None,
+            user_id=str(uuid.uuid4()), user_role="reader",
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post("/admin/keys", json={"name": "K"})
+        assert resp.status_code == 403
+        svc.create_key.assert_not_awaited()
 
 
 class TestRetrocompatibilite:

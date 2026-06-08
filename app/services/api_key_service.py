@@ -100,9 +100,20 @@ class ApiKeyService:
             "api_key.create",
             "api_key",
             str(record.id),
-            metadata={"name": record.name, "role": record.role},
+            metadata={
+                "name": record.name,
+                "role": record.role,
+                "tenant_id": str(record.tenant_id),
+            },
         )
         return token, record
+
+    async def tenant_exists(self, tenant_id: UUID) -> bool:
+        """Vrai si le tenant cible existe — garde anti-violation FK avant create_key (E4-S10)."""
+        row = await self._pool.fetchrow(
+            "SELECT 1 FROM tenants WHERE id = $1::uuid", str(tenant_id)
+        )
+        return row is not None
 
     async def list_keys(self) -> list[ApiKeyRecord]:
         rows = await self._pool.fetch(
