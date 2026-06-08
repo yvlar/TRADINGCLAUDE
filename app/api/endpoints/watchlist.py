@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.api.endpoints.admin import _require_admin
+from app.db.tenant_context import get_current_tenant
 from app.models.watchlist import WatchlistCreate, WatchlistEntry
 from app.orchestrator.core import AnalyzeRequest
 from app.services.api_key_service import ApiKeyRecord
@@ -352,7 +353,8 @@ async def analyze_entry(entry_id: str, request: Request) -> dict:
     )
     request_dict = analyze_request.model_dump(mode="json")
     await r.set(f"job:{job_id}:status", "pending", ex=_JOB_TTL)
-    run_full_analysis.delay(job_id, request_dict)
+    # Tenant capturé au site `.delay()` : le ContextVar ne traverse pas le broker Celery (E5-S7).
+    run_full_analysis.delay(job_id, request_dict, str(get_current_tenant()))
     logger.info(
         "Analyse manuelle watchlist — entry=%s, job=%s, ticker=%s",
         entry_id, job_id, entry.ticker,

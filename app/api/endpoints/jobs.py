@@ -7,6 +7,7 @@ import uuid
 import redis.asyncio as aioredis
 from fastapi import APIRouter, HTTPException, Request
 
+from app.db.tenant_context import get_current_tenant
 from app.orchestrator.core import AnalyzeRequest
 from app.workers.tasks import run_full_analysis
 
@@ -26,7 +27,8 @@ async def analyze_async(body: AnalyzeRequest, request: Request) -> dict:
 
     await r.set(f"job:{job_id}:status", "pending", ex=_JOB_TTL)
 
-    run_full_analysis.delay(job_id, request_dict)
+    # Tenant capturé au site `.delay()` : le ContextVar ne traverse pas le broker Celery (E5-S7).
+    run_full_analysis.delay(job_id, request_dict, str(get_current_tenant()))
     logger.info("Job %s soumis pour ticker %s", job_id, body.ticker)
 
     return {"job_id": job_id}

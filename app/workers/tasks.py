@@ -128,32 +128,46 @@ async def _build_orchestrator(*, with_metering: bool = False) -> tuple[Orchestra
     return orchestrator, db_pool
 
 
-async def _execute_analysis(request_dict: dict[str, Any]) -> dict[str, Any]:
-    """Exécute l'analyse complète et retourne un dict JSON-sérialisable."""
-    orchestrator, db_pool = await _build_orchestrator()
-    try:
-        request = AnalyzeRequest.model_validate(request_dict)
-        response = await orchestrator.run_company_analysis(request)
-        return response.model_dump(mode="json")
-    finally:
-        await db_pool.close()
+async def _execute_analysis(
+    request_dict: dict[str, Any], tenant_id: str | None = None
+) -> dict[str, Any]:
+    """Exécute l'analyse complète sous le tenant fourni (legacy si None) et la métre (E5-S7).
+
+    Le ContextVar `current_tenant` ne traverse pas la sérialisation Celery → le tenant propriétaire
+    est passé en argument explicite et restauré ici via `tenant_scope` : il pose le GUC RLS (lecture/
+    écriture `analysis_history`) et oriente le metering `usage_events` (orchestrateur `with_metering=True`)
+    vers ce tenant. Metering best-effort — un échec n'avorte jamais l'analyse (cf. S166).
+    """
+    with tenant_scope(tenant_id):
+        orchestrator, db_pool = await _build_orchestrator(with_metering=True)
+        try:
+            request = AnalyzeRequest.model_validate(request_dict)
+            response = await orchestrator.run_company_analysis(request)
+            return response.model_dump(mode="json")
+        finally:
+            await db_pool.close()
 
 
 @celery_app.task(name="run_full_analysis", bind=True, max_retries=3)
-def run_full_analysis(self, job_id: str, request_dict: dict[str, Any]) -> None:
+def run_full_analysis(
+    self, job_id: str, request_dict: dict[str, Any], tenant_id: str | None = None
+) -> None:
     """
     Tâche Celery synchrone qui lance le workflow company_analysis.
     1. Statut Redis → "running"
-    2. Orchestrator avec pool asyncpg dédié via asyncio.run()
+    2. Orchestrator métré sous `tenant_id` (pool asyncpg dédié via asyncio.run())
     3. Résultat dans Redis (TTL 24h)
     4. Statut → "done" ou "failed" (avec retry si échec transitoire)
+
+    `tenant_id` (capturé au site `.delay()`, le ContextVar ne traversant pas le broker) impute
+    l'analyse et sa conso au tenant propriétaire ; absent → repli legacy rétrocompatible.
     """
     r = _get_redis()
     r.set(f"job:{job_id}:status", "running", ex=_JOB_TTL)
     logger.info("Job %s démarré", job_id)
 
     try:
-        result = asyncio.run(_execute_analysis(request_dict))
+        result = asyncio.run(_execute_analysis(request_dict, tenant_id))
         r.set(f"job:{job_id}:result", json.dumps(result), ex=_JOB_TTL)
         r.set(f"job:{job_id}:status", "done", ex=_JOB_TTL)
         logger.info("Job %s terminé avec succès", job_id)
@@ -261,10 +275,71 @@ def run_watchlist_analysis(self) -> None:
     logger.info("Fin re-analyse hebdomadaire watchlist")
 
 
-async def _execute_price_alert_check() -> list[str]:
+async def _trigger_price_alert_reanalyses(
+    db_pool: asyncpg.Pool,
+    webhook_service: WebhookService,
+    alerted: list[str],
+    tenant_id: str,
+) -> None:
+    """Déclenche une re-analyse Celery par ticker en alerte, imputée à `tenant_id` — l'appelant DOIT avoir posé `tenant_scope`.
+
+    `tenant_id` est propagé explicitement à `.delay()` (cf. `run_full_analysis` : le ContextVar ne
+    traverse pas le broker). Lecture watchlist RLS-scopée (le ticker n'appartient qu'au tenant courant).
     """
-    Vérifie les alertes prix pour toutes les entrées watchlist avec valeur intrinsèque connue.
-    Déclenche une re-analyse Celery pour chaque ticker dont l'écart dépasse le seuil.
+    r = _get_redis()
+    for ticker in alerted:
+        rows = await db_pool.fetch(
+            "SELECT id, workflow, ratios FROM watchlist WHERE ticker = $1",
+            ticker,
+        )
+        for row in rows:
+            job_id = str(uuid.uuid4())
+            ratios: GrahamRatios | None = None
+            ratios_raw = row["ratios"]
+            if ratios_raw:
+                ratios = GrahamRatios.model_validate(
+                    json.loads(ratios_raw)
+                    if isinstance(ratios_raw, str)
+                    else ratios_raw
+                )
+            request = AnalyzeRequest(
+                ticker=ticker,
+                workflow=row["workflow"],
+                ratios=ratios,
+            )
+            r.set(f"job:{job_id}:status", "pending", ex=_JOB_TTL)
+            run_full_analysis.delay(job_id, request.model_dump(mode="json"), tenant_id)
+            logger.info(
+                "Re-analyse déclenchée — ticker=%s, job=%s, tenant=%s (alerte prix)",
+                ticker,
+                job_id,
+                tenant_id,
+            )
+
+        # Notification webhook après re-déclenchement des analyses
+        price_row = await db_pool.fetchrow(
+            """SELECT last_price_checked, price_alert_threshold_pct
+               FROM watchlist WHERE ticker = $1""",
+            ticker,
+        )
+        if price_row:
+            await webhook_service.send_price_alert(
+                ticker=ticker,
+                prix=float(price_row["last_price_checked"] or 0.0),
+                seuil=float(price_row["price_alert_threshold_pct"] or 0.10),
+                direction="divergence",
+            )
+
+
+async def _execute_price_alert_check() -> list[str]:
+    """Vérifie les alertes prix de TOUS les tenants, chacun sous son contexte RLS (E5-S7).
+
+    `tenants` (table parente hors RLS) énumère le travail ; pour chaque tenant, sous `tenant_scope`
+    (patron `_execute_scheduled_screener`, S181), la watchlist est lue (RLS-scopée), les écarts prix
+    vérifiés, et une re-analyse **imputée et métrée sous le tenant propriétaire** est déclenchée via
+    `run_full_analysis.delay(..., tenant_id)` — fermant le dernier chemin d'analyse sous tenant legacy.
+    Best-effort par tenant : l'échec d'un tenant (loggé) n'avorte pas les autres. Retourne l'union des
+    tickers en alerte.
     """
     db_url = resolve_app_database_url()
     db_pool = await asyncpg.create_pool(
@@ -274,51 +349,24 @@ async def _execute_price_alert_check() -> list[str]:
     service = PriceAlertService()
     webhook_service = WebhookService()
     try:
-        alerted = await service.check_price_alerts(db_pool, yahoo_extractor)
-        if alerted:
-            r = _get_redis()
-            for ticker in alerted:
-                rows = await db_pool.fetch(
-                    "SELECT id, workflow, ratios FROM watchlist WHERE ticker = $1",
-                    ticker,
-                )
-                for row in rows:
-                    job_id = str(uuid.uuid4())
-                    ratios: GrahamRatios | None = None
-                    ratios_raw = row["ratios"]
-                    if ratios_raw:
-                        ratios = GrahamRatios.model_validate(
-                            json.loads(ratios_raw)
-                            if isinstance(ratios_raw, str)
-                            else ratios_raw
+        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
+        logger.info("Vérification alertes prix — %d tenant(s)", len(tenant_rows))
+        all_alerted: list[str] = []
+        for trow in tenant_rows:
+            tenant_id = trow["id"]
+            try:
+                with tenant_scope(tenant_id):
+                    alerted = await service.check_price_alerts(db_pool, yahoo_extractor)
+                    if alerted:
+                        await _trigger_price_alert_reanalyses(
+                            db_pool, webhook_service, alerted, str(tenant_id)
                         )
-                    request = AnalyzeRequest(
-                        ticker=ticker,
-                        workflow=row["workflow"],
-                        ratios=ratios,
-                    )
-                    r.set(f"job:{job_id}:status", "pending", ex=_JOB_TTL)
-                    run_full_analysis.delay(job_id, request.model_dump(mode="json"))
-                    logger.info(
-                        "Re-analyse déclenchée — ticker=%s, job=%s (alerte prix)",
-                        ticker,
-                        job_id,
-                    )
-
-                # Notification webhook après re-déclenchement des analyses
-                price_row = await db_pool.fetchrow(
-                    """SELECT last_price_checked, price_alert_threshold_pct
-                       FROM watchlist WHERE ticker = $1""",
-                    ticker,
+                    all_alerted.extend(alerted)
+            except Exception:
+                logger.exception(
+                    "Erreur de vérification d'alertes prix pour le tenant %s", tenant_id
                 )
-                if price_row:
-                    await webhook_service.send_price_alert(
-                        ticker=ticker,
-                        prix=float(price_row["last_price_checked"] or 0.0),
-                        seuil=float(price_row["price_alert_threshold_pct"] or 0.10),
-                        direction="divergence",
-                    )
-        return alerted
+        return all_alerted
     finally:
         await db_pool.close()
 

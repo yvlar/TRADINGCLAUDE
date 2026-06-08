@@ -114,7 +114,7 @@ async def test_price_alert_yahoo_indisponible():
 
 @pytest.mark.asyncio
 async def test_price_alert_celery_task_mock():
-    """_execute_price_alert_check instancie PriceAlertService et appelle check_price_alerts."""
+    """_execute_price_alert_check énumère les tenants et appelle check_price_alerts sous chaque scope."""
     with patch("app.workers.tasks.PriceAlertService") as MockService:
         mock_instance = AsyncMock()
         mock_instance.check_price_alerts.return_value = []
@@ -123,6 +123,10 @@ async def test_price_alert_celery_task_mock():
         with patch("asyncpg.create_pool", new_callable=AsyncMock) as mock_create_pool:
             mock_pool = AsyncMock()
             mock_pool.close = AsyncMock()
+            # `_execute_price_alert_check` lit d'abord `tenants` (hors RLS) puis itère par tenant.
+            mock_pool.fetch = AsyncMock(
+                return_value=[{"id": uuid.UUID("00000000-0000-0000-0000-0000000000aa")}]
+            )
             mock_create_pool.return_value = mock_pool
 
             with patch("app.workers.tasks.YahooFinanceExtractor"):
