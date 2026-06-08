@@ -7,6 +7,7 @@ import type {
   User,
 } from '../types'
 import { BASE_URL } from './client'
+import { extractDetailMessage } from './errorDetail'
 
 class AuthApiError extends Error {
   constructor(
@@ -46,22 +47,10 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
   })
 
   if (!response.ok) {
-    let message: string
+    let message = response.statusText
     try {
-      const body = (await response.json()) as { detail?: unknown; error?: string }
-      if (Array.isArray(body.detail)) {
-        message = (body.detail as Array<{ msg?: string; loc?: string[] }>)
-          .map((e) => {
-            const field = e.loc ? e.loc.slice(1).join('.') : ''
-            return field ? `${field} : ${e.msg ?? 'invalide'}` : (e.msg ?? 'invalide')
-          })
-          .join(' | ')
-      } else {
-        message = (body.detail as string | undefined) ?? body.error ?? response.statusText
-      }
-    } catch {
-      message = response.statusText
-    }
+      message = extractDetailMessage(await response.json(), response.statusText).message
+    } catch { /* corps non-JSON : message reste statusText */ }
     throw new AuthApiError(response.status, message)
   }
 

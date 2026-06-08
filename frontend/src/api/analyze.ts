@@ -1,4 +1,5 @@
 import { apiClient, ApiError, BASE_URL } from './client'
+import { extractDetailMessage } from './errorDetail'
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
@@ -172,17 +173,11 @@ export async function* streamAnalyze(body: AnalyzeRequest): AsyncGenerator<SSEEv
     let message = response.statusText
     let detail: unknown
     try {
-      const errBody = (await response.json()) as { detail?: unknown; error?: string }
-      detail = errBody.detail
-      if (errBody.detail !== null && typeof errBody.detail === 'object' && !Array.isArray(errBody.detail)) {
-        // Corps structuré (ex. 429 quota) : message extrait, objet conservé pour le front.
-        message = (errBody.detail as { message?: string }).message ?? errBody.error ?? message
-      } else if (typeof errBody.detail === 'string') {
-        message = errBody.detail
-      } else {
-        // Tableau (erreurs de validation Pydantic) ou autre : pas de coercition en string trompeuse.
-        message = errBody.error ?? message
-      }
+      // Même ordre de gardes que `request` (array-first) — un detail tableau est désormais
+      // aplati ici aussi, au lieu de retomber sur le fallback.
+      const extracted = extractDetailMessage(await response.json(), response.statusText)
+      message = extracted.message
+      detail = extracted.detail
     } catch { /* ignore */ }
     throw new ApiError(response.status, message, detail)
   }

@@ -1,3 +1,5 @@
+import { extractDetailMessage } from './errorDetail'
+
 const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
 
 class ApiError extends Error {
@@ -50,28 +52,13 @@ async function request<T>(
   })
 
   if (!response.ok) {
-    let message: string
+    let message = response.statusText
     let detail: unknown
     try {
-      const body = (await response.json()) as { detail?: unknown; error?: string }
-      detail = body.detail
-      if (Array.isArray(body.detail)) {
-        // Erreurs de validation Pydantic FastAPI : [{loc, msg, type}, ...]
-        message = (body.detail as Array<{ msg?: string; loc?: string[] }>)
-          .map(e => {
-            const field = e.loc ? e.loc.slice(1).join('.') : ''
-            return field ? `${field} : ${e.msg ?? 'invalide'}` : (e.msg ?? 'invalide')
-          })
-          .join(' | ')
-      } else if (body.detail !== null && typeof body.detail === 'object') {
-        // Corps structuré (ex. 429 quota) : message extrait, objet conservé pour le front.
-        message = (body.detail as { message?: string }).message ?? body.error ?? response.statusText
-      } else {
-        message = (body.detail as string | undefined) ?? body.error ?? response.statusText
-      }
-    } catch {
-      message = response.statusText
-    }
+      const extracted = extractDetailMessage(await response.json(), response.statusText)
+      message = extracted.message
+      detail = extracted.detail
+    } catch { /* corps non-JSON : message reste statusText */ }
     throw new ApiError(response.status, message, detail)
   }
 
