@@ -13,21 +13,15 @@ séparation runtime/migrations.
 """
 from __future__ import annotations
 
-import os
 import uuid
 
 import asyncpg
 import pytest
 
-_APP_DB_URL = os.environ.get("APP_DATABASE_URL")
+from tests.integration._rls_fixtures import APP_DB_URL as _APP_DB_URL
+from tests.integration._rls_fixtures import app_runtime_pytestmark
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _APP_DB_URL,
-        reason="APP_DATABASE_URL non défini (PG migré + rôle app_runtime requis)",
-    ),
-]
+pytestmark = app_runtime_pytestmark
 
 _TENANT_A = "00000000-0000-0000-0000-000000000001"  # tenant legacy (présent après migration)
 _TENANT_B = "00000000-0000-0000-0000-0000000000bb"

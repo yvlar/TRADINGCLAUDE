@@ -22,6 +22,8 @@ from collections.abc import Callable
 import asyncpg
 import pytest
 
+from tests.integration._rls_fixtures import RLS_TABLES as _TABLES
+
 _RLS_DB_URL = os.environ.get("RLS_TEST_DATABASE_URL")
 
 pytestmark = [
@@ -35,17 +37,9 @@ pytestmark = [
 _TENANT_A = "00000000-0000-0000-0000-000000000001"  # tenant legacy (présent après migration)
 _TENANT_B = "00000000-0000-0000-0000-0000000000bb"
 
-# Les 6 tables métier (0005_business_rls) + `usage_events` (7ᵉ table RLS, 0006_usage_events,
-# E4-S1) : même policy tenant, donc même matrice d'isolation.
-_TABLES: tuple[str, ...] = (
-    "analysis_history",
-    "watchlist",
-    "composite_score_history",
-    "esg_score_history",
-    "alert_history",
-    "annotations",
-    "usage_events",
-)
+# Inventaire des 7 tables RLS importé de `_rls_fixtures` (source unique) : les 6 tables métier
+# (0005_business_rls) + `usage_events` (0006_usage_events, E4-S1) partagent la même policy tenant,
+# donc la même matrice d'isolation.
 
 # Colonnes minimales valides par table : la colonne porteuse du marqueur (pour filtrer
 # les lignes du test) + les NOT NULL sans défaut + `tenant_id`. Chaque entrée donne la

@@ -6,7 +6,7 @@ aucun test ne l'asserte en propre. Ce test lit `pg_class.relforcerowsecurity` et
 régression impossible à introduire silencieusement : une migration ajoutant une table RLS sans
 `FORCE` (ou le retirant) échoue immédiatement.
 
-Réutilise `_RLS_TABLES` de `test_revoke_public_rls.py` (S186) plutôt que de ré-énumérer — un seul
+Réutilise l'inventaire `RLS_TABLES` partagé (`_rls_fixtures`) plutôt que de ré-énumérer — un seul
 inventaire des 7 tables RLS, synchrone avec le durcissement PUBLIC.
 
 Skippé hors PG migré : nécessite `APP_DATABASE_URL` pointant un PostgreSQL **migré**
@@ -15,22 +15,14 @@ le gate NOSUPERUSER sous le rôle réel `app_runtime` (lecture catalogue, access
 """
 from __future__ import annotations
 
-import os
-
 import asyncpg
 import pytest
 
-from tests.integration.test_revoke_public_rls import _RLS_TABLES
+from tests.integration._rls_fixtures import APP_DB_URL as _APP_DB_URL
+from tests.integration._rls_fixtures import RLS_TABLES as _RLS_TABLES
+from tests.integration._rls_fixtures import app_runtime_pytestmark
 
-_APP_DB_URL = os.environ.get("APP_DATABASE_URL")
-
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _APP_DB_URL,
-        reason="APP_DATABASE_URL non défini (PG migré + rôle app_runtime requis)",
-    ),
-]
+pytestmark = app_runtime_pytestmark
 
 
 @pytest.mark.asyncio

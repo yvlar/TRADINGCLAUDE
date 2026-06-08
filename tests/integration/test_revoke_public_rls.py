@@ -12,31 +12,14 @@ provient du pseudo-rôle `PUBLIC` (schéma + tables), tout en gardant ses accès
 """
 from __future__ import annotations
 
-import os
-
 import asyncpg
 import pytest
 
-_APP_DB_URL = os.environ.get("APP_DATABASE_URL")
+from tests.integration._rls_fixtures import APP_DB_URL as _APP_DB_URL
+from tests.integration._rls_fixtures import RLS_TABLES as _RLS_TABLES
+from tests.integration._rls_fixtures import app_runtime_pytestmark
 
-pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not _APP_DB_URL,
-        reason="APP_DATABASE_URL non défini (PG migré + rôle app_runtime requis)",
-    ),
-]
-
-# 7 tables RLS (sous-ensemble de `0011._RW_TABLES` portant ENABLE+FORCE RLS).
-_RLS_TABLES = (
-    "analysis_history",
-    "watchlist",
-    "composite_score_history",
-    "esg_score_history",
-    "alert_history",
-    "annotations",
-    "usage_events",
-)
+pytestmark = app_runtime_pytestmark
 
 
 @pytest.mark.asyncio
