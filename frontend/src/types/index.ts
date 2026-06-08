@@ -883,6 +883,13 @@ export interface UsageResponse {
   daily_cost: Record<string, number>
 }
 
+// ---- État du report d'usage vers Stripe /usage/reporting (E5-S2) — miroir de UsageReportingResponse ----
+export interface UsageReporting {
+  // ISO 8601 ; null = jamais rapporté (ou pas d'abonnement) → pending couvre tout l'historique
+  reported_through: string | null
+  pending_events: number
+}
+
 // ---- Recherche sémantique RAG (Sprint 106) ----
 export interface SemanticSearchResult {
   source: string
