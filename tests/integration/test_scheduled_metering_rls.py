@@ -94,7 +94,7 @@ async def test_screener_planifie_impute_au_tenant_proprietaire():
     fake_orch.run_company_analysis = AsyncMock(side_effect=_run)
 
     fake_extractor = MagicMock()
-    fake_extractor.extract = AsyncMock(return_value=GrahamRatios())
+    fake_extractor.extract = AsyncMock(return_value=GrahamRatios(eps_growth_total=0.0, price=10.0))
 
     try:
         with as_tenant(_TENANT_B):
@@ -107,7 +107,10 @@ async def test_screener_planifie_impute_au_tenant_proprietaire():
                 ticker_b,
             )
 
+        # Les chemins worker créent leur propre db_pool depuis DATABASE_URL (lecture watchlist/tenants) :
+        # le pointer sur la DB de test (rôle NOSUPERUSER) → la lecture watchlist passe bien par la RLS.
         with (
+            patch.dict(os.environ, {"DATABASE_URL": _RLS_DB_URL}),
             patch.object(
                 tasks, "_build_orchestrator", AsyncMock(return_value=(fake_orch, worker_pool))
             ),
@@ -190,11 +193,15 @@ async def test_alerte_composite_impute_au_tenant_proprietaire():
                 ticker_b,
             )
 
+        # db_pool interne créé depuis DATABASE_URL → pointer sur la DB de test (rôle NOSUPERUSER).
+        # EmailService patché : l'alerte déclenchée ne doit pas tenter d'envoi SMTP réel selon l'env CI.
         with (
+            patch.dict(os.environ, {"DATABASE_URL": _RLS_DB_URL}),
             patch.object(
                 tasks, "_build_orchestrator", AsyncMock(return_value=(fake_orch, worker_pool))
             ),
             patch.object(tasks, "WebhookService", return_value=AsyncMock()),
+            patch.object(tasks, "EmailService", return_value=AsyncMock()),
         ):
             await tasks._execute_composite_alert_check()  # ferme worker_pool dans son finally
 
