@@ -46,6 +46,21 @@ class PlanLimits:
     retention_days: int
 
 
+@dataclass(frozen=True)
+class QuotaStatus:
+    """État de quota mensuel d'un tenant — lecture seule (E5-S6).
+
+    `limit`/`remaining` valent `None` quand le plan n'a pas pu être résolu (fail-open) : on
+    ne fabrique pas une borne factice, le client affiche alors le plan sans compteur.
+    """
+
+    plan: str
+    used: int
+    limit: int | None
+    remaining: int | None
+    reset_at: datetime
+
+
 class QuotaExceededError(Exception):
     """Dépassement d'une borne de plan — mappé en `429` au niveau endpoint.
 
@@ -147,6 +162,35 @@ class QuotaService:
         await self.check(tenant_id)
         await self.increment(tenant_id)
 
+    async def read_status(self, tenant_id: UUID | None = None) -> QuotaStatus:
+        """État du quota mensuel du tenant — LECTURE SEULE (n'incrémente jamais le compteur).
+
+        Réutilise `_resolve_limits` (plan + borne) et `_current_count` (compteur Redis). Fail-open
+        cohérent : plan non résolu → `limit`/`remaining` à `None` ; Redis indisponible → `used=0`
+        (déjà géré par `_current_count`). Ne casse jamais le header appelant.
+        """
+        tenant = resolve_tenant(tenant_id)
+        now = datetime.now(timezone.utc)
+        reset_at = _next_month_start(now)
+        try:
+            limits = await self._resolve_limits(tenant)
+        except Exception:
+            # Lecture pour un affichage de header : une panne DB ne doit jamais lever un 500
+            # (fail-open au même titre que Redis dans `_current_count`).
+            logger.warning("Résolution du plan indisponible pour read_status — quota neutre (fail-open)")
+            limits = None
+        if limits is None:
+            return QuotaStatus(plan="unknown", used=0, limit=None, remaining=None, reset_at=reset_at)
+        used = await self._current_count(_month_key(tenant, now))
+        limit = limits.max_analyses_per_month
+        return QuotaStatus(
+            plan=limits.plan,
+            used=used,
+            limit=limit,
+            remaining=max(0, limit - used),
+            reset_at=reset_at,
+        )
+
     async def check_screener_size(self, num_tickers: int, tenant_id: UUID | None = None) -> None:
         """Lève `QuotaExceededError` si la liste dépasse `max_screener_tickers` du plan."""
         tenant = resolve_tenant(tenant_id)
@@ -170,14 +214,15 @@ def _month_key(tenant: UUID, now: datetime) -> str:
     return f"quota:{tenant}:{now:%Y-%m}"
 
 
-def _seconds_until_month_end(now: datetime) -> int:
-    """Secondes jusqu'au 1er du mois suivant (UTC) — TTL de la clé et `Retry-After`."""
+def _next_month_start(now: datetime) -> datetime:
+    """1er du mois suivant à 00:00 UTC — bascule de la fenêtre mensuelle du compteur."""
     if now.month == 12:
-        next_month = now.replace(
+        return now.replace(
             year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0
         )
-    else:
-        next_month = now.replace(
-            month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0
-        )
-    return max(1, int((next_month - now).total_seconds()))
+    return now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _seconds_until_month_end(now: datetime) -> int:
+    """Secondes jusqu'au 1er du mois suivant (UTC) — TTL de la clé et `Retry-After`."""
+    return max(1, int((_next_month_start(now) - now).total_seconds()))

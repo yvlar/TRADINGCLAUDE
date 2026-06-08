@@ -139,3 +139,82 @@ def test_seconds_until_month_end_juin():
 def test_seconds_until_month_end_decembre_bascule_annee():
     now = datetime(2026, 12, 31, 0, 0, tzinfo=timezone.utc)
     assert _seconds_until_month_end(now) == 24 * 3600  # → 1er janvier 2027
+
+
+# ---- read_status (E5-S6) : lecture seule du quota ----
+
+
+@pytest.mark.asyncio
+async def test_read_status_plan_free_avec_consommation():
+    """K analyses consommées → used=K, remaining=limit−K, plan résolu depuis plan_limits."""
+    service, db, _ = _service(count="12")
+    status = await service.read_status(_TENANT)
+    assert status.plan == "free"
+    assert status.used == 12
+    assert status.limit == 50
+    assert status.remaining == 38
+    # La résolution du plan passe par la jointure tenants → plan_limits (réutilisée, pas dupliquée).
+    assert db.fetchrow.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_read_status_reset_at_est_le_premier_du_mois_suivant():
+    service, _, _ = _service(count="0")
+    status = await service.read_status(_TENANT)
+    # Bascule au 1er du mois suivant à 00:00 UTC (jour 1, heure 0).
+    assert status.reset_at.day == 1
+    assert status.reset_at.hour == 0
+    assert status.reset_at.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_read_status_compteur_a_zero_remaining_egal_limite():
+    service, _, _ = _service(count=None)  # aucune clé Redis ce mois
+    status = await service.read_status(_TENANT)
+    assert status.used == 0
+    assert status.remaining == 50
+
+
+@pytest.mark.asyncio
+async def test_read_status_n_incremente_jamais_le_compteur():
+    """Lecture seule : aucun incr/expire Redis déclenché par read_status."""
+    service, _, redis = _service(count="5")
+    await service.read_status(_TENANT)
+    redis.get.assert_awaited_once()
+    redis.incr.assert_not_awaited()
+    redis.expire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_read_status_plan_introuvable_fail_open_neutre():
+    """Plan non résolu → réponse neutre (limit/remaining None), jamais d'erreur."""
+    service, _, redis = _service(plan_row=None)
+    status = await service.read_status(_TENANT)
+    assert status.plan == "unknown"
+    assert status.limit is None
+    assert status.remaining is None
+    assert status.used == 0
+    # Plan absent → on n'a même pas tenté de lire le compteur Redis.
+    redis.get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_read_status_redis_en_panne_fail_open():
+    """Panne Redis à la lecture → used=0 / remaining=limite (pas d'exception)."""
+    service, _, redis = _service()
+    redis.get = AsyncMock(side_effect=ConnectionError("redis down"))
+    status = await service.read_status(_TENANT)
+    assert status.used == 0
+    assert status.remaining == 50
+
+
+@pytest.mark.asyncio
+async def test_read_status_db_en_panne_fail_open_neutre():
+    """Panne DB à la résolution du plan → réponse neutre, jamais d'exception (pas de 500)."""
+    service, db, _ = _service()
+    db.fetchrow = AsyncMock(side_effect=ConnectionError("postgres down"))
+    status = await service.read_status(_TENANT)
+    assert status.plan == "unknown"
+    assert status.limit is None
+    assert status.remaining is None
+    assert status.used == 0
