@@ -7,6 +7,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from uuid import UUID
 
 import anthropic
 import asyncpg
@@ -24,7 +25,7 @@ from app.services.composite_alert import CompositeAlertService
 from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
 from app.services.report import ReportService
-from app.services.retention_service import RetentionService
+from app.services.retention_service import PurgeResult, RetentionService
 from app.services.screener import ScreenerService
 from app.services.slack_service import SlackService
 from app.services.stripe_service import StripeService
@@ -43,6 +44,7 @@ from app.skills.tier2.munger_mental.skill import MungerMentalSkill
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
 from app.workers.celery_app import celery_app
+from app.workers.tenant_iteration import for_each_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -248,15 +250,11 @@ async def _execute_watchlist_analysis() -> None:
     """
     orchestrator, db_pool = await _build_orchestrator(with_metering=True)
     try:
-        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
-        logger.info("Watchlist re-analyse hebdomadaire — %d tenant(s)", len(tenant_rows))
-        for trow in tenant_rows:
-            tenant_id = trow["id"]
-            try:
-                with tenant_scope(tenant_id):
-                    await _analyze_watchlist_entries(orchestrator, db_pool)
-            except Exception:
-                logger.exception("Erreur de re-analyse watchlist pour le tenant %s", tenant_id)
+        await for_each_tenant(
+            db_pool,
+            lambda _tenant_id: _analyze_watchlist_entries(orchestrator, db_pool),
+            error_message="Erreur de re-analyse watchlist pour le tenant %s",
+        )
     finally:
         await db_pool.close()
 
@@ -343,23 +341,21 @@ async def _execute_price_alert_check() -> list[str]:
     service = PriceAlertService()
     webhook_service = WebhookService()
     try:
-        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
-        logger.info("Vérification alertes prix — %d tenant(s)", len(tenant_rows))
         all_alerted: list[str] = []
-        for trow in tenant_rows:
-            tenant_id = trow["id"]
-            try:
-                with tenant_scope(tenant_id):
-                    alerted = await service.check_price_alerts(db_pool, yahoo_extractor)
-                    if alerted:
-                        await _trigger_price_alert_reanalyses(
-                            db_pool, webhook_service, alerted, str(tenant_id)
-                        )
-                    all_alerted.extend(alerted)
-            except Exception:
-                logger.exception(
-                    "Erreur de vérification d'alertes prix pour le tenant %s", tenant_id
+
+        async def _check_one(tenant_id: UUID) -> None:
+            alerted = await service.check_price_alerts(db_pool, yahoo_extractor)
+            if alerted:
+                await _trigger_price_alert_reanalyses(
+                    db_pool, webhook_service, alerted, str(tenant_id)
                 )
+            all_alerted.extend(alerted)
+
+        await for_each_tenant(
+            db_pool,
+            _check_one,
+            error_message="Erreur de vérification d'alertes prix pour le tenant %s",
+        )
         return all_alerted
     finally:
         await db_pool.close()
@@ -480,27 +476,24 @@ async def _execute_composite_alert_check() -> list[str]:
         )
         webhook_service = WebhookService()
 
-        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
-        logger.info("Verification alertes composite -- %d tenant(s)", len(tenant_rows))
-
         alertes: list[str] = []
-        for trow in tenant_rows:
-            tenant_id = trow["id"]
-            try:
-                with tenant_scope(tenant_id):
-                    resultats = await alert_service.check_composite_alerts()
-                    for r in resultats:
-                        if r.alerte_declenchee:
-                            await webhook_service.send_composite_alert(
-                                ticker=r.ticker,
-                                score=r.new_score,
-                                label=_score_label(r.new_score),
-                            )
-                            alertes.append(r.ticker)
-            except Exception:
-                logger.exception(
-                    "Erreur de verification d'alertes composite pour le tenant %s", tenant_id
-                )
+
+        async def _check_one(_tenant_id: UUID) -> None:
+            resultats = await alert_service.check_composite_alerts()
+            for r in resultats:
+                if r.alerte_declenchee:
+                    await webhook_service.send_composite_alert(
+                        ticker=r.ticker,
+                        score=r.new_score,
+                        label=_score_label(r.new_score),
+                    )
+                    alertes.append(r.ticker)
+
+        await for_each_tenant(
+            db_pool,
+            _check_one,
+            error_message="Erreur de verification d'alertes composite pour le tenant %s",
+        )
         return alertes
     finally:
         await db_pool.close()
@@ -657,24 +650,19 @@ async def _execute_scheduled_screener() -> dict:
         webhook_service = WebhookService()
         alert_history_service = AlertHistoryService(db_pool)
 
-        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
-        logger.info("Screener planifie -- %d tenant(s)", len(tenant_rows))
+        async def _screen_one(_tenant_id: UUID) -> tuple[int, list[str], list[Any]]:
+            return await _screen_tenant_watchlist(
+                screener, db_pool, alert_history_service, webhook_service
+            )
 
-        all_screen_entries: list[Any] = []
-        tickers_fort: list[str] = []
-        total_tickers = 0
-        for trow in tenant_rows:
-            tenant_id = trow["id"]
-            try:
-                with tenant_scope(tenant_id):
-                    nb_tickers, fort_tickers, screen_entries = await _screen_tenant_watchlist(
-                        screener, db_pool, alert_history_service, webhook_service
-                    )
-                total_tickers += nb_tickers
-                tickers_fort.extend(fort_tickers)
-                all_screen_entries.extend(screen_entries)
-            except Exception:
-                logger.exception("Erreur de screener planifie pour le tenant %s", tenant_id)
+        par_tenant = await for_each_tenant(
+            db_pool,
+            _screen_one,
+            error_message="Erreur de screener planifie pour le tenant %s",
+        )
+        total_tickers = sum(nb for nb, _, _ in par_tenant)
+        tickers_fort = [t for _, fort, _ in par_tenant for t in fort]
+        all_screen_entries: list[Any] = [e for _, _, entries in par_tenant for e in entries]
 
         if total_tickers == 0:
             logger.info("Screener planifie ignore -- aucune entree watchlist (tous tenants)")
@@ -875,20 +863,21 @@ async def _execute_retention_purge() -> dict:
     """
     db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
-        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
         service = RetentionService(db_pool)
+
+        # GUC unique source de vérité : sous `tenant_scope`, `purge_tenant()` résout le plan
+        # ET scope le DELETE par le même contexte tenant (pas de double source à diverger).
+        async def _purge_one(tenant_id: UUID) -> tuple[UUID, PurgeResult | None]:
+            return tenant_id, await service.purge_tenant()
+
+        par_tenant = await for_each_tenant(
+            db_pool,
+            _purge_one,
+            error_message="Erreur de purge de rétention pour le tenant %s",
+        )
         by_tenant: dict[str, dict[str, Any]] = {}
         total_deleted = 0
-        for row in tenant_rows:
-            tenant_id = row["id"]
-            # GUC unique source de vérité : sous `tenant_scope`, `purge_tenant()` résout le plan
-            # ET scope le DELETE par le même contexte tenant (pas de double source à diverger).
-            try:
-                with tenant_scope(tenant_id):
-                    result = await service.purge_tenant()
-            except Exception:
-                logger.exception("Erreur de purge de rétention pour le tenant %s", tenant_id)
-                continue
+        for tenant_id, result in par_tenant:
             if result is None:
                 continue
             by_tenant[str(tenant_id)] = {
