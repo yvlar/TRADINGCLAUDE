@@ -212,7 +212,9 @@ class TestExecuteCompositeAlertCheck:
             _patch_build(),
             patch("app.workers.tasks.WatchlistService"),
             patch("app.workers.tasks.CompositeAlertService", return_value=mock_alert_service) as mock_cls,
-            patch.dict("os.environ", {}, clear=True),
+            # APP_ENV conservé : sans lui, resolve_app_database_url() fail-fast (prod). L'objet du
+            # test est l'absence de SMTP, pas la config DSN (create_pool est mocké).
+            patch.dict("os.environ", {"APP_ENV": "test"}, clear=True),
         ):
             await _execute_composite_alert_check()
 
