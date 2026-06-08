@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from app.db.tenant_context import get_current_tenant
 from app.services.api_key_service import ApiKeyRecord, ApiKeyService
 from app.services.audit_log_service import AuditLogEntry, AuditLogService
 from app.utils.env import is_dev_environment
@@ -22,6 +23,8 @@ class CreateKeyRequest(BaseModel):
     name: str
     role: str = "reader"
     expires_at: datetime | None = None
+    # Tenant propriétaire de la clé ; absent → tenant courant (rétrocompatible).
+    tenant_id: UUID | None = None
 
 
 class CreateKeyResponse(BaseModel):
@@ -47,6 +50,11 @@ def _get_audit_log_service(request: Request) -> AuditLogService:
     return service
 
 
+def _is_jwt_user(request: Request) -> bool:
+    """Vrai si la requête vient du chemin cookie JWT (qui pose `user_id`), pas d'une clé Bearer/env."""
+    return getattr(request.state, "user_id", None) is not None
+
+
 def _require_admin(request: Request) -> ApiKeyRecord | None:
     """Vérifie que la requête est authentifiée avec un rôle admin ou la clé env."""
     api_key_service = getattr(request.app.state, "api_key_service", None)
@@ -66,7 +74,11 @@ def _require_admin(request: Request) -> ApiKeyRecord | None:
         raise HTTPException(status_code=401, detail="Token manquant ou invalide")
 
     if record is None:
-        return None  # clé env → admin implicite
+        # record None = clé env (admin implicite) OU utilisateur JWT ; pour le JWT on exige le
+        # rôle admin, sinon tout utilisateur web (même reader) atteindrait l'admin (fail-open).
+        if _is_jwt_user(request) and getattr(request.state, "user_role", "reader") != "admin":
+            raise HTTPException(status_code=403, detail="Accès admin requis")
+        return None
 
     if record.role != "admin":
         raise HTTPException(status_code=403, detail="Accès admin requis")
@@ -87,10 +99,30 @@ async def create_key(
 ) -> CreateKeyResponse:
     if body.role not in ("admin", "reader"):
         raise HTTPException(status_code=422, detail="role doit être 'admin' ou 'reader'")
+    if body.tenant_id is not None:
+        # Verrou cross-tenant : seule la clé env (sans user_id) est exemptée — le chemin JWT pose
+        # aussi api_key_record=None, donc un admin web ne provisionne que pour son tenant courant.
+        is_env_superadmin = _admin is None and not _is_jwt_user(request)
+        if not is_env_superadmin and body.tenant_id != get_current_tenant():
+            raise HTTPException(
+                status_code=403, detail="Création de clé limitée au tenant courant"
+            )
+        # Vérifie l'existence du tenant cible AVANT l'INSERT — une FK violée donnerait un 500.
+        if not await service.tenant_exists(body.tenant_id):
+            raise HTTPException(status_code=404, detail="Tenant introuvable")
     token, record = await service.create_key(
-        name=body.name, role=body.role, expires_at=body.expires_at
+        name=body.name,
+        role=body.role,
+        expires_at=body.expires_at,
+        tenant_id=body.tenant_id,
     )
-    logger.info("Clé API créée : name=%s role=%s id=%s", record.name, record.role, record.id)
+    logger.info(
+        "Clé API créée : name=%s role=%s id=%s tenant=%s",
+        record.name,
+        record.role,
+        record.id,
+        record.tenant_id,
+    )
     return CreateKeyResponse(token=token, key=record)
 
 
