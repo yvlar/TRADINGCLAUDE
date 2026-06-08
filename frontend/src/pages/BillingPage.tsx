@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
@@ -29,9 +30,27 @@ function actionErrorMessage(err: unknown): string {
 }
 
 export default function BillingPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const plan = user?.plan ?? 'free'
   const isFree = plan === 'free'
+
+  // Retour de checkout Stripe : `?status=success|cancel`. On capture le statut dans un
+  // état local puis on nettoie le param (évite de re-déclencher le refresh à un F5 manuel).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [checkoutResult, setCheckoutResult] = useState<'success' | 'cancel' | null>(null)
+  // Garde-fou : un seul traitement du retour de checkout, même si l'effet est rejoué
+  // (StrictMode en dev, ou avant que le nettoyage du param ait propagé un nouveau searchParams).
+  const checkoutHandled = useRef(false)
+  useEffect(() => {
+    if (checkoutHandled.current) return
+    const status = searchParams.get('status')
+    if (status !== 'success' && status !== 'cancel') return
+    checkoutHandled.current = true
+    setCheckoutResult(status)
+    // Le webhook met `tenants.plan` à jour de façon asynchrone → on resync le plan affiché.
+    if (status === 'success') void refreshUser()
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams, refreshUser])
 
   const usage = useQuery({
     queryKey: ['usage', 30],
@@ -62,6 +81,23 @@ export default function BillingPage() {
             Plan courant, consommation du mois et gestion de l'abonnement.
           </p>
         </div>
+
+        {checkoutResult === 'success' && (
+          <div
+            className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300"
+            data-testid="billing-success-banner"
+          >
+            Abonnement activé — merci. Votre plan est en cours de mise à jour.
+          </div>
+        )}
+        {checkoutResult === 'cancel' && (
+          <div
+            className="rounded-md border border-border bg-muted px-4 py-3 text-sm text-muted-foreground"
+            data-testid="billing-cancel-banner"
+          >
+            Paiement annulé. Aucun changement n'a été apporté à votre abonnement.
+          </div>
+        )}
 
         <Card>
           <CardHeader>
