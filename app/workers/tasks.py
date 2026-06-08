@@ -417,10 +417,13 @@ def run_weekly_watchlist_report(self) -> None:
 
 
 async def _execute_composite_alert_check() -> list[str]:
-    """
-    Verifie les alertes composite_score pour toutes les entrees watchlist avec baseline.
-    Relance l'analyse via l'orchestrateur, compare vs la baseline, envoie un email si derive.
-    Retourne la liste des tickers qui ont declenche une alerte.
+    """Verifie les alertes composite_score de TOUS les tenants, chacun sous son contexte RLS (E5-S4).
+
+    `tenants` (table parente hors RLS) énumère le travail ; pour chaque tenant, sous `tenant_scope`
+    (patron `_execute_watchlist_analysis`, S177), `check_composite_alerts()` lit la watchlist
+    RLS-scopée et ré-analyse via un orchestrateur **métré** (`with_metering=True`) → la conso est
+    imputée au tenant propriétaire (`usage_events`), jamais legacy. Best-effort par tenant : l'échec
+    d'un tenant (loggé) n'avorte pas les autres. Retourne l'union des tickers en alerte.
     """
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
@@ -428,9 +431,9 @@ async def _execute_composite_alert_check() -> list[str]:
     db_pool = await asyncpg.create_pool(
         db_url, min_size=1, max_size=3, setup=apply_tenant_context
     )
+    orch_pool: asyncpg.Pool | None = None
     try:
-        orchestrator, _ = await _build_orchestrator()
-        watchlist_service = WatchlistService(db_pool)
+        orchestrator, orch_pool = await _build_orchestrator(with_metering=True)
 
         email_service: EmailService | None = None
         email_to = os.environ.get("REPORT_EMAIL_TO")
@@ -438,29 +441,42 @@ async def _execute_composite_alert_check() -> list[str]:
         if email_to and smtp_host:
             email_service = EmailService()
 
+        # Service construit une fois : la lecture watchlist et le metering dérivent du `tenant_scope`
+        # posé à l'appel (le pool rejoue `apply_tenant_context` → GUC à chaque acquisition).
         alert_service = CompositeAlertService(
-            watchlist_service=watchlist_service,
+            watchlist_service=WatchlistService(db_pool),
             orchestrator=orchestrator,
             email_service=email_service,
             email_to=email_to,
         )
-
-        resultats = await alert_service.check_composite_alerts()
-        alertes = [r.ticker for r in resultats if r.alerte_declenchee]
-
-        # Notifications webhook pour chaque alerte composite déclenchée
         webhook_service = WebhookService()
-        for r in resultats:
-            if r.alerte_declenchee:
-                await webhook_service.send_composite_alert(
-                    ticker=r.ticker,
-                    score=r.new_score,
-                    label=_score_label(r.new_score),
-                )
 
+        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
+        logger.info("Verification alertes composite -- %d tenant(s)", len(tenant_rows))
+
+        alertes: list[str] = []
+        for trow in tenant_rows:
+            tenant_id = trow["id"]
+            try:
+                with tenant_scope(tenant_id):
+                    resultats = await alert_service.check_composite_alerts()
+                    for r in resultats:
+                        if r.alerte_declenchee:
+                            await webhook_service.send_composite_alert(
+                                ticker=r.ticker,
+                                score=r.new_score,
+                                label=_score_label(r.new_score),
+                            )
+                            alertes.append(r.ticker)
+            except Exception:
+                logger.exception(
+                    "Erreur de verification d'alertes composite pour le tenant %s", tenant_id
+                )
         return alertes
     finally:
         await db_pool.close()
+        if orch_pool is not None:
+            await orch_pool.close()
 
 
 async def _execute_eval_drift_check(dataset: str) -> dict:
@@ -510,10 +526,98 @@ def run_composite_alert_check(self) -> None:
     )
 
 
-async def _execute_scheduled_screener() -> dict:
-    """Screene tous les tickers watchlist et envoie les opportunités FORT par webhook."""
+async def _screen_tenant_watchlist(
+    screener: ScreenerService,
+    db_pool: asyncpg.Pool,
+    alert_history_service: AlertHistoryService,
+    webhook_service: WebhookService,
+) -> tuple[int, list[str], list[Any]]:
+    """Screene la watchlist du tenant courant — l'appelant DOIT avoir posé `tenant_scope`.
+
+    Lecture watchlist (RLS), metering de l'orchestrateur, écriture `alert_history` (RLS) et alertes
+    ESG dérivent tous du GUC `app.tenant_id`. Best-effort par batch — l'échec d'un lot (loggé)
+    n'avorte pas les suivants. Retourne (nb tickers watchlist, tickers FORT, tous les ScreenEntry)
+    pour l'agrégation union côté appelant.
+    """
     from app.api.endpoints.screen import ScreenRequest
 
+    wl_service = WatchlistService(db_pool)
+    entries = await wl_service.list_entries()
+    if not entries:
+        return (0, [], [])
+
+    tickers = [e.ticker for e in entries]
+    logger.info("Screener planifie -- %d ticker(s) pour le tenant courant", len(tickers))
+
+    all_screen_entries: list[Any] = []
+    for i in range(0, len(tickers), 20):
+        batch = tickers[i : i + 20]
+        try:
+            req = ScreenRequest(tickers=batch, min_composite_score=70)
+            result = await screener.screen(req)
+            all_screen_entries.extend(result.resultats)
+        except Exception:
+            logger.exception("Erreur screener pour le batch %s", batch)
+
+    fort_entries = [
+        e
+        for e in all_screen_entries
+        if e.erreur is None
+        and (
+            e.composite_label == "FORT"
+            or (e.defensive_score is not None and e.defensive_score >= 5)
+        )
+    ]
+
+    for e in fort_entries:
+        try:
+            await alert_history_service.record(
+                ticker=e.ticker,
+                type="SCREENER_FORT",
+                valeur=float(e.composite_score) if e.composite_score is not None else None,
+                seuil=70.0,
+                message=f"Screener hebdomadaire — composite_label={e.composite_label}",
+            )
+        except Exception:
+            logger.warning(
+                "Impossible d'enregistrer l'alerte screener FORT dans alert_history pour %s",
+                e.ticker,
+            )
+
+    # Alertes ESG — scores ESG stockés vs seuils par entrée watchlist (scopées au tenant courant)
+    nb_alertes_esg = 0
+    for entry in entries:
+        if (
+            entry.last_esg_score is not None
+            and entry.last_esg_score < entry.esg_alert_threshold
+        ):
+            sent = await webhook_service.send_esg_alert(
+                ticker=entry.ticker,
+                esg_score=entry.last_esg_score,
+                threshold=entry.esg_alert_threshold,
+            )
+            if sent:
+                nb_alertes_esg += 1
+                logger.warning(
+                    "Alerte ESG — %s : score %.1f < seuil %.1f",
+                    entry.ticker, entry.last_esg_score, entry.esg_alert_threshold,
+                )
+    if nb_alertes_esg:
+        logger.info("Screener planifie -- %d alerte(s) ESG envoyee(s) (tenant courant)", nb_alertes_esg)
+
+    return (len(tickers), [e.ticker for e in fort_entries], all_screen_entries)
+
+
+async def _execute_scheduled_screener() -> dict:
+    """Screene la watchlist de TOUS les tenants (chacun sous son contexte RLS) et notifie les FORT (E5-S4).
+
+    `tenants` (hors RLS) énumère le travail ; chaque tenant est screené sous `tenant_scope` avec un
+    orchestrateur **métré** → la conso planifiée est imputée au tenant propriétaire (`usage_events`),
+    jamais legacy. **Décision** : le webhook FORT, le rapport PDF et le résumé Slack sont **agrégés sur
+    l'union des tenants** (un seul envoi par run — comportement observable équivalent au run legacy
+    unique), tandis que la lecture watchlist, le metering et l'écriture `alert_history` (RLS) restent
+    **par tenant**. Best-effort par tenant : l'échec d'un tenant (loggé) n'avorte pas les autres.
+    """
     db_url = os.environ.get(
         "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
     )
@@ -522,40 +626,48 @@ async def _execute_scheduled_screener() -> dict:
     )
     orch_pool: asyncpg.Pool | None = None
     try:
-        wl_service = WatchlistService(db_pool)
-        entries = await wl_service.list_entries()
+        orchestrator, orch_pool = await _build_orchestrator(with_metering=True)
+        screener = ScreenerService(
+            orchestrator=orchestrator, extractor=YahooFinanceExtractor()
+        )
+        webhook_service = WebhookService()
+        alert_history_service = AlertHistoryService(db_pool)
 
-        if not entries:
-            logger.info("Screener planifié ignoré — watchlist vide")
+        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
+        logger.info("Screener planifie -- %d tenant(s)", len(tenant_rows))
+
+        all_screen_entries: list[Any] = []
+        tickers_fort: list[str] = []
+        total_tickers = 0
+        for trow in tenant_rows:
+            tenant_id = trow["id"]
+            try:
+                with tenant_scope(tenant_id):
+                    nb_tickers, fort_tickers, screen_entries = await _screen_tenant_watchlist(
+                        screener, db_pool, alert_history_service, webhook_service
+                    )
+                total_tickers += nb_tickers
+                tickers_fort.extend(fort_tickers)
+                all_screen_entries.extend(screen_entries)
+            except Exception:
+                logger.exception("Erreur de screener planifie pour le tenant %s", tenant_id)
+
+        if total_tickers == 0:
+            logger.info("Screener planifie ignore -- aucune entree watchlist (tous tenants)")
             return {"nb_tickers_screenes": 0, "nb_opportunites": 0, "tickers_fort": []}
 
-        tickers = [e.ticker for e in entries]
-        logger.info("Screener planifié — %d ticker(s) à analyser", len(tickers))
-
-        orchestrator, orch_pool = await _build_orchestrator()
-        extractor = YahooFinanceExtractor()
-        screener = ScreenerService(orchestrator=orchestrator, extractor=extractor)
-
-        all_screen_entries = []
-        for i in range(0, len(tickers), 20):
-            batch = tickers[i : i + 20]
-            try:
-                req = ScreenRequest(tickers=batch, min_composite_score=70)
-                result = await screener.screen(req)
-                all_screen_entries.extend(result.resultats)
-            except Exception:
-                logger.exception("Erreur screener pour le batch %s", batch)
-
-        fort_entries = [
-            e
-            for e in all_screen_entries
-            if e.erreur is None
-            and (
-                e.composite_label == "FORT"
-                or (e.defensive_score is not None and e.defensive_score >= 5)
+        # Webhook FORT agrégé sur l'union des tenants (un seul envoi par run).
+        if tickers_fort:
+            await webhook_service.send_screener_report(
+                nb_tickers_screenes=total_tickers,
+                tickers_fort=tickers_fort,
             )
-        ]
-        tickers_fort = [e.ticker for e in fort_entries]
+            logger.info(
+                "Screener planifie -- %d opportunite(s) FORT notifiee(s) par webhook JSON (union tenants)",
+                len(tickers_fort),
+            )
+        else:
+            logger.info("Screener planifie -- aucune opportunite FORT identifiee")
 
         from types import SimpleNamespace
 
@@ -571,69 +683,19 @@ async def _execute_scheduled_screener() -> dict:
             duration_ms=0,
         )
 
-        webhook_service = WebhookService()
-        alert_history_service = AlertHistoryService(db_pool)
-        if tickers_fort:
-            await webhook_service.send_screener_report(
-                nb_tickers_screenes=len(tickers),
-                tickers_fort=tickers_fort,
-            )
-            logger.info(
-                "Screener planifié — %d opportunité(s) FORT notifiée(s) par webhook JSON",
-                len(tickers_fort),
-            )
-            for e in fort_entries:
-                try:
-                    await alert_history_service.record(
-                        ticker=e.ticker,
-                        type="SCREENER_FORT",
-                        valeur=float(e.composite_score) if e.composite_score is not None else None,
-                        seuil=70.0,
-                        message=f"Screener hebdomadaire — composite_label={e.composite_label}",
-                    )
-                except Exception:
-                    logger.warning(
-                        "Impossible d'enregistrer l'alerte screener FORT dans alert_history pour %s",
-                        e.ticker,
-                    )
-
-        # Envoi du rapport PDF en plus du JSON (optionnel — no-op si WEBHOOK_URL absent)
+        # Rapport PDF agrégé (no-op si WEBHOOK_URL absent)
         await webhook_service.send_screener_pdf_report(screen_result)
 
-        # Alertes ESG — vérification des scores ESG stockés vs seuils par entrée watchlist
-        nb_alertes_esg = 0
-        for entry in entries:
-            if (
-                entry.last_esg_score is not None
-                and entry.last_esg_score < entry.esg_alert_threshold
-            ):
-                sent = await webhook_service.send_esg_alert(
-                    ticker=entry.ticker,
-                    esg_score=entry.last_esg_score,
-                    threshold=entry.esg_alert_threshold,
-                )
-                if sent:
-                    nb_alertes_esg += 1
-                    logger.warning(
-                        "Alerte ESG — %s : score %.1f < seuil %.1f",
-                        entry.ticker, entry.last_esg_score, entry.esg_alert_threshold,
-                    )
-        if nb_alertes_esg:
-            logger.info("Screener planifié — %d alerte(s) ESG envoyée(s)", nb_alertes_esg)
-
-        if not tickers_fort:
-            logger.info("Screener planifié — aucune opportunité FORT identifiée")
-
-        # Résumé Slack (no-op si SLACK_WEBHOOK_URL absent)
+        # Résumé Slack agrégé (no-op si SLACK_WEBHOOK_URL absent)
         slack_service = SlackService()
         await slack_service.send_screener_summary(
-            nb_analyses=len(tickers),
+            nb_analyses=total_tickers,
             nb_fort=len(tickers_fort),
             cout_usd=screen_result.cout_total_usd,
         )
 
         return {
-            "nb_tickers_screenes": len(tickers),
+            "nb_tickers_screenes": total_tickers,
             "nb_opportunites": len(tickers_fort),
             "tickers_fort": tickers_fort,
         }
