@@ -9,6 +9,7 @@ interface AuthContextValue {
   isLoading: boolean
   login: (data: LoginRequest) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -42,6 +43,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(response.user)
   }, [])
 
+  // Re-synchronise le profil depuis le serveur (ex. plan changé après checkout Stripe).
+  // Échec (token expiré) → on garde l'état courant : un aléa réseau ne doit pas déconnecter.
+  const refreshUser = useCallback(async (): Promise<void> => {
+    try {
+      setUser(await authMe())
+    } catch {
+      // état courant préservé
+    }
+  }, [])
+
   const logout = useCallback(async (): Promise<void> => {
     try {
       await authLogout()
@@ -60,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         login,
         logout,
+        refreshUser,
       }}
     >
       {children}

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -10,9 +11,18 @@ vi.mock('../api/usage', () => ({ getUsage: vi.fn() }))
 vi.mock('../api/billing', () => ({ createCheckout: vi.fn(), openPortal: vi.fn() }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 
+// useSearchParams mocké : on contrôle `?status` et on observe le nettoyage du param.
+const mockSetSearchParams = vi.fn()
+let mockSearchParams = new URLSearchParams()
+vi.mock('react-router-dom', () => ({
+  useSearchParams: () => [mockSearchParams, mockSetSearchParams] as const,
+}))
+
 import { getUsage } from '../api/usage'
 import { createCheckout, openPortal } from '../api/billing'
 import { useAuth } from '../contexts/AuthContext'
+
+const mockRefreshUser = vi.fn()
 
 const _USAGE: UsageResponse = {
   period_days: 30,
@@ -45,6 +55,7 @@ function setAuth(plan: string) {
     isLoading: false,
     login: vi.fn(),
     logout: vi.fn(),
+    refreshUser: mockRefreshUser,
   })
 }
 
@@ -58,6 +69,7 @@ describe('BillingPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSearchParams = new URLSearchParams()
     vi.mocked(getUsage).mockResolvedValue(_USAGE)
     setAuth('free')
     // Stub de window.location : la redirection CTA assigne `href` (jsdom ne navigue pas).
@@ -145,5 +157,55 @@ describe('BillingPage', () => {
     })
     // La page reste montée (titre toujours présent).
     expect(screen.getByText('Facturation')).toBeInTheDocument()
+  })
+
+  it('?status=success → bandeau de succès, refreshUser appelé une fois (garde StrictMode)', async () => {
+    mockSearchParams = new URLSearchParams('status=success')
+    // StrictMode double-invoque l'effet en dev : le garde-fou useRef doit garantir un seul refreshUser.
+    render(
+      <StrictMode>
+        <BillingPage />
+      </StrictMode>,
+      { wrapper },
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-success-banner')).toBeInTheDocument()
+    })
+    expect(mockRefreshUser).toHaveBeenCalledOnce()
+    expect(mockSetSearchParams).toHaveBeenCalledWith({}, { replace: true })
+    expect(screen.queryByTestId('billing-cancel-banner')).not.toBeInTheDocument()
+  })
+
+  it('?status=cancel → message d\'annulation, refreshUser NON appelé', async () => {
+    mockSearchParams = new URLSearchParams('status=cancel')
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-cancel-banner')).toBeInTheDocument()
+    })
+    expect(mockRefreshUser).not.toHaveBeenCalled()
+    expect(mockSetSearchParams).toHaveBeenCalledWith({}, { replace: true })
+    expect(screen.queryByTestId('billing-success-banner')).not.toBeInTheDocument()
+  })
+
+  it('sans ?status → aucun bandeau, refreshUser non appelé, param non touché', () => {
+    render(<BillingPage />, { wrapper })
+    expect(screen.queryByTestId('billing-success-banner')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('billing-cancel-banner')).not.toBeInTheDocument()
+    expect(mockRefreshUser).not.toHaveBeenCalled()
+    expect(mockSetSearchParams).not.toHaveBeenCalled()
+  })
+
+  it('après refresh renvoyant plan pro, le CTA bascule checkout → portail', async () => {
+    // Au montage : plan free → CTA checkout. Le retour de checkout déclenche refreshUser ;
+    // on simule le plan re-synchronisé en faisant repointer useAuth sur plan='pro'.
+    mockSearchParams = new URLSearchParams('status=success')
+    const { rerender } = render(<BillingPage />, { wrapper })
+    expect(screen.getByTestId('billing-checkout-btn')).toBeInTheDocument()
+    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledOnce())
+
+    setAuth('pro')
+    rerender(<BillingPage />)
+    expect(screen.getByTestId('billing-portal-btn')).toBeInTheDocument()
+    expect(screen.queryByTestId('billing-checkout-btn')).not.toBeInTheDocument()
   })
 })
