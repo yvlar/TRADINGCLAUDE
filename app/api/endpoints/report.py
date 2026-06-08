@@ -8,6 +8,8 @@ import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+from app.api.endpoints.auth import _get_current_user
+from app.db.tenant_context import tenant_scope
 from app.orchestrator.core import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -46,16 +48,22 @@ def _pdf_response(pdf_bytes: bytes, ticker: str) -> Response:
 async def post_report(request: Request, body: AnalyzeRequest) -> Response:
     """
     Exécute le même workflow que POST /analyze, puis génère un PDF structuré.
-    Retourne le PDF en streaming (application/pdf).
+    Retourne le PDF en streaming (application/pdf). 401 si non authentifié.
     """
+    user = await _get_current_user(request)
     orchestrator: Orchestrator = request.app.state.orchestrator
     cache = getattr(request.app.state, "analysis_cache", None)
     observability = getattr(request.app.state, "observability", None)
 
     try:
-        analysis = await orchestrator.run_company_analysis(
-            body, cache=cache, observability=observability
-        )
+        # Analyse exécutée sous le tenant du demandeur : metering + écritures (RLS)
+        # ciblent son tenant, jamais le tenant legacy (E4-S11). Explicite à dessein —
+        # source unique du tenant hors `TenantContextMiddleware` (test harness bare-app
+        # sans middleware) ; ne pas retirer même si la requête le pose déjà en prod.
+        with tenant_scope(user.get("tenant_id")):
+            analysis = await orchestrator.run_company_analysis(
+                body, cache=cache, observability=observability
+            )
     except Exception as exc:
         raise sanitized_http_500(
             exc, logger, f"Erreur lors de l'analyse pour le rapport PDF — ticker {body.ticker}"
@@ -80,19 +88,24 @@ async def post_report(request: Request, body: AnalyzeRequest) -> Response:
 async def get_report(request: Request, analysis_id: str) -> Response:
     """
     Récupère une analyse depuis analysis_history par son UUID et génère le PDF correspondant.
-    Retourne 404 si l'analysis_id est inconnu.
+    Retourne 401 si non authentifié, 404 si l'analysis_id est inconnu ou appartient à un autre tenant.
     """
+    user = await _get_current_user(request)
     db_pool: asyncpg.Pool = request.app.state.db_pool
 
     try:
-        row = await db_pool.fetchrow(
-            """
-            SELECT id, ticker, workflow_name, skills_used, input_data, result, cost_usd, created_at
-            FROM analysis_history
-            WHERE id = $1::uuid
-            """,
-            analysis_id,
-        )
+        # Lecture sous le tenant du demandeur : la RLS masque les analyses des autres
+        # tenants → un rapport ne reflète jamais les données d'un tiers (E4-S11).
+        # Explicite à dessein (cf. post_report) : ne pas retirer comme « redondant ».
+        with tenant_scope(user.get("tenant_id")):
+            row = await db_pool.fetchrow(
+                """
+                SELECT id, ticker, workflow_name, skills_used, input_data, result, cost_usd, created_at
+                FROM analysis_history
+                WHERE id = $1::uuid
+                """,
+                analysis_id,
+            )
     except Exception as exc:
         raise sanitized_http_500(
             exc, logger, f"Erreur DB lors de la récupération de l'analyse {analysis_id}"
