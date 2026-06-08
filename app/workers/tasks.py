@@ -26,6 +26,8 @@ from app.services.report import ReportService
 from app.services.retention_service import RetentionService
 from app.services.screener import ScreenerService
 from app.services.slack_service import SlackService
+from app.services.stripe_service import StripeService
+from app.services.usage_event_service import UsageEventService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
@@ -820,6 +822,133 @@ def run_retention_purge(self) -> dict:
         "Fin purge de rétention — %d tenant(s), %d ligne(s) supprimée(s)",
         result.get("tenants_purged", 0),
         result.get("total_deleted", 0),
+    )
+    return result
+
+
+def _build_stripe_service(db_pool: asyncpg.Pool) -> StripeService:
+    """Construit le `StripeService` depuis l'environnement (mêmes clés que le lifespan FastAPI)."""
+    price_by_plan = {
+        plan: price
+        for plan, env in (("free", "STRIPE_PRICE_FREE"), ("pro", "STRIPE_PRICE_PRO"))
+        if (price := os.environ.get(env))
+    }
+    return StripeService(
+        db_pool,
+        secret_key=os.environ.get("STRIPE_SECRET_KEY"),
+        webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
+        price_by_plan=price_by_plan,
+        meter_event_name=os.environ.get("STRIPE_METER_EVENT_NAME"),
+    )
+
+
+async def _execute_usage_reporting() -> dict[str, Any]:
+    """Pousse la consommation métrée de chaque tenant abonné vers Stripe (metered usage records).
+
+    Pour chaque abonnement `active` portant un `stripe_subscription_id` et un `stripe_customer_id`,
+    agrège le nombre d'événements `usage_events` sur la fenêtre non encore rapportée
+    `(usage_reported_through, window_end]` **sous le contexte RLS du tenant**, pousse un metered
+    record de cette quantité, puis avance le curseur `usage_reported_through` → `window_end`.
+
+    **Anti-double-facturation** : le curseur garantit qu'une fenêtre déjà rapportée ne l'est pas
+    deux fois (une 2ᵉ exécution voit une fenêtre vide → aucun report). **Best-effort** : l'échec
+    d'un tenant (loggé) n'avorte pas le report des autres et **n'avance pas son curseur** (la
+    fenêtre sera retentée au prochain run plutôt que perdue). Aucune clé Stripe n'est loggée.
+    """
+    db_url = os.environ.get(
+        "DATABASE_URL", "postgresql://copilote:copilote@postgres:5432/copilote"
+    )
+    db_pool = await asyncpg.create_pool(
+        db_url, min_size=1, max_size=3, setup=apply_tenant_context
+    )
+    try:
+        stripe_service = _build_stripe_service(db_pool)
+        if not stripe_service.is_metered_configured:
+            logger.info("Facturation à l'usage désactivée (meter Stripe non configuré) — report ignoré")
+            return {"tenants_reported": 0, "total_quantity": 0, "by_tenant": {}}
+
+        usage_service = UsageEventService(db_pool)
+        # Fenêtre figée une fois pour tout le batch → curseurs cohérents entre tenants.
+        window_end = datetime.now(timezone.utc)
+        rows = await db_pool.fetch(
+            """
+            SELECT tenant_id, stripe_customer_id, usage_reported_through
+            FROM subscriptions
+            WHERE status = 'active'
+              AND stripe_subscription_id IS NOT NULL
+              AND stripe_customer_id IS NOT NULL
+            ORDER BY tenant_id
+            """
+        )
+
+        by_tenant: dict[str, int] = {}
+        total_quantity = 0
+        for row in rows:
+            tenant_id = row["tenant_id"]
+            customer_id = row["stripe_customer_id"]
+            since = row["usage_reported_through"]
+            # Identifiant déduplicant Stripe (fenêtre glissante ≥ 24 h) keyé sur la BORNE BASSE de
+            # la fenêtre (`since`), PAS sur `window_end` : si le report réussit mais que l'avance du
+            # curseur échoue ensuite, le run suivant reverra le même `since` (curseur inchangé) → même
+            # identifiant → Stripe ignore le re-rejeu (facturation at-most-once, jamais de double-
+            # facturation). Une fenêtre normalement avancée porte un `since` distinct → jamais dédupée.
+            window_key = since.isoformat() if since is not None else "genesis"
+            try:
+                # Le COUNT de usage_events est scopé par la RLS → poser le contexte du tenant.
+                with tenant_scope(tenant_id):
+                    quantity = await usage_service.count_events_in_window(since, window_end)
+                if quantity > 0:
+                    await stripe_service.report_usage(
+                        customer_id,
+                        quantity,
+                        timestamp=int(window_end.timestamp()),
+                        identifier=f"{tenant_id}:{window_key}",
+                    )
+                # Curseur avancé seulement après un report réussi (report → avance, dans cet ordre) :
+                # une fenêtre vide avance aussi (rien à perdre), un échec ci-dessus saute l'avance.
+                await db_pool.execute(
+                    """
+                    UPDATE subscriptions
+                    SET usage_reported_through = $2, updated_at = NOW()
+                    WHERE tenant_id = $1::uuid
+                    """,
+                    str(tenant_id),
+                    window_end,
+                )
+            except Exception:
+                logger.exception("Échec du report d'usage Stripe pour le tenant %s", tenant_id)
+                continue
+            if quantity > 0:
+                by_tenant[str(tenant_id)] = quantity
+                total_quantity += quantity
+
+        logger.info(
+            "Report d'usage Stripe — %d tenant(s) rapporté(s), %d unité(s)",
+            len(by_tenant),
+            total_quantity,
+        )
+        return {
+            "tenants_reported": len(by_tenant),
+            "total_quantity": total_quantity,
+            "by_tenant": by_tenant,
+        }
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_usage_reporting", bind=True)
+def run_usage_reporting(self) -> dict:
+    """
+    Tâche Celery — report quotidien de la consommation métrée des tenants abonnés vers Stripe.
+    Planifiée tous les jours à 02h00 UTC (heure creuse, avant la purge de rétention 03h00) via beat.
+    No-op si la facturation à l'usage n'est pas configurée (`STRIPE_METER_EVENT_NAME` absent).
+    """
+    logger.info("Début report d'usage métré vers Stripe")
+    result = asyncio.run(_execute_usage_reporting())
+    logger.info(
+        "Fin report d'usage métré — %d tenant(s), %d unité(s) rapportée(s)",
+        result.get("tenants_reported", 0),
+        result.get("total_quantity", 0),
     )
     return result
 

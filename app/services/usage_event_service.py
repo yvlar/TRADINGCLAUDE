@@ -141,6 +141,35 @@ class UsageEventService:
         )
 
 
+    async def count_events_in_window(
+        self, since: datetime | None, until: datetime
+    ) -> int:
+        """Compte les événements de consommation du tenant courant sur `(since, until]` (lecture seule).
+
+        Unité métrée du report Stripe (E4-S9) : un événement = une exécution de skill facturable.
+        `since=None` (curseur jamais posé) → toute la consommation jusqu'à `until`. **Aucun filtre
+        `WHERE tenant_id`** : l'isolation vient de la RLS (GUC `app.tenant_id`), comme `aggregate` —
+        l'appelant DOIT avoir posé `set_current_tenant(tenant_id)`. Borne supérieure incluse,
+        inférieure exclue → des fenêtres consécutives ne se chevauchent ni ne laissent de trou.
+        """
+        if since is None:
+            return int(
+                await self._db.fetchval(
+                    "SELECT COUNT(*) FROM usage_events WHERE created_at <= $1",
+                    until,
+                )
+                or 0
+            )
+        return int(
+            await self._db.fetchval(
+                "SELECT COUNT(*) FROM usage_events WHERE created_at > $1 AND created_at <= $2",
+                since,
+                until,
+            )
+            or 0
+        )
+
+
 def _row_to_event(row: asyncpg.Record) -> UsageEvent:
     return UsageEvent(
         id=row["id"],

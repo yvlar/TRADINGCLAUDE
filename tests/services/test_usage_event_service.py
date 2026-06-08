@@ -140,9 +140,70 @@ class TestRecord:
 class TestAppendOnly:
 
     def test_service_n_expose_aucune_mutation(self):
-        """Append-only : `record` (write) + `aggregate` (read), aucun update ni delete."""
+        """Append-only : `record` (write) + `aggregate`/`count_events_in_window` (read), jamais update/delete."""
         methods = {m for m in dir(UsageEventService) if not m.startswith("_")}
-        assert methods == {"record", "aggregate"}
+        assert methods == {"record", "aggregate", "count_events_in_window"}
+
+
+class TestCountEventsInWindow:
+
+    @pytest.mark.asyncio
+    async def test_compte_fenetre_bornee(self):
+        pool = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=5)
+        svc = UsageEventService(db_pool=pool)
+        since = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        until = datetime(2026, 6, 8, tzinfo=timezone.utc)
+
+        count = await svc.count_events_in_window(since, until)
+
+        assert count == 5
+        query, *args = pool.fetchval.call_args.args
+        # Borne basse exclue, haute incluse → fenêtres consécutives sans chevauchement ni trou.
+        assert "created_at > $1 AND created_at <= $2" in query
+        assert args == [since, until]
+
+    @pytest.mark.asyncio
+    async def test_since_none_compte_tout_jusqua_until(self):
+        """Curseur jamais posé → toute la consommation jusqu'à `until` (created_at <= until)."""
+        pool = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=12)
+        svc = UsageEventService(db_pool=pool)
+        until = datetime(2026, 6, 8, tzinfo=timezone.utc)
+
+        count = await svc.count_events_in_window(None, until)
+
+        assert count == 12
+        query, *args = pool.fetchval.call_args.args
+        assert "created_at <= $1" in query
+        assert "created_at >" not in query
+        assert args == [until]
+
+    @pytest.mark.asyncio
+    async def test_jeu_vide_renvoie_zero(self):
+        """COUNT(*) ne renvoie jamais NULL, mais le COALESCE défensif garantit 0."""
+        pool = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        svc = UsageEventService(db_pool=pool)
+        count = await svc.count_events_in_window(
+            datetime(2026, 6, 1, tzinfo=timezone.utc),
+            datetime(2026, 6, 8, tzinfo=timezone.utc),
+        )
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_sans_filtre_tenant_applicatif(self):
+        """Isolation par la RLS : aucune des requêtes ne porte de WHERE tenant_id."""
+        pool = AsyncMock()
+        pool.fetchval = AsyncMock(return_value=0)
+        svc = UsageEventService(db_pool=pool)
+        until = datetime(2026, 6, 8, tzinfo=timezone.utc)
+
+        await svc.count_events_in_window(None, until)
+        await svc.count_events_in_window(datetime(2026, 6, 1, tzinfo=timezone.utc), until)
+
+        for call in pool.fetchval.call_args_list:
+            assert "tenant_id" not in call.args[0]
 
 
 class TestAggregate:
