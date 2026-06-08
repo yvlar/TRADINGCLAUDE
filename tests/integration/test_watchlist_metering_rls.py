@@ -62,7 +62,9 @@ async def test_metering_watchlist_impute_au_tenant_proprietaire():
         _RLS_DB_URL, min_size=1, max_size=2, setup=apply_tenant_context
     )
     suffixe = uuid.uuid4().hex[:8].upper()
-    ticker_b = f"WLB{suffixe}"
+    # Ticker borné à 6 caractères [A-Z0-9] (contrainte `sanitize_ticker`, donc `AnalyzeRequest`) ;
+    # l'unicité de l'événement repose sur `skill_marker`, pas sur le ticker.
+    ticker_b = f"W{suffixe[:5]}"
     skill_marker = f"wl-metering-{suffixe}"  # marqueur unique pour retrouver l'événement
     # Le metering écrit via le pool du worker (sous le `tenant_scope` que le worker pose).
     usage_service = UsageEventService(worker_pool)
