@@ -21,6 +21,7 @@ celery_app.conf.update(
     result_expires=86400,
 )
 
+# Report d'usage métré vers Stripe — tous les jours à 02h00 UTC (heure creuse, avant la purge)
 # Purge de rétention par plan — tous les jours à 03h00 UTC (heure creuse, avant les autres tâches)
 # Re-analyse hebdomadaire de la watchlist — tous les dimanches à 07h00 UTC
 # Vérification quotidienne des alertes prix — tous les jours à 08h00 UTC
@@ -28,6 +29,10 @@ celery_app.conf.update(
 # Vérification quotidienne alertes composite_score — tous les jours à 10h00 UTC
 # Screener hebdomadaire watchlist — tous les dimanches à 11h00 UTC (après les autres tâches)
 celery_app.conf.beat_schedule = {
+    "run-usage-reporting-daily": {
+        "task": "run_usage_reporting",
+        "schedule": crontab(hour=2, minute=0),
+    },
     "run-retention-purge-daily": {
         "task": "run_retention_purge",
         "schedule": crontab(hour=3, minute=0),

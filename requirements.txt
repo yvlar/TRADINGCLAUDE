@@ -28,5 +28,7 @@ email-validator>=2.1.0
 # Migrations versionnées (E2-S1) — SQLAlchemy[asyncio] tire greenlet + driver async
 alembic>=1.13.0
 sqlalchemy[asyncio]>=2.0.0
-# Facturation Stripe (E4-S7) — abonnements + webhooks ; SDK officiel
-stripe>=11.0.0
+# Facturation Stripe (E4-S7/S9) — abonnements + webhooks + usage métré ; SDK officiel.
+# Plancher >=15 : la facturation à l'usage (E4-S9) cible la Billing Meters API
+# (stripe.billing.MeterEvent) ; les « usage records » historiques sont retirés du SDK >=15.
+stripe>=15.0.0

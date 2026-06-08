@@ -1,11 +1,16 @@
-"""Service de facturation Stripe — abonnements + synchronisation de plan (E4-S7).
+"""Service de facturation Stripe — abonnements + synchronisation de plan + usage métré (E4-S7/S9).
 
 Convertit le socle metering/quotas (S166-S171) en revenu réel :
 - **checkout** : crée une session d'abonnement Stripe pour un tenant et un plan ;
 - **synchronisation** : à la réception d'un événement d'abonnement signé, met à jour
   `tenants.plan` (le `QuotaService` et la purge de rétention en dépendent déjà) et la
   ligne `subscriptions` du tenant ;
-- **idempotence** : un même `event.id` n'est traité qu'une fois (journal `stripe_events`).
+- **idempotence webhook** : un même `event.id` n'est traité qu'une fois (journal `stripe_events`) ;
+- **usage métré (E4-S9)** : `report_usage` pousse la consommation agrégée d'un tenant en
+  *metered usage record* via la **Billing Meters API** (`stripe.billing.MeterEvent.create`).
+  L'API « usage records » historique (`SubscriptionItem.create_usage_record`) a été retirée du SDK
+  `stripe>=15` ; le meter event cible donc un **customer** (`stripe_customer_id`) + un nom
+  d'événement de meter (`STRIPE_METER_EVENT_NAME`), pas un `subscription_item`.
 
 Sécurité — la signature `Stripe-Signature` (HMAC via `STRIPE_WEBHOOK_SECRET`) est la SEULE
 authentification du webhook (endpoint auth-exempté) : `verify_event` doit être appelé AVANT
@@ -65,6 +70,7 @@ class StripeService:
         secret_key: str | None,
         webhook_secret: str | None,
         price_by_plan: dict[str, str],
+        meter_event_name: str | None = None,
     ) -> None:
         self._db = db_pool
         self._secret_key = secret_key
@@ -72,11 +78,22 @@ class StripeService:
         # Mapping plan→price ET inverse price→plan (résolution du plan depuis un événement).
         self._price_by_plan = dict(price_by_plan)
         self._plan_by_price = {price: plan for plan, price in price_by_plan.items()}
+        # Nom de l'événement du meter Stripe (Billing Meters) — cible du metered usage record.
+        self._meter_event_name = meter_event_name
 
     @property
     def is_configured(self) -> bool:
         """Vrai si la clé secrète ET le secret de webhook sont présents (sinon billing désactivé)."""
         return bool(self._secret_key) and bool(self._webhook_secret)
+
+    @property
+    def is_metered_configured(self) -> bool:
+        """Vrai si la clé secrète ET le nom d'événement du meter sont présents.
+
+        La facturation à l'usage est **désactivée** (report no-op) sans `STRIPE_METER_EVENT_NAME` —
+        distincte de `is_configured` (abonnement/webhook), qui ne suffit pas à émettre un meter event.
+        """
+        return bool(self._secret_key) and bool(self._meter_event_name)
 
     def plan_for_price(self, price_id: str | None) -> str:
         """Plan correspondant à un price Stripe (repli `free` si inconnu ou None)."""
@@ -131,6 +148,40 @@ class StripeService:
             return_url=return_url,
         )
         return session["url"]
+
+    # --- Usage métré (E4-S9) ---
+
+    async def report_usage(
+        self, customer_id: str, quantity: int, *, timestamp: int, identifier: str | None = None
+    ) -> None:
+        """Pousse un metered usage record (`quantity` unités) vers le meter du customer.
+
+        No-op loggé si la facturation à l'usage n'est pas configurée (`is_metered_configured`) —
+        jamais d'erreur (cohérent avec la désactivation propre du billing). La quantité est
+        transmise en chaîne dans `payload.value` (le SDK attend des `str`). `identifier` (optionnel)
+        rend le report déduplicable par Stripe sur une fenêtre glissante ≥ 24 h : l'appelant le keye
+        sur la borne basse de la fenêtre rapportée, de sorte qu'un report réussi suivi d'un échec
+        d'avance du curseur ne provoque PAS de double-facturation (le re-rejeu de la même fenêtre
+        porte le même `identifier` → ignoré par Stripe). La clé secrète est passée par appel
+        (`api_key=`), jamais loggée ; l'appel SDK synchrone est déporté via `asyncio.to_thread`.
+        """
+        if not self.is_metered_configured:
+            logger.info(
+                "Facturation à l'usage désactivée (meter Stripe non configuré) — report ignoré (customer %s, %d unité(s))",
+                customer_id,
+                quantity,
+            )
+            return
+        params: dict[str, Any] = {
+            "api_key": self._secret_key,
+            "event_name": self._meter_event_name,
+            "payload": {"stripe_customer_id": customer_id, "value": str(quantity)},
+            "timestamp": timestamp,
+        }
+        if identifier is not None:
+            params["identifier"] = identifier
+        await asyncio.to_thread(stripe.billing.MeterEvent.create, **params)
+        logger.info("Usage métré rapporté à Stripe — customer %s, %d unité(s)", customer_id, quantity)
 
     async def _get_or_create_customer(self, tenant_id: UUID) -> str:
         """Retourne le `stripe_customer_id` du tenant, le créant (et le persistant) au besoin."""

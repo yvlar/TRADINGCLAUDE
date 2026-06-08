@@ -392,6 +392,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         secret_key=os.environ.get("STRIPE_SECRET_KEY"),
         webhook_secret=os.environ.get("STRIPE_WEBHOOK_SECRET"),
         price_by_plan=stripe_price_by_plan,
+        meter_event_name=os.environ.get("STRIPE_METER_EVENT_NAME"),
     )
 
     app.state.audit_log_service = audit_log_service
