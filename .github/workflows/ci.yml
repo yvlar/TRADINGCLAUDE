@@ -218,13 +218,19 @@ jobs:
                   "TO rls_tester"
               )
               await c.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO rls_tester")
+              # app_runtime : rôle de connexion runtime créé par la migration 0011 (S182) SANS
+              # mot de passe (hygiène secrets). On en pose un jetable pour exécuter la preuve
+              # d'isolation sous le rôle RÉEL du runtime (NOSUPERUSER/NOBYPASSRLS) — les GRANTs,
+              # eux, viennent déjà de la migration.
+              await c.execute("ALTER ROLE app_runtime PASSWORD 'app_runtime'")
               await c.close()
           asyncio.run(main())
           PY
 
-      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention + webhook Stripe + rapport scopé tenant (rôle NOSUPERUSER)
+      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention + webhook Stripe + rapport scopé tenant + rôle runtime app_runtime (rôle NOSUPERUSER)
         env:
           RLS_TEST_DATABASE_URL: postgresql://rls_tester:rls_tester@localhost:5432/copilote
+          APP_DATABASE_URL: postgresql://app_runtime:app_runtime@localhost:5432/copilote
         run: >-
           pytest tests/integration/test_rls_isolation.py
           tests/integration/test_api_key_tenant_integration.py
@@ -234,6 +240,7 @@ jobs:
           tests/integration/test_report_tenant_rls.py
           tests/integration/test_watchlist_metering_rls.py
           tests/integration/test_scheduled_metering_rls.py
+          tests/integration/test_app_runtime_rls.py
           -m integration -q --tb=short
 
   test-e2e:

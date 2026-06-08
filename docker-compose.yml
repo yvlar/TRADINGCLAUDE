@@ -33,6 +33,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      # Seul `copilote` migre + provisionne le mot de passe de `app_runtime` (S182) ; démarrer le
+      # worker après lui réduit la fenêtre où une tâche se connecterait avant le provisioning. Les
+      # pools worker sont créés à la tâche (pas au boot) et Celery réessaie → fenêtre résiduelle bénigne.
+      copilote:
+        condition: service_started
     restart: unless-stopped
 
   postgres:

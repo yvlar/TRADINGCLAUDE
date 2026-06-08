@@ -9,6 +9,10 @@ set -e
 if [ "${RUN_MIGRATIONS_ON_BOOT:-true}" = "true" ]; then
     echo "[entrypoint] alembic upgrade head"
     alembic upgrade head
+    # La migration 0011 crée le rôle runtime `app_runtime` sans mot de passe (hygiène secrets) ;
+    # on pose son mot de passe depuis APP_DATABASE_URL (no-op si absente → repli dev DATABASE_URL).
+    echo "[entrypoint] provisionnement du rôle runtime app_runtime"
+    python -m app.db.provision_app_runtime
 else
     echo "[entrypoint] RUN_MIGRATIONS_ON_BOOT=false — migrations ignorées"
 fi
