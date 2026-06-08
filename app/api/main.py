@@ -8,7 +8,6 @@ from typing import AsyncGenerator
 from uuid import UUID
 
 import anthropic
-import asyncpg
 import httpx
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
@@ -42,7 +41,7 @@ from app.api.endpoints.ticker_report import router as ticker_report_router
 from app.api.endpoints.usage import router as usage_router
 from app.api.endpoints.watchlist import router as watchlist_router
 from app.api.endpoints.ws_metrics import router as ws_metrics_router
-from app.db.tenant_context import apply_tenant_context
+from app.db.pool import create_runtime_pool
 from app.logging_config import configure_logging
 from app.middleware.auth import BearerTokenMiddleware
 from app.middleware.csrf import CSRFMiddleware
@@ -167,12 +166,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     max_retries = int(_get_env("CLAUDE_MAX_RETRIES", str(_DEFAULT_MAX_RETRIES)))
     cache_ttl = int(_get_env("ANALYSIS_CACHE_TTL", "86400"))
 
-    # `setup` pose le contexte tenant (GUC `app.tenant_id`) à chaque acquisition de
-    # connexion : la RLS (Sprint 163) restreint chaque requête au tenant courant.
-    # Défaut legacy tant que le threading tenant n'est pas câblé (E3-S4).
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=2, max_size=10, setup=apply_tenant_context
-    )
+    # Pool API (tailles 2/10) ; l'invariant DSN+setup vit dans le helper. Threading tenant
+    # non câblé sur ce pool → défaut legacy (E3-S4).
+    db_pool = await create_runtime_pool(min_size=2, max_size=10)
 
     # Aucun DDL au boot : le schéma est porté par Alembic et appliqué hors du process
     # API (`alembic upgrade head` via l'entrypoint). Un rôle en lecture seule sur le

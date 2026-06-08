@@ -12,7 +12,8 @@ import anthropic
 import asyncpg
 import redis
 
-from app.db.tenant_context import apply_tenant_context, tenant_scope
+from app.db.pool import create_runtime_pool
+from app.db.tenant_context import tenant_scope
 from app.observability.langfuse_client import LangfuseTracer
 from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.rag.client import RagClient
@@ -41,7 +42,6 @@ from app.skills.tier2.graham_analysis.skill import GrahamAnalysisSkill
 from app.skills.tier2.munger_mental.skill import MungerMentalSkill
 from app.skills.tier2.stock_valuation.skill import StockValuationSkill
 from app.skills.tier2.thesis_builder.skill import ThesisBuilderSkill
-from app.utils.security_config import resolve_app_database_url
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -73,15 +73,12 @@ async def _build_orchestrator(*, with_metering: bool = False) -> tuple[Orchestra
     """
     api_key = os.environ["ANTHROPIC_API_KEY"]
     model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
-    db_url = resolve_app_database_url()
     qdrant_url = os.environ.get("QDRANT_URL", "http://qdrant:6333")
     qdrant_coll = os.environ.get("QDRANT_COLLECTION", "investment_knowledge")
     openai_key = os.environ.get("OPENAI_API_KEY")
     top_k = int(os.environ.get("RAG_TOP_K", "5"))
 
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     client = anthropic.AsyncAnthropic(api_key=api_key)
 
     rag_client = RagClient(url=qdrant_url, collection=qdrant_coll)
@@ -341,10 +338,7 @@ async def _execute_price_alert_check() -> list[str]:
     Best-effort par tenant : l'échec d'un tenant (loggé) n'avorte pas les autres. Retourne l'union des
     tickers en alerte.
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     yahoo_extractor = YahooFinanceExtractor()
     service = PriceAlertService()
     webhook_service = WebhookService()
@@ -393,10 +387,7 @@ async def _execute_weekly_watchlist_report() -> None:
     4. Envoie via EmailService vers REPORT_EMAIL_TO
     5. Log INFO avec le nombre de positions
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
         wl_service = WatchlistService(db_pool)
         entries = await wl_service.list_entries()
@@ -468,10 +459,7 @@ async def _execute_composite_alert_check() -> list[str]:
     imputée au tenant propriétaire (`usage_events`), jamais legacy. Best-effort par tenant : l'échec
     d'un tenant (loggé) n'avorte pas les autres. Retourne l'union des tickers en alerte.
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     orch_pool: asyncpg.Pool | None = None
     try:
         orchestrator, orch_pool = await _build_orchestrator(with_metering=True)
@@ -659,10 +647,7 @@ async def _execute_scheduled_screener() -> dict:
     unique), tandis que la lecture watchlist, le metering et l'écriture `alert_history` (RLS) restent
     **par tenant**. Best-effort par tenant : l'échec d'un tenant (loggé) n'avorte pas les autres.
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     orch_pool: asyncpg.Pool | None = None
     try:
         orchestrator, orch_pool = await _build_orchestrator(with_metering=True)
@@ -752,10 +737,7 @@ async def _execute_monthly_report() -> None:
         logger.info("WEBHOOK_URL et SLACK_WEBHOOK_URL absents — rapport mensuel ignoré")
         return
 
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
         from app.services.monthly_report_service import MonthlyReportService
         from app.services.screener_pdf_service import ScreenerPdfService
@@ -807,10 +789,7 @@ def run_monthly_report(self) -> None:
 
 async def _execute_esg_degradation_check() -> int:
     """Vérifie la dégradation ESG pour toutes les entrées watchlist et envoie les alertes."""
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
         from app.services.esg_history_service import EsgHistoryService
 
@@ -894,10 +873,7 @@ async def _execute_retention_purge() -> dict:
     ne touche donc que les lignes périmées de CE tenant. **Best-effort** : l'échec d'un tenant
     (loggé) n'avorte pas la purge des autres.
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
         tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
         service = RetentionService(db_pool)
@@ -981,10 +957,7 @@ async def _execute_usage_reporting() -> dict[str, Any]:
     d'un tenant (loggé) n'avorte pas le report des autres et **n'avance pas son curseur** (la
     fenêtre sera retentée au prochain run plutôt que perdue). Aucune clé Stripe n'est loggée.
     """
-    db_url = resolve_app_database_url()
-    db_pool = await asyncpg.create_pool(
-        db_url, min_size=1, max_size=3, setup=apply_tenant_context
-    )
+    db_pool = await create_runtime_pool(min_size=1, max_size=3)
     try:
         stripe_service = _build_stripe_service(db_pool)
         if not stripe_service.is_metered_configured:
