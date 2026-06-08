@@ -4,6 +4,9 @@ class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    // Corps `detail` brut quand le serveur renvoie un objet structuré (ex. 429 quota :
+    // {message, plan, used, limit, remaining}). `undefined` pour un detail string/tableau.
+    public readonly detail?: unknown,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -48,8 +51,10 @@ async function request<T>(
 
   if (!response.ok) {
     let message: string
+    let detail: unknown
     try {
       const body = (await response.json()) as { detail?: unknown; error?: string }
+      detail = body.detail
       if (Array.isArray(body.detail)) {
         // Erreurs de validation Pydantic FastAPI : [{loc, msg, type}, ...]
         message = (body.detail as Array<{ msg?: string; loc?: string[] }>)
@@ -58,13 +63,16 @@ async function request<T>(
             return field ? `${field} : ${e.msg ?? 'invalide'}` : (e.msg ?? 'invalide')
           })
           .join(' | ')
+      } else if (body.detail !== null && typeof body.detail === 'object') {
+        // Corps structuré (ex. 429 quota) : message extrait, objet conservé pour le front.
+        message = (body.detail as { message?: string }).message ?? body.error ?? response.statusText
       } else {
         message = (body.detail as string | undefined) ?? body.error ?? response.statusText
       }
     } catch {
       message = response.statusText
     }
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, message, detail)
   }
 
   return response.json() as Promise<T>

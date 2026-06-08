@@ -6,7 +6,7 @@ import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
 import { Badge } from '../components/ui/badge'
 import { PageTransition, StaggerItem } from '../components/PageTransition'
-import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
+import { QuotaBanner, isQuotaError, quotaDetailFromError } from '../components/QuotaBanner'
 import { streamAnalyze, postReport, downloadTickerPdf } from '../api/analyze'
 import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
@@ -46,7 +46,8 @@ export default function AnalyzePage() {
   const [lastRequest, setLastRequest] = useState<AnalyzeRequest | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamError, setStreamError] = useState<string | null>(null)
-  const [quotaError, setQuotaError] = useState<string | null>(null)
+  // Erreur de quota capturée telle quelle (ApiError) pour en dériver message + corps structuré.
+  const [quotaError, setQuotaError] = useState<unknown>(null)
   const [partialResult, setPartialResult] = useState<Partial<AnalyzeResponse>>({})
   const [activeSkill, setActiveSkill] = useState<string | null>(null)
   const [plannedSkills, setPlannedSkills] = useState<string[]>([])
@@ -112,7 +113,7 @@ export default function AnalyzePage() {
       }
     } catch (err) {
       if (isQuotaError(err)) {
-        setQuotaError(err instanceof Error ? err.message : 'Quota mensuel atteint')
+        setQuotaError(err)
       } else {
         setStreamError(err instanceof Error ? err.message : 'Erreur de streaming')
       }
@@ -173,7 +174,12 @@ export default function AnalyzePage() {
           />
         </StaggerItem>
 
-        {quotaError && <QuotaBanner message={quotaError} />}
+        {quotaError != null && (
+          <QuotaBanner
+            message={quotaError instanceof Error ? quotaError.message : 'Quota mensuel atteint'}
+            detail={quotaDetailFromError(quotaError)}
+          />
+        )}
 
         {streamError && (
           <div

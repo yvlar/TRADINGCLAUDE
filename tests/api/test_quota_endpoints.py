@@ -42,7 +42,13 @@ async def test_analyze_au_dela_du_quota_429(client):
     app.state.quota_service.check = AsyncMock(side_effect=_quota_error())
     resp = await client.post("/analyze", json=_VALID_BODY)
     assert resp.status_code == 429
-    assert "Quota mensuel atteint" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    # Corps structuré (Sprint 189) — plan/borne/restant pour le bandeau d'upgrade ciblé.
+    assert "Quota mensuel atteint" in detail["message"]
+    assert detail["plan"] == "free"
+    assert detail["used"] == 50
+    assert detail["limit"] == 50
+    assert detail["remaining"] == 0
     assert resp.headers.get("retry-after") == "3600"
 
 
@@ -74,7 +80,7 @@ async def test_analyze_stream_au_dela_du_quota_429(client):
     app.state.quota_service.check = AsyncMock(side_effect=_quota_error())
     resp = await client.post("/analyze-stream", json=_VALID_BODY)
     assert resp.status_code == 429
-    assert "Quota mensuel atteint" in resp.json()["detail"]
+    assert "Quota mensuel atteint" in resp.json()["detail"]["message"]
 
 
 @pytest.mark.asyncio
@@ -90,7 +96,12 @@ async def test_screen_au_dela_de_la_borne_plan_429(client):
     )
     resp = await client.post("/screen", json={"tickers": ["A", "B", "C"]})
     assert resp.status_code == 429
-    assert "borne du plan" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "borne du plan" in detail["message"]
+    assert detail["plan"] == "free"
+    assert detail["used"] == 10
+    assert detail["limit"] == 5
+    assert detail["remaining"] == 0
     # Borne de taille (pas temporelle) → pas d'en-tête Retry-After.
     assert "retry-after" not in resp.headers
 

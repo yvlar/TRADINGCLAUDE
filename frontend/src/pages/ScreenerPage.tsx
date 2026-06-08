@@ -7,7 +7,7 @@ import { ScreenerTable } from '../components/ScreenerTable'
 import { Disclaimer } from '../components/Disclaimer'
 import { SkeletonTable } from '../components/ui/skeleton'
 import { PageTransition } from '../components/PageTransition'
-import { QuotaBanner, isQuotaError } from '../components/QuotaBanner'
+import { QuotaBanner, isQuotaError, quotaDetailFromError } from '../components/QuotaBanner'
 import { postScreen, exportScreen, downloadScreenerPdf } from '../api/analyze'
 import type { ScreenRequest, ScreenResult } from '../types'
 
@@ -115,7 +115,11 @@ export default function ScreenerPage() {
 
       {screenMutation.isError &&
         (isQuotaError(screenMutation.error) ? (
-          <QuotaBanner message={(screenMutation.error as Error).message} />
+          <QuotaBanner
+            message={(screenMutation.error as Error).message}
+            detail={quotaDetailFromError(screenMutation.error)}
+            unit="tickers"
+          />
         ) : (
           <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
             Erreur : {(screenMutation.error as Error).message}
