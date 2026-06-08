@@ -1,81 +1,81 @@
-# Sprint 195 — E5 : test de flux re-connexion cross-tenant (compléter S190)
+# Sprint 196 — Ops : test de boot worker réel sous DSN insecure (preuve d'intégration du garde S192)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.81.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.82.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (194) a extrait en **un seul** helper typé `extractDetailMessage` (`frontend/src/api/errorDetail.ts`, ordre array-first) la logique de parsing du corps `detail` d'une réponse d'erreur, jusque-là **répétée et divergente** entre `request` (`client.ts`), `streamAnalyze` (`analyze.ts`) et `authFetch` (`auth.ts`) — un **4ᵉ** site (`authFetch`) non prévu par la carte a été réconcilié par `grep`. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (195) a ajouté un test de **flux** re-connexion cross-tenant (`frontend/src/__tests__/AuthContextCrossTenant.test.tsx`) verrouillant l'intention applicative de S190 : login tenant A → cache pré-rempli → logout → login tenant B, assertion d'absence de fuite (clés → `undefined`) + `user` = B. État courant complet (version, endpoints, fonctionnalités actives, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Sprint FRONTEND seul** (TypeScript, zéro `app/`) : ajouter un test de **flux** qui simule « logout tenant A → login tenant B sans rechargement » et asserte qu'**aucune donnée de A** n'apparaît côté cache react-query. S190 a prouvé le **mécanisme** (`queryClient.clear()` au `logout`) ; ce sprint verrouille l'**intention applicative** bout-en-bout. GATES : `npm test` (Vitest) + `tsc --noEmit` + ESLint (0/0). **Pas de backend, pas d'eval, pas de `mypy`** (aucun fichier `app/` touché). ⚠️ **Sprint de test** → ne PAS modifier le comportement de `AuthContext` ; n'ajouter que des tests (et au plus un helper de test).
+> **Sprint BACKEND/OPS seul** (test d'intégration ciblé, zéro `frontend/`) : compléter la preuve **unitaire** S192 (mock `asyncpg.create_pool` dans `test_pool.py`) par un test ciblant le **chemin de boot worker réel** — un `_execute_*` worker (`app/workers/tasks.py`) qui appelle `create_runtime_pool` doit lever `RuntimeError` sous une DSN insecure en prod, **avant** d'atteindre la DB. GATES : `pytest` (hors e2e/evals) + `ruff check` + `mypy app/`. **Pas de frontend, pas d'eval** (aucun prompt de skill ni l'orchestrateur touché). ⚠️ **Sprint de test** → ne PAS modifier le comportement de `create_runtime_pool` ni des workers ; n'ajouter que des tests.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.81.0)
-2. `.claude/rules/conventions-frontend.md` (React 18, TypeScript strict zéro `any`, structure `__tests__/`).
-3. `.claude/rules/tests-pyramide.md` (niveau **composant** = `@testing-library/react` ; règle absolue de mock des appels API ; happy path + cas d'erreur).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.82.0)
+2. `.claude/rules/tests-pyramide.md` (niveau **intégration** = plusieurs modules ; règle absolue de mock — ici on mocke `asyncpg.create_pool` pour ne PAS toucher de vraie DB ; marqueurs pytest).
+3. `.claude/rules/conventions-python.md` (pattern `execute()`, type hints partout, docstrings FR, async/await).
 4. **Code de référence à vérifier en début de session (anti-hallucination — les n° de ligne DÉRIVENT, re-grep obligatoire)** :
-   - `AuthContext` (`frontend/src/contexts/AuthContext.tsx`) : `login` (`:43`, `setUser(response.user)` `:45` — **vérifié cette session** ; NB : `:50-52` est `refreshUser`, pas `login`), `logout` (`:58`, `setUser(null)` `:64`, `queryClient.clear()` `:68`, `navigate('/login')` `:69`, vérifiés). `useQueryClient` injecté dans `AuthProvider`.
-   - Test existant `frontend/src/__tests__/AuthContext.test.tsx` (S190) : `renderWithProvider` enveloppe d'un `QueryClientProvider` (client injectable) ; prouve déjà que `clear()` vide `['usage', 30]` + `['usage-reporting']` au `logout`. Le test de **flux** (login A → logout → login B, assertion d'absence de fuite) est **à créer** — distinct du test de mécanisme.
-   - Clés de cache non scopées au tenant consommées par `BillingPage` (`['usage', 30]`, `['usage-reporting']`) — à pré-remplir pour simuler des données de A.
+   - `create_runtime_pool` (`app/db/pool.py:9`) : résout `dsn` une fois, appelle `require_secure_db_url(dsn)` (`:24`, vérifié cette session) **avant** `asyncpg.create_pool(dsn, …)`. Le garde fait un retour anticipé en dev (`is_dev_environment()`), sinon lève si la DSN contient le marqueur insecure `copilote:copilote@`.
+   - Workers appelant `create_runtime_pool` (`grep -c` = **10** dans `app/workers/tasks.py`, vérifié) : ex. `_execute_price_alert_check` (`:329`, pool `:339`), `_execute_weekly_watchlist_report` (`:377`, pool `:386`), `_execute_composite_alert_check` (`:449`, pool `:458`) — le pool est créé **en tête** de chaque coroutine. Cible idéale : un `_execute_*` qui appelle `create_runtime_pool` **en premier** (le garde y déclenche avant toute autre I/O).
+   - `tests/db/test_pool.py` (S192) — pattern de référence : `APP_ENV=production` (le `conftest.py` pose `APP_ENV=test` par défaut → forcer `production` pour exercer le vrai chemin insecure) + DSN `copilote:copilote@` → `RuntimeError`, `asyncpg.create_pool` patché et `assert_not_awaited`.
 
 ---
 
-## TÂCHE — Sprint 195 : test de flux re-connexion cross-tenant
+## TÂCHE — Sprint 196 : test de boot worker réel sous DSN insecure
 
-**Objectif** : compléter S190. S190 a fermé la fuite cross-tenant par la purge `queryClient.clear()` au `logout` et l'a prouvé au niveau **mécanisme** (les clés ciblées passent à `undefined`). Il reste à verrouiller l'**intention applicative** : un test de **flux** qui rejoue le scénario réel « un utilisateur du tenant A se déconnecte, un utilisateur du tenant B se connecte dans le même onglet (sans rechargement) » et asserte qu'aucune donnée mise en cache sous A ne survit à la bascule. Sans ce test, une régression future (ex. `clear()` déplacé après `navigate`, ou remplacé par une purge partielle) repasserait le mécanisme S190 mais casserait le flux.
+**Objectif** : compléter S192. S192 a déplacé le garde `require_secure_db_url` dans `create_runtime_pool` (chokepoint unique) et l'a prouvé en **isolation** (`test_pool.py`, mock `asyncpg.create_pool`). Il reste à prouver que sur le **chemin de boot worker réel** — quand un `_execute_*` worker démarre sous une DSN insecure en prod — le garde **se déclenche bien** et avorte le boot avant toute I/O DB. Sans ce test, un refactor futur qui résoudrait la DSN ailleurs (ou court-circuiterait `create_runtime_pool` dans un worker) repasserait `test_pool.py` mais ré-ouvrirait le trou côté worker.
 
 ### Spécification
 
-1. **Nouveau test de flux** (proposition : étendre `AuthContext.test.tsx` ou nouveau `AuthContextCrossTenant.test.tsx`) : monter `AuthProvider` avec un `QueryClient` injecté ; mocker `authLogin`/`authLogout`/`authMe` (cf. `tests-pyramide.md` — jamais d'appel réel).
-2. **Scénario** : (a) `login` tenant A (mock `authLogin` → user A) ; (b) pré-remplir le cache react-query avec des données « de A » sous les clés réelles (`['usage', 30]`, `['usage-reporting']`) ; (c) `logout` ; (d) `login` tenant B (mock `authLogin` → user B) ; (e) **assertions** : les clés de A renvoient `undefined` après la bascule (aucune fuite), et `user` reflète bien B.
-3. **Zéro `any`**, mocks typés. Ne PAS modifier `AuthContext.tsx` (sprint de test pur). Si un helper de montage est utile, le garder local au fichier de test (convention projet = fichiers de test auto-portants — cf. décision S190).
+1. **Nouveau test d'intégration ciblé** (proposition : `tests/workers/test_worker_boot_insecure.py`, ou étendre un fichier worker existant) : choisir un `_execute_*` qui appelle `create_runtime_pool` **en premier** (cf. `_execute_price_alert_check`/`_execute_weekly_watchlist_report`/`_execute_composite_alert_check`). Le re-grep en début de session pour confirmer que `create_runtime_pool` est bien le **premier** await (sinon une I/O antérieure fausserait la preuve).
+2. **Scénario** : `APP_ENV=production` (monkeypatch) + DSN insecure (`copilote:copilote@…` via `APP_DATABASE_URL`/`DATABASE_URL` selon la résolution de `resolve_app_database_url`) ; patcher `asyncpg.create_pool` (`AsyncMock`) ; `await _execute_*()` (ou `asyncio.run(...)` selon le niveau) → **assertions** : `RuntimeError` levé, `asyncpg.create_pool` **jamais awaité** (`assert_not_awaited`), aucune autre I/O worker atteinte.
+3. **Type hints partout**, mocks typés (`AsyncMock`). Ne PAS modifier `pool.py` ni `tasks.py` (sprint de test pur). **Sans PG dans le conteneur web** → le test reste un **mock ciblé du chemin worker** (pas un boot Celery complet) : le DIRE dans la docstring.
 
 ### Tests / validation
-- **Frontend** : `npm test` (Vitest) + `tsc --noEmit` + ESLint (0/0). **Pas de backend, pas d'eval, pas de `mypy`**.
-- **Tests obligatoires** : le test de flux ci-dessus (login A → logout → login B → assertion d'absence de fuite + `user` = B). Les tests existants `AuthContext.test.tsx` (mécanisme `clear()`) restent **verts**.
-- **Preuve d'acceptation observable** : le nouveau test échoue si on neutralise `queryClient.clear()` dans `logout` (preuve que le test verrouille bien le flux, pas juste l'appel) — le vérifier mentalement / par un essai local, puis l'asserter par le test.
+- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/` + `mypy app/ --ignore-missing-imports`. **Pas de frontend, pas d'eval**.
+- **Tests obligatoires** : le test de boot worker ci-dessus (insecure prod → `RuntimeError` avant `create_pool`). Les tests `test_pool.py` (S192) restent **verts**.
+- **Preuve d'acceptation observable** : le nouveau test **échoue** si on neutralise l'appel `require_secure_db_url(dsn)` dans `create_runtime_pool` (preuve qu'il verrouille bien le chemin worker, pas seulement le helper isolé) — le vérifier par un essai local (commenter la ligne, constater l'échec, restaurer).
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — facturation/SaaS, voir plan directeur §7-§8)
 
-### Sprint 196 — Ops : test de boot worker réel sous DSN insecure (preuve d'intégration du garde S192)
-**Objectif** : compléter la preuve unitaire S192 (mock `asyncpg.create_pool`) par un test ciblant la **construction réelle** d'un pool worker avec une DSN insecure et assertant le `RuntimeError` au boot — verrouille le changement de comportement S192 au niveau du chemin worker, pas seulement du helper isolé.
-**Complexité** : Faible.
-**Justification** : S192 a prouvé le garde au niveau de `create_runtime_pool` en isolation ; un test ciblant un `_execute_*` worker (ou le lifespan) confirme que le garde se déclenche bien **sur le chemin de boot réel**. À cadrer : sans PG dans le conteneur web, le test reste un mock ciblé du chemin worker (pas un boot Celery complet).
-**Référence** : `create_runtime_pool` (`app/db/pool.py:9`, garde `require_secure_db_url(dsn)` `:24`, vérifié cette session), importé + appelé **10×** (avec l'import) dans `app/workers/tasks.py` (`grep -c` = 10, vérifié) ; le test de boot worker ciblé est **à créer**.
-
 ### Sprint 197 — Ops : fixture de connexion RLS partagée (suite S193, périmètre `connect` re-mesuré)
 **Objectif** : reconsidérer l'extraction d'un helper de connexion `asyncpg.connect` partagé pour les tests d'intégration RLS, **explicitement différée** en S193 (décision « ne pas sur-abstraire »).
 **Complexité** : Faible.
-**Justification** : S193 a centralisé l'inventaire de tables + le skip harness mais a **laissé le motif `connect` en place**. Les sites `asyncpg.connect` se répartissent en deux familles : `_APP_DB_URL` (5 sites simples, `test_revoke_public_rls.py:28/47/62/83`, `test_force_rls.py:31`) et `_RLS_DB_URL` (≥5 sites en `create_pool`/probe, `test_retention_purge_rls.py:60`, `test_scheduled_metering_rls.py:54/149`…). **À valider d'abord** : le gain dépasse-t-il la fragilité (familles à reasons distinctes) ? Sinon, statuer « clos, ne pas extraire ».
+**Justification** : S193 a centralisé l'inventaire de tables + le skip harness mais a **laissé le motif `connect` en place**. Les sites `asyncpg.connect` se répartissent en deux familles : `_APP_DB_URL` (**5** sites simples — `test_revoke_public_rls.py:28/47/62/83`, `test_force_rls.py:31`, vérifiés `grep` cette session) et `_RLS_DB_URL` (≥5 sites probe/`create_pool` — `test_retention_purge_rls.py:60`, `test_scheduled_metering_rls.py:54/149`, `test_price_alert_metering_rls.py:53`, `test_report_tenant_rls.py:63`, vérifiés). **À valider d'abord** : le gain dépasse-t-il la fragilité (familles à reasons distinctes) ? Sinon, statuer « clos, ne pas extraire ».
 **Référence** : module partagé `tests/integration/_rls_fixtures.py` (`RLS_TABLES:23`, `APP_DB_URL:35`, `app_runtime_pytestmark:37`, vérifiés cette session) existe déjà (S193) — une fixture de connexion y serait **ajoutée** ; sites `asyncpg.connect` vérifiés par `grep` cette session.
 
 ### Sprint 198 — E5 : test composant de bascule CTA Facturation cross-tenant
 **Objectif** : prouver, au niveau **page**, qu'après la purge S190 la page `/facturation` re-fetch les données du nouveau tenant (et n'affiche pas le plan/conso de l'ancien) lors d'une re-connexion sans rechargement.
 **Complexité** : Moyenne.
 **Justification** : S190 + S195 verrouillent le cache au niveau `AuthContext` ; un test au niveau `BillingPage` confirme que l'**UI** reflète bien le nouveau tenant (CTA checkout↔portail repiloté sur `user.plan`). Complète la couverture cross-tenant du côté présentation.
-**Référence** : `BillingPage` consomme `['usage', 30]` / `['usage-reporting']` et `user.plan` (clés vérifiées via les tests S190) ; le test de bascule au niveau page est **à créer** (à confirmer par `grep` sur `frontend/src/pages/BillingPage.tsx` en début de sprint — n° de ligne non figés ici).
+**Référence** : `BillingPage` consomme `['usage', 30]` (`frontend/src/pages/BillingPage.tsx:83`), `['usage-reporting']` (`:88`) et `user?.plan` (`:46`) — vérifiés `grep` cette session ; le test de bascule au niveau page est **à créer**.
+
+### Sprint 199 — Ops : assertion `NOBYPASSRLS`/`NOSUPERUSER` du rôle runtime par test catalogue
+**Objectif** : verrouiller par un test direct que le rôle de connexion runtime (`app_runtime`) porte bien `NOSUPERUSER` **et** `NOBYPASSRLS` (sans quoi la RLS serait silencieusement contournée en prod), en lecture du catalogue `pg_roles`.
+**Complexité** : Faible.
+**Justification** : S182 prouve l'application de la RLS sous le rôle réel via `test_app_runtime_rls.py`, mais l'**attribut de rôle** lui-même (`rolsuper`/`rolbypassrls = false`) n'est pas asserté en propre — un `ALTER ROLE` accidentel le ré-activant passerait inaperçu jusqu'à une fuite. Parité avec le verrou `FORCE RLS` direct posé en S191.
+**Référence** : harnais d'intégration RLS réutilisable (`tests/integration/_rls_fixtures.py` — `APP_DB_URL:35`, `app_runtime_pytestmark:37`, vérifiés cette session) + `test_app_runtime_rls.py` (existant S182, à confirmer par `grep` en début de sprint) comme modèle de connexion sous le rôle réel. Le test catalogue `pg_roles` (`rolsuper`/`rolbypassrls`) est **à créer**.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur TypeScript/React senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.81.0),
-.claude/rules/conventions-frontend.md, .claude/rules/tests-pyramide.md.
-Sprint actif : 195 — E5 : test de flux re-connexion cross-tenant (compléter S190).
-Ajouter un test de FLUX (login tenant A → pré-remplir le cache react-query sous ['usage',30]/['usage-reporting']
-→ logout → login tenant B) assertant qu'aucune donnée de A ne survit (clés → undefined) et que user = B.
-NE PAS modifier AuthContext.tsx (sprint de test pur). Mocks typés (authLogin/authLogout/authMe), zéro any
-(cf. tests-pyramide.md — jamais d'appel réel). À VÉRIFIER AVANT D'ÉCRIRE : re-grep login (:43)/logout (:58)/
-queryClient.clear() (:68) — les lignes dérivent. Réutiliser le pattern renderWithProvider + QueryClientProvider
-de AuthContext.test.tsx (S190).
+Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.82.0),
+.claude/rules/tests-pyramide.md, .claude/rules/conventions-python.md.
+Sprint actif : 196 — Ops : test de boot worker réel sous DSN insecure (preuve d'intégration du garde S192).
+Ajouter un test d'intégration ciblé : un _execute_* worker (app/workers/tasks.py) qui appelle create_runtime_pool
+EN PREMIER doit lever RuntimeError sous APP_ENV=production + DSN insecure (copilote:copilote@), AVANT asyncpg.create_pool
+(patché AsyncMock → assert_not_awaited). Pattern de référence : tests/db/test_pool.py (S192).
+NE PAS modifier pool.py ni tasks.py (sprint de test pur). Type hints partout, mocks typés (AsyncMock).
+À VÉRIFIER AVANT D'ÉCRIRE : re-grep create_runtime_pool (app/db/pool.py:9, garde :24) + les _execute_* de tasks.py
+(grep -c create_runtime_pool = 10) — confirmer que le pool est le 1er await du _execute_ choisi (les lignes dérivent).
 Branche : claude/prompt-executer-sprint-<id>. Confirmer avant git push.
-GATES : npm test (Vitest) + tsc --noEmit + ESLint (0/0). Pas de backend, pas de mypy, pas d'eval.
-Preuve : le test échoue si on neutralise queryClient.clear() dans logout (il verrouille le flux, pas l'appel).
+GATES : pytest (hors e2e/evals) + ruff check + mypy app/. Pas de frontend, pas d'eval.
+Preuve : le test échoue si on neutralise require_secure_db_url(dsn) dans create_runtime_pool (il verrouille le chemin worker).
 ```
