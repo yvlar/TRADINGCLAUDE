@@ -62,8 +62,14 @@ def _get_redis() -> redis.Redis:
     return redis.from_url(url, decode_responses=True)
 
 
-async def _build_orchestrator() -> tuple[Orchestrator, asyncpg.Pool]:
-    """Crée un Orchestrator avec sa propre pool asyncpg — indépendant du serveur FastAPI."""
+async def _build_orchestrator(*, with_metering: bool = False) -> tuple[Orchestrator, asyncpg.Pool]:
+    """Crée un Orchestrator avec sa propre pool asyncpg — indépendant du serveur FastAPI.
+
+    `with_metering` : injecte un `UsageEventService` (comme le chemin requête dans le lifespan FastAPI) pour que
+    les analyses planifiées tournant sous `tenant_scope(tenant_propriétaire)` émettent leurs
+    `usage_events` sous le bon tenant (E5-S1). Laissé à False pour les chemins encore sous tenant
+    legacy (conso non facturable — la métrer serait du bruit).
+    """
     api_key = os.environ["ANTHROPIC_API_KEY"]
     model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
     db_url = os.environ.get(
@@ -107,11 +113,10 @@ async def _build_orchestrator() -> tuple[Orchestrator, asyncpg.Pool]:
             top_k=top_k,
         )
 
-    # Pas de `usage_event_service` ici : les analyses planifiées (screener/alertes) tournent
-    # sous le tenant legacy (le threading tenant→worker relève d'un sprint E4 ultérieur) ;
-    # les facturer au legacy serait du bruit. Le metering reste donc scopé au chemin requête.
+    usage_event_service = UsageEventService(db_pool) if with_metering else None
     orchestrator = Orchestrator(
         db_pool=db_pool,
+        usage_event_service=usage_event_service,
         graham_skill=_skill(GrahamAnalysisSkill),
         earnings_skill=_skill(EarningsQualitySkill),
         dorsey_skill=_skill(DorseyMoatSkill),
@@ -160,62 +165,88 @@ def run_full_analysis(self, job_id: str, request_dict: dict[str, Any]) -> None:
         raise self.retry(exc=exc, countdown=30)
 
 
+async def _analyze_watchlist_entries(
+    orchestrator: Orchestrator, db_pool: asyncpg.Pool
+) -> None:
+    """Re-analyse les entrées watchlist du tenant courant — l'appelant DOIT avoir posé `tenant_scope`.
+
+    Lecture watchlist et metering de l'orchestrateur dérivent tous deux du GUC `app.tenant_id`.
+    Best-effort par ticker — l'échec d'une entrée (loggé) n'avorte pas les suivantes.
+    """
+    rows = await db_pool.fetch(
+        """
+        SELECT id, ticker, workflow, ratios, score_alerte_min
+        FROM watchlist
+        ORDER BY created_at
+        """
+    )
+    logger.info("Watchlist re-analyse — %d entrée(s) pour le tenant courant", len(rows))
+    for row in rows:
+        entry_id = str(row["id"])
+        ticker = row["ticker"]
+        workflow = row["workflow"]
+        score_alerte_min = row["score_alerte_min"]
+        try:
+            ratios_raw = row["ratios"]
+            ratios: GrahamRatios | None = None
+            if ratios_raw:
+                ratios = GrahamRatios.model_validate(
+                    json.loads(ratios_raw) if isinstance(ratios_raw, str) else ratios_raw
+                )
+            request = AnalyzeRequest(ticker=ticker, workflow=workflow, ratios=ratios)
+            response = await orchestrator.run_company_analysis(request)
+            last_score = response.graham.defensive_score if response.graham else None
+            last_verdict = response.graham.verdict if response.graham else None
+            last_intrinsic = (
+                response.graham.valeur_intrinseque_ajustee if response.graham else None
+            )
+            await db_pool.execute(
+                """
+                UPDATE watchlist
+                SET last_analyzed_at = NOW(), last_score = $2, last_verdict = $3,
+                    last_intrinsic_value = $4
+                WHERE id = $1::uuid
+                """,
+                entry_id,
+                last_score,
+                last_verdict,
+                last_intrinsic,
+            )
+            if (
+                score_alerte_min is not None
+                and last_score is not None
+                and last_score < score_alerte_min
+            ):
+                logger.warning(
+                    "ALERTE watchlist — %s : score %d < seuil %d (verdict: %s)",
+                    ticker, last_score, score_alerte_min, last_verdict,
+                )
+            else:
+                logger.info("Watchlist — %s analysé : score=%s, verdict=%s", ticker, last_score, last_verdict)
+        except Exception:
+            logger.exception("Erreur lors de la re-analyse watchlist pour %s", ticker)
+
+
 async def _execute_watchlist_analysis() -> None:
-    """Itère sur toutes les entrées watchlist et déclenche une analyse pour chacune."""
-    orchestrator, db_pool = await _build_orchestrator()
+    """Re-analyse hebdomadaire de la watchlist de TOUS les tenants, chacun sous son contexte RLS (E5-S1).
+
+    `tenants` (table parente hors RLS) énumère le travail ; pour chaque tenant, sous `tenant_scope`
+    (patron `run_retention_purge`, S171), la watchlist est lue (RLS-scopée) et ré-analysée par un
+    orchestrateur **métré** (`with_metering=True`) → la conso planifiée est imputée au tenant
+    propriétaire (`usage_events`), jamais legacy. Best-effort par tenant : l'échec d'un tenant (loggé)
+    n'avorte pas les autres et n'écrit jamais sous legacy par repli silencieux.
+    """
+    orchestrator, db_pool = await _build_orchestrator(with_metering=True)
     try:
-        rows = await db_pool.fetch(
-            """
-            SELECT id, ticker, workflow, ratios, score_alerte_min
-            FROM watchlist
-            ORDER BY created_at
-            """
-        )
-        logger.info("Watchlist re-analyse hebdomadaire — %d entrée(s)", len(rows))
-        for row in rows:
-            entry_id = str(row["id"])
-            ticker = row["ticker"]
-            workflow = row["workflow"]
-            score_alerte_min = row["score_alerte_min"]
+        tenant_rows = await db_pool.fetch("SELECT id FROM tenants ORDER BY created_at")
+        logger.info("Watchlist re-analyse hebdomadaire — %d tenant(s)", len(tenant_rows))
+        for trow in tenant_rows:
+            tenant_id = trow["id"]
             try:
-                ratios_raw = row["ratios"]
-                ratios: GrahamRatios | None = None
-                if ratios_raw:
-                    ratios = GrahamRatios.model_validate(
-                        json.loads(ratios_raw) if isinstance(ratios_raw, str) else ratios_raw
-                    )
-                request = AnalyzeRequest(ticker=ticker, workflow=workflow, ratios=ratios)
-                response = await orchestrator.run_company_analysis(request)
-                last_score = response.graham.defensive_score if response.graham else None
-                last_verdict = response.graham.verdict if response.graham else None
-                last_intrinsic = (
-                    response.graham.valeur_intrinseque_ajustee if response.graham else None
-                )
-                await db_pool.execute(
-                    """
-                    UPDATE watchlist
-                    SET last_analyzed_at = NOW(), last_score = $2, last_verdict = $3,
-                        last_intrinsic_value = $4
-                    WHERE id = $1::uuid
-                    """,
-                    entry_id,
-                    last_score,
-                    last_verdict,
-                    last_intrinsic,
-                )
-                if (
-                    score_alerte_min is not None
-                    and last_score is not None
-                    and last_score < score_alerte_min
-                ):
-                    logger.warning(
-                        "ALERTE watchlist — %s : score %d < seuil %d (verdict: %s)",
-                        ticker, last_score, score_alerte_min, last_verdict,
-                    )
-                else:
-                    logger.info("Watchlist — %s analysé : score=%s, verdict=%s", ticker, last_score, last_verdict)
+                with tenant_scope(tenant_id):
+                    await _analyze_watchlist_entries(orchestrator, db_pool)
             except Exception:
-                logger.exception("Erreur lors de la re-analyse watchlist pour %s", ticker)
+                logger.exception("Erreur de re-analyse watchlist pour le tenant %s", tenant_id)
     finally:
         await db_pool.close()
 
