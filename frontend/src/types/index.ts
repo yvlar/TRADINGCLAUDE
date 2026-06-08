@@ -721,6 +721,18 @@ export interface ApiKeyCreate {
   role?: string  // défaut "user"
 }
 
+// ---- Journal d'audit (Sprint 180 — miroir de AuditLogEntry Pydantic) ----
+export interface AuditLogEntry {
+  id: string
+  tenant_id: string | null  // UUID
+  user_id: string | null    // UUID
+  action: string
+  cible_type: string
+  cible_id: string | null
+  metadata: Record<string, unknown>
+  created_at: string        // ISO 8601
+}
+
 // ---- Annotations (Sprint 78) ----
 export interface Annotation {
   annotation_id: string
