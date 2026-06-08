@@ -108,7 +108,6 @@ from app.utils.env import is_dev_environment
 from app.utils.error_sanitization import log_internal_error, sanitized_http_500
 from app.utils.quota_http import quota_exceeded_http
 from app.utils.retry import _DEFAULT_MAX_RETRIES, _DEFAULT_TIMEOUT_S
-from app.utils.security_config import require_secure_db_url, resolve_app_database_url
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -152,10 +151,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     model = _get_env("CLAUDE_MODEL", "claude-sonnet-4-6")
     # Haiku pour skills mécaniques/quantitatifs — réduction coût ~60 % sur ces appels
     haiku_model = _get_env("CLAUDE_HAIKU_MODEL", "claude-haiku-4-5-20251001")
-    # Pool runtime sous le rôle `app_runtime` (NOSUPERUSER/NOBYPASSRLS) → la RLS s'applique.
+    # Pool runtime sous le rôle `app_runtime` (NOSUPERUSER/NOBYPASSRLS) → la RLS s'applique ;
+    # la DSN runtime est résolue et le garde insecure-creds appliqué dans `create_runtime_pool`.
     # `DATABASE_URL` (rôle `copilote` propriétaire) est réservé aux migrations Alembic.
-    db_url = resolve_app_database_url()
-    require_secure_db_url(db_url)
     qdrant_url = _get_env("QDRANT_URL", "http://qdrant:6333")
     qdrant_coll = _get_env("QDRANT_COLLECTION", "investment_knowledge")
     redis_url = _get_env("REDIS_URL", "redis://redis:6379/0")
