@@ -17,7 +17,7 @@ reportlab>=4.0.0
 sendgrid>=6.11.0
 openpyxl>=3.1.0
 pypdf>=6.12.1
-PyJWT>=2.8.0
+PyJWT>=2.13.0
 cryptography>=42.0.0
 # Transitives épinglées à des versions corrigées (pip-audit) — E1-S4
 idna>=3.15
