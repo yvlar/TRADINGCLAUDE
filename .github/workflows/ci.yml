@@ -240,6 +240,7 @@ jobs:
           tests/integration/test_report_tenant_rls.py
           tests/integration/test_watchlist_metering_rls.py
           tests/integration/test_scheduled_metering_rls.py
+          tests/integration/test_price_alert_metering_rls.py
           tests/integration/test_app_runtime_rls.py
           -m integration -q --tb=short
 
