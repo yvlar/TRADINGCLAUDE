@@ -15,6 +15,12 @@ import { createCheckout, openPortal } from '../api/billing'
 import { ApiError } from '../api/client'
 import type { UsageBySkill } from '../types'
 
+// Fenêtre de re-synchronisation post-checkout : le webhook Stripe peut mettre `tenants.plan`
+// à jour APRÈS le refresh ponctuel du retour. On sonde à intervalle borné (~30 s) jusqu'à la
+// bascule du plan, puis on s'arrête — jamais de boucle infinie.
+export const POLL_INTERVAL_MS = 3000
+export const MAX_POLL_ATTEMPTS = 10
+
 /** Convertit la ventilation par skill en dict {skill: coût} attendu par SkillCostPieChart. */
 function bySkillToCostMap(bySkill: UsageBySkill[]): Record<string, number> {
   return Object.fromEntries(bySkill.map((s) => [s.skill, s.cost_usd]))
@@ -57,6 +63,21 @@ export default function BillingPage() {
     if (status === 'success') void refreshUser()
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams, refreshUser])
+
+  // Resync borné après un retour de checkout réussi, le temps que le webhook rattrape le refresh
+  // ponctuel ci-dessus. La bascule de `plan` est le signal d'arrêt : la dépendance change →
+  // cleanup de l'interval + retour anticipé (guard `plan !== 'free'`). Sans bascule, l'interval
+  // s'auto-arrête au plafond d'itérations — jamais de boucle infinie.
+  useEffect(() => {
+    if (checkoutResult !== 'success' || plan !== 'free') return
+    let attempts = 0
+    const timer = setInterval(() => {
+      void refreshUser()
+      attempts += 1
+      if (attempts >= MAX_POLL_ATTEMPTS) clearInterval(timer)
+    }, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [checkoutResult, plan, refreshUser])
 
   const usage = useQuery({
     queryKey: ['usage', 30],

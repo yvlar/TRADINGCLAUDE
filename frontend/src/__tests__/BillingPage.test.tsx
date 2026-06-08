@@ -1,9 +1,9 @@
 import { StrictMode } from 'react'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import BillingPage from '../pages/BillingPage'
+import BillingPage, { MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS } from '../pages/BillingPage'
 import { ApiError } from '../api/client'
 import type { UsageReporting, UsageResponse, User } from '../types'
 
@@ -78,14 +78,16 @@ describe('BillingPage', () => {
     vi.mocked(getUsage).mockResolvedValue(_USAGE)
     vi.mocked(getUsageReporting).mockResolvedValue(_REPORTING)
     setAuth('free')
-    // Stub de window.location : la redirection CTA assigne `href` (jsdom ne navigue pas).
+    // Stub de window.location : la redirection CTA assigne `href` (jsdom ne navigue pas) ;
+    // `reload` espionné pour prouver la bascule du CTA SANS rechargement de page.
     Object.defineProperty(window, 'location', {
       configurable: true,
-      value: { ...originalLocation, href: '' },
+      value: { ...originalLocation, href: '', reload: vi.fn() },
     })
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     Object.defineProperty(window, 'location', {
       configurable: true,
       value: originalLocation,
@@ -247,5 +249,82 @@ describe('BillingPage', () => {
     rerender(<BillingPage />)
     expect(screen.getByTestId('billing-portal-btn')).toBeInTheDocument()
     expect(screen.queryByTestId('billing-checkout-btn')).not.toBeInTheDocument()
+  })
+
+  it('?status=success → polling resync le plan ; le CTA bascule checkout→portail sans reload, puis s\'arrête (preuve d\'acceptation)', async () => {
+    vi.useFakeTimers()
+    mockSearchParams = new URLSearchParams('status=success')
+    setAuth('free')
+    const { rerender } = render(<BillingPage />, { wrapper })
+
+    // Refresh ponctuel du retour de checkout (effet existant).
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('billing-checkout-btn')).toBeInTheDocument()
+
+    // 1ᵉʳ tick de polling : le plan est toujours free → re-sync.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(2)
+
+    // Le webhook a synchronisé `tenants.plan` → useAuth repointe sur 'pro' (changement RÉEL).
+    setAuth('pro')
+    rerender(<BillingPage />)
+    expect(screen.getByTestId('billing-portal-btn')).toBeInTheDocument()
+    expect(screen.queryByTestId('billing-checkout-btn')).not.toBeInTheDocument()
+
+    // Le polling s'est arrêté : des ticks supplémentaires ne re-synchronisent plus.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 5)
+    })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(2)
+    expect(window.location.reload).not.toHaveBeenCalled()
+  })
+
+  it('?status=success mais plan jamais synchronisé → polling borné (s\'arrête au plafond, pas de boucle infinie)', async () => {
+    vi.useFakeTimers()
+    mockSearchParams = new URLSearchParams('status=success')
+    setAuth('free')
+    render(<BillingPage />, { wrapper })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1) // refresh ponctuel
+
+    // Bien au-delà du plafond (MAX_POLL_ATTEMPTS × intervalle).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * (MAX_POLL_ATTEMPTS + 20))
+    })
+    // 1 (ponctuel) + MAX_POLL_ATTEMPTS (plafond) — jamais davantage.
+    const cappedCalls = 1 + MAX_POLL_ATTEMPTS
+    expect(mockRefreshUser).toHaveBeenCalledTimes(cappedCalls)
+
+    // Prouve la borne : un nouveau lot de temps ne déclenche plus aucun refresh.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 20)
+    })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(cappedCalls)
+  })
+
+  it('?status=success → le polling est nettoyé au démontage (plus de resync après unmount)', async () => {
+    vi.useFakeTimers()
+    mockSearchParams = new URLSearchParams('status=success')
+    setAuth('free')
+    const { unmount } = render(<BillingPage />, { wrapper })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1)
+
+    unmount()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * (MAX_POLL_ATTEMPTS + 1))
+    })
+    expect(mockRefreshUser).toHaveBeenCalledTimes(1) // aucun tick après démontage
+  })
+
+  it('sans ?status=success → aucun polling (refreshUser jamais appelé même après plusieurs intervalles)', async () => {
+    vi.useFakeTimers()
+    // mockSearchParams reste vide (réinitialisé en beforeEach).
+    setAuth('free')
+    render(<BillingPage />, { wrapper })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * (MAX_POLL_ATTEMPTS + 1))
+    })
+    expect(mockRefreshUser).not.toHaveBeenCalled()
   })
 })
