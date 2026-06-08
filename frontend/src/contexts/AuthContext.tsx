@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { authLogin, authLogout, authMe, AuthApiError } from '../api/auth'
 import type { LoginRequest, User } from '../types'
 
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   // Restaure la session depuis le cookie httpOnly au montage
   useEffect(() => {
@@ -60,8 +62,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore les erreurs de logout (token déjà expiré, etc.)
     }
     setUser(null)
+    // Purge totale du cache react-query au changement d'identité : une re-connexion
+    // sous un autre tenant (même session SPA) ne doit jamais servir de données du
+    // tenant précédent — inconditionnel, même si authLogout() a échoué.
+    queryClient.clear()
     navigate('/login', { replace: true })
-  }, [navigate])
+  }, [navigate, queryClient])
 
   return (
     <AuthContext.Provider
