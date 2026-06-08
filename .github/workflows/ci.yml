@@ -243,6 +243,7 @@ jobs:
           tests/integration/test_price_alert_metering_rls.py
           tests/integration/test_app_runtime_rls.py
           tests/integration/test_revoke_public_rls.py
+          tests/integration/test_force_rls.py
           -m integration -q --tb=short
 
   test-e2e:
