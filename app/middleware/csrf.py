@@ -48,7 +48,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/openapi.json",
         "/redoc",
         "/telemetry",
-        "/report",
+        # `/report` retiré (E4-S11) : POST /report est une mutation authentifiée par
+        # cookie → soumise au double-submit CSRF comme les autres mutations web.
         "/ws",
     )
 

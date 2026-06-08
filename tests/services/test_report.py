@@ -2,9 +2,40 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.orchestrator.core import AnalyzeResponse
 from app.services.report import ReportService
+
+# `/report` exige une session depuis l'E4-S11 (scoping tenant) → cookie + auth_token_service mocké.
+_REPORT_COOKIE = {"access_token": "fake-jwt-access-token"}
+
+
+@pytest.fixture
+def report_client(client):
+    """client de conftest avec un cookie JWT mocké (les endpoints /report sont désormais protégés)."""
+    from app.api.main import app
+
+    prev = getattr(app.state, "auth_token_service", None)
+    mock = AsyncMock()
+    mock.decode_access_token = MagicMock(
+        return_value={
+            "sub": str(uuid.uuid4()),
+            "email": "t@test.com",
+            "role": "reader",
+            "tenant_id": None,
+            "jti": str(uuid.uuid4()),
+            "exp": 9_999_999_999,
+        }
+    )
+    mock.is_jti_blacklisted.return_value = False
+    app.state.auth_token_service = mock
+    try:
+        yield client
+    finally:
+        app.state.auth_token_service = prev
 
 # ---------------------------------------------------------------------------
 # Helpers — construction d'AnalyzeResponse de test
@@ -114,7 +145,7 @@ def test_save_pdf_nom_correct(tmp_path, graham_output_msft):
 # ---------------------------------------------------------------------------
 
 
-async def test_post_report_200(client) -> None:
+async def test_post_report_200(report_client) -> None:
     """POST /report avec payload valide → 200 + Content-Type application/pdf."""
     payload = {
         "ticker": "BNS",
@@ -129,13 +160,13 @@ async def test_post_report_200(client) -> None:
         },
         "workflow": "value_graham",
     }
-    response = await client.post("/report", json=payload)
+    response = await report_client.post("/report", json=payload, cookies=_REPORT_COOKIE)
 
     assert response.status_code == 200
     assert "application/pdf" in response.headers.get("content-type", "")
 
 
-async def test_post_report_content_disposition(client) -> None:
+async def test_post_report_content_disposition(report_client) -> None:
     """POST /report → header Content-Disposition présent avec filename .pdf."""
     payload = {
         "ticker": "BNS",
@@ -149,7 +180,7 @@ async def test_post_report_content_disposition(client) -> None:
             "book_value": 61.5,
         },
     }
-    response = await client.post("/report", json=payload)
+    response = await report_client.post("/report", json=payload, cookies=_REPORT_COOKIE)
 
     assert response.status_code == 200
     disposition = response.headers.get("content-disposition", "")
@@ -176,23 +207,21 @@ async def test_post_report_ratios_invalides_422(client) -> None:
     assert response.status_code == 422
 
 
-async def test_get_report_analysis_inconnu_404(client) -> None:
+async def test_get_report_analysis_inconnu_404(report_client) -> None:
     """GET /report/{uuid-inexistant} → 404 Not Found."""
-    from unittest.mock import AsyncMock
-
     from app.api.main import app
 
     # fetchrow retourne None pour simuler un analysis_id introuvable en DB
     app.state.db_pool.fetchrow = AsyncMock(return_value=None)
 
     fake_id = "00000000-0000-0000-0000-000000000099"
-    response = await client.get(f"/report/{fake_id}")
+    response = await report_client.get(f"/report/{fake_id}", cookies=_REPORT_COOKIE)
 
     assert response.status_code == 404
 
 
 async def test_get_report_200_pdf_reconstruit_depuis_historique(
-    client, graham_output_msft, earnings_output_msft
+    report_client, graham_output_msft, earnings_output_msft
 ) -> None:
     """GET /report/{id} reconstruit l'analyse (cœur consolidé Sprint 147) et renvoie un PDF.
 
@@ -200,8 +229,6 @@ async def test_get_report_200_pdf_reconstruit_depuis_historique(
     PDF multi-skills), jusqu'ici couvert seulement au niveau unité (_reconstruct_response).
     Réutilise `_make_result_row` (helper des tests de reconstruction Sprint 147).
     """
-    from unittest.mock import AsyncMock
-
     from app.api.main import app
 
     row = _make_result_row(
@@ -212,7 +239,7 @@ async def test_get_report_200_pdf_reconstruit_depuis_historique(
     )
     app.state.db_pool.fetchrow = AsyncMock(return_value=row)
 
-    response = await client.get(f"/report/{row['id']}")
+    response = await report_client.get(f"/report/{row['id']}", cookies=_REPORT_COOKIE)
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
@@ -222,20 +249,20 @@ async def test_get_report_200_pdf_reconstruit_depuis_historique(
     assert len(response.content) > 0
 
 
-async def test_get_report_graham_absent_du_result_500(client, earnings_output_msft) -> None:
+async def test_get_report_graham_absent_du_result_500(
+    report_client, earnings_output_msft
+) -> None:
     """Contrat require_graham=True au niveau endpoint : `result` sans clé graham → 500 assaini.
 
     Le cœur consolidé lève ValueError (graham obligatoire) ; l'endpoint l'assainit en 500.
     Verrouille la validation au niveau endpoint (le test unité Sprint 147 ne couvre que la fonction).
     """
-    from unittest.mock import AsyncMock
-
     from app.api.main import app
 
     row = _make_result_row({"earnings_quality": earnings_output_msft.model_dump()})
     app.state.db_pool.fetchrow = AsyncMock(return_value=row)
 
-    response = await client.get(f"/report/{row['id']}")
+    response = await report_client.get(f"/report/{row['id']}", cookies=_REPORT_COOKIE)
 
     assert response.status_code == 500
 

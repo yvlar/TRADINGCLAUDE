@@ -46,7 +46,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         # signature `Stripe-Signature`, vérifiée dans l'endpoint. Exempté du chemin Bearer/JWT.
         "/billing/webhook",
     }
-    EXEMPT_PREFIXES: ClassVar[tuple[str, ...]] = ("/telemetry", "/report", "/ws")
+    # `/report` n'est plus exempté (E4-S11) : ses deux routes exigent désormais une
+    # session pour résoudre le tenant du demandeur et scoper le rapport sous la RLS.
+    EXEMPT_PREFIXES: ClassVar[tuple[str, ...]] = ("/telemetry", "/ws")
 
     # Anti-brute-force sur la validation de clé Bearer : au-delà du seuil d'échecs
     # par IP dans la fenêtre, on coupe court (429) avant tout travail de validation.

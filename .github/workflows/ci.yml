@@ -222,7 +222,7 @@ jobs:
           asyncio.run(main())
           PY
 
-      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention + webhook Stripe (rôle NOSUPERUSER)
+      - name: Matrice isolation RLS 7 tables + threading tenant clé API + agrégation usage + purge rétention + webhook Stripe + rapport scopé tenant (rôle NOSUPERUSER)
         env:
           RLS_TEST_DATABASE_URL: postgresql://rls_tester:rls_tester@localhost:5432/copilote
         run: >-
@@ -231,6 +231,7 @@ jobs:
           tests/integration/test_usage_aggregate_rls.py
           tests/integration/test_retention_purge_rls.py
           tests/integration/test_stripe_billing_webhook.py
+          tests/integration/test_report_tenant_rls.py
           -m integration -q --tb=short
 
   test-e2e:
