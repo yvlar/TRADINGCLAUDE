@@ -1,0 +1,2 @@
+# Forcer LF pour les scripts shell — évite CRLF sur Windows (Docker échoue avec \r dans #!/bin/sh)
+*.sh text eol=lf
