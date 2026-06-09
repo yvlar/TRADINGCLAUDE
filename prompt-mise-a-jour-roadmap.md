@@ -1,58 +1,54 @@
-# Sprint 199 — Ops : parité du garde insecure sur le boot API réel (compléter S196 côté API)
+# Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool`
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.85.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.86.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (198) a ajouté `frontend/src/__tests__/BillingPageCrossTenant.test.tsx` : test page prouvant qu'après une bascule cross-tenant (logout A `free` → login B `pro`) le CTA Facturation reflète le plan de B et qu'aucune conso de A ne survit (purge S190). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (199) a ajouté `tests/api/test_api_boot_insecure.py` : 2 tests prouvant que le lifespan FastAPI refuse une DSN insecure en prod avant `asyncpg.create_pool` — miroir de S196 (chemin worker). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval) : prouver, en **miroir de S196** (qui a verrouillé le chemin **worker**), que le **boot API réel** refuse une DSN insecure en prod — le `lifespan` FastAPI doit lever `RuntimeError` **avant** `asyncpg.create_pool`. Ferme le dernier site de boot (API) non couvert par un test d'intégration ciblé du garde fail-closed.
+> **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval) : verrouiller par un test l'invariant architectural dont S192/S196/S199 dépendent — **aucun** worker ne crée de pool via `asyncpg.create_pool`/`asyncpg.connect` en direct (tous passent par `create_runtime_pool`, donc par le garde). Un meta-test (scan AST / `grep` source de `app/workers/tasks.py`) rend ce contournement impossible à introduire silencieusement.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.85.0)
-2. `.claude/rules/tests-pyramide.md` (niveau **intégration** ; règle absolue de patch des appels externes ; marqueurs pytest).
-3. `.claude/rules/conventions-python.md` (async/await, type hints partout, docstrings FR d'une ligne du WHY, imports groupés).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.86.0)
+2. `.claude/rules/tests-pyramide.md` (niveau **unitaire** ; no I/O, no DB ; marqueurs pytest).
+3. `.claude/rules/conventions-python.md` (type hints partout, docstrings FR du WHY, imports groupés).
 4. **Code de référence à re-vérifier en début de session (anti-hallucination — les n° de ligne DÉRIVENT, re-grep obligatoire)** :
-   - `app/api/main.py` — `async def lifespan` (`:148`) ; `create_runtime_pool` importé (`:44`) et appelé `await create_runtime_pool(min_size=2, max_size=10)` (`:169`) en **tout premier `await`** du lifespan (lignes 150-168 = lectures d'env synchrones, aucune I/O) ; commentaire du garde dans le chokepoint (`:154-156`). Vérifiés `grep` S198.
-   - `app/db/pool.py` — `create_runtime_pool` (`:9`) résout `dsn = resolve_app_database_url()` (`:23`) puis `require_secure_db_url(dsn)` (`:24`) **avant** `asyncpg.create_pool(...)` (`:25`). Vérifiés S198.
-   - `app/utils/security_config.py` — `resolve_app_database_url` lit `APP_DATABASE_URL` ; marqueur insecure `copilote:copilote@` ; message du garde « Identifiants PostgreSQL **par défaut**… » (match `par défaut`). `app/utils/env.py` — `is_dev_environment` → `production` hors `{dev,development,test,testing}`. (À re-confirmer par `grep`, n° exacts S196.)
-   - **Patron à mirrorer** : `tests/workers/test_worker_boot_insecure.py` (S196) — même stratégie (mock `app.db.pool.asyncpg.create_pool` en `AsyncMock`, `APP_ENV=production` via `monkeypatch`, `APP_DATABASE_URL` insecure, `assert_not_awaited`). Repérer aussi un test de boot existant (`tests/api/…` ou `test_healthz_prod.py`) pour réutiliser son setup de lifespan/mocks aval.
+   - `app/workers/tasks.py` — **0** occurrence de `asyncpg.create_pool`/`asyncpg.connect` en direct (vérifié `grep` S198, `grep -c` = 0) ; **≥1** `create_runtime_pool` (vérifié S198) ; **à re-confirmer par `grep -c`**.
+   - `app/db/pool.py` — `create_runtime_pool` (`:9`) résout `dsn = resolve_app_database_url()` (`:23`) puis `require_secure_db_url(dsn)` (`:24`) **avant** `asyncpg.create_pool(...)` (`:25`). Chokepoint unique — vérifié S199.
+   - `app/api/main.py` — `from app.db.pool import create_runtime_pool` (`:44`) ; `await create_runtime_pool(...)` (`:169`). Vérifié S199.
+   - **Patron à suivre** : `tests/workers/test_worker_boot_insecure.py` (S196) et `tests/api/test_api_boot_insecure.py` (S199) — même style, même auto-portance.
 
 ---
 
-## TÂCHE — Sprint 199 : test d'intégration du boot API sous DSN insecure
+## TÂCHE — Sprint 200 : meta-test anti-contournement du chokepoint
 
-**Objectif** : S196 a prouvé le garde sur le chemin **worker** (`_execute_*` → `create_runtime_pool` 1ᵉʳ `await`). Le chemin **API** repose sur le **même chokepoint** mais aucun test n'exerce le **lifespan** sous DSN insecure prod. Un refactor futur résolvant la DSN ailleurs (ou court-circuitant `create_runtime_pool` dans `main.py`) repasserait `test_pool.py`/`test_worker_boot_insecure.py` mais ré-ouvrirait le trou côté API. Ce sprint pose la **preuve d'intégration manquante**.
+**Objectif** : S192/S196/S199 prouvent que le garde `require_secure_db_url` verrouille les chemins **pool/worker/API** à condition que tous les workers et le lifespan passent par `create_runtime_pool`. Rien n'empêche un futur développeur d'appeler `asyncpg.create_pool`/`asyncpg.connect` en direct dans un worker (contournant le garde). Ce sprint pose un **meta-test** qui détecte statiquement ce contournement.
 
 ### Spécification
 
-1. **Nouveau fichier `tests/api/test_api_boot_insecure.py`** (auto-portant, patron S196 — ne pas étendre un test existant).
-2. **Test obligatoire (insecure → lève avant `create_pool`)** : `monkeypatch` `APP_ENV=production` + `APP_DATABASE_URL` insecure (`postgresql://copilote:copilote@.../copilote`) ; patcher `app.db.pool.asyncpg.create_pool` en `AsyncMock` ; entrer le `lifespan(app)` (via `async with lifespan(app):` ou en appelant le contextmanager ASGI) → `pytest.raises(RuntimeError, match="par défaut")` (fragment **propre** au garde insecure-creds, discrimine d'un `RuntimeError` de boot non lié) + `asyncpg.create_pool.assert_not_awaited()`. Le garde se déclenche à `:169` **avant** `anthropic.AsyncAnthropic` (`:175`) et `RagClient.ensure_collection()` (`:178`) → aucune I/O Qdrant/Anthropic n'est atteinte (pas à mocker dans ce test).
-3. **2ᵉ test discriminant (secure → garde passé → `create_pool` awaité)** : DSN **secure** en prod ; patcher `app.db.pool.asyncpg.create_pool` (`AsyncMock`, retourne un pool factice) ET l'aval atteint après le garde (le lifespan poursuit vers `RagClient.ensure_collection` qui ferait une I/O Qdrant — patcher `RagClient.ensure_collection` en `AsyncMock`, et tout autre appel réseau du lifespan repéré au re-grep : `anthropic.AsyncAnthropic` est un constructeur sans I/O, mais `ensure_collection` est un `await` réseau). Asserter `asyncpg.create_pool.assert_awaited()` (le garde a laissé passer). But : écarter le faux positif « tout lève en prod » — prouver que le `RuntimeError` du test 1 vient bien des creds insecure, pas de l'env prod en soi. *(Si mocker tout l'aval du lifespan s'avère trop intrusif, repli acceptable et documenté : asserter au niveau `create_runtime_pool` que la DSN secure ne lève pas — mais privilégier l'exercice du vrai `lifespan`.)*
-4. **`create_runtime_pool` n'est PAS mocké** (sinon le garde réel n'est pas exercé) ; seul `app.db.pool.asyncpg.create_pool` (+ l'aval réseau pour le test 2) est patché. Type hints partout (`monkeypatch: pytest.MonkeyPatch`, `-> None`), mocks typés (`AsyncMock`), docstrings FR du WHY.
+1. **Nouveau fichier `tests/meta/test_no_direct_asyncpg_in_workers.py`** (auto-portant, pas d'import de fixtures externes).
+2. **Test obligatoire (scan statique)** : lire le source de `app/workers/tasks.py` comme chaîne de caractères ; asserter que **ni** `asyncpg.create_pool` **ni** `asyncpg.connect` n'y apparaissent en dehors d'un commentaire ou d'une chaîne de documentation. Deux approches équivalentes acceptées :
+   - **AST** : `ast.parse(source)` + `ast.walk` pour trouver tous les `Attribute` nœuds dont `attr` est `create_pool` ou `connect` et `value` est `asyncpg` ; asserter `len(calls) == 0`.
+   - **Grep source** : `re.search(r'asyncpg\.(create_pool|connect)\s*\(', source)` ; asserter `None`.
+3. **Test positif (l'invariant est satisfait aujourd'hui)** : asserter qu'au moins une occurrence de `create_runtime_pool` est présente dans `tasks.py` — confirme que le chokepoint est bien utilisé (sinon le test serait vacueux si le fichier est vide ou si les workers n'y sont pas).
+4. **Aucun mock, aucun I/O réseau, aucune DB** : le test lit uniquement le système de fichiers local via `pathlib.Path`. Type hints partout, docstrings FR du WHY.
 
 ### Tests / validation
-- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/` (+ `mypy app/ --ignore-missing-imports` doit rester vert, mais **aucun `app/` n'est touché** → inchangé).
-- **Pas de frontend, pas d'eval** (aucun prompt de skill ni l'orchestrateur touché ; aucun `frontend/` touché).
-- **Preuve d'acceptation observable** : le test insecure **échoue** quand on neutralise `require_secure_db_url(dsn)` dans `create_runtime_pool` (remplacer la ligne par `pass`, lancer, puis **restaurer `pool.py` byte-identique** via `git checkout`) — il verrouille le **chemin de boot API réel**, pas seulement le helper isolé. Les tests S192/S196 (`test_pool.py`, `test_worker_boot_insecure.py`) restent **verts**.
+- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/` (+ `mypy app/ --ignore-missing-imports` — aucun `app/` touché → inchangé).
+- **Pas de frontend, pas d'eval**.
+- **Preuve d'acceptation observable** : le test de scan **échoue** si on ajoute `asyncpg.create_pool(...)` dans `tasks.py` (même en commentaire si l'implémentation grep-naïve, auquel cas préférer le filtre AST) — vérifier en ajoutant une ligne factice puis en la retirant.
 
 ### Note environnement conteneur web
-`pytest`/`ruff`/`mypy` tournent depuis `.venv` (préparé par le hook `SessionStart`). Si des imports manquent (`stripe`/`alembic` ont déjà manqué en S196), relancer `.venv/bin/pip install -r requirements.txt`. **Pas de PostgreSQL dans le conteneur** → preuve par mock ciblé de `asyncpg.create_pool`, jamais un boot Postgres réel.
+`pytest`/`ruff` tournent depuis `.venv` (préparé par le hook `SessionStart`). Si des imports manquent (`stripe`/`alembic` ont manqué en S196/S199), relancer `.venv/bin/pip install -r requirements.txt`. **Pas de PostgreSQL dans le conteneur** — ce sprint ne nécessite aucune DB.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite Ops/E5 — voir plan directeur §7-§8)
-
-### Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool`
-**Objectif** : verrouiller par un test l'invariant architectural dont S192/S196/S199 dépendent — **aucun** worker ne crée de pool via `asyncpg.create_pool`/`asyncpg.connect` en direct (tous passent par `create_runtime_pool`, donc par le garde).
-**Complexité** : Faible.
-**Justification** : le garde est centralisé dans `create_runtime_pool` ; rien n'empêche un futur worker d'appeler `asyncpg.create_pool` en direct (ré-ouvrant le trou). Un meta-test (scan source / AST de `app/workers/tasks.py`) rend ce contournement impossible à introduire silencieusement.
-**Référence** : `app/workers/tasks.py` — **0** occurrence de `asyncpg.create_pool`/`asyncpg.connect` en direct (vérifié `grep` S198, `grep -c` = 0) ; **10** matches `create_runtime_pool` (1 import `:44`-style + 9 usages — `grep -c` S198 = 10) ; le meta-test est **à créer**.
 
 ### Sprint 201 — E5 : test d'intégration de la bascule de plan Stripe (synchro webhook → quotas)
 **Objectif** : prouver qu'après un événement Stripe `customer.subscription.updated`, le plan du tenant est mis à jour dans `tenants.plan` ET que `QuotaService` reflète la nouvelle limite sans redémarrage.
@@ -63,28 +59,34 @@ Le dernier sprint (198) a ajouté `frontend/src/__tests__/BillingPageCrossTenant
 ### Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation
 **Objectif** : afficher l'état courant du quota mensuel d'analyses (plan, `used`/`limit`/`remaining`, `reset_at`) dans une carte de la page `/facturation`, en réutilisant le client `getQuota()` et le composant `QuotaBadge`/`QuotaBanner` existants.
 **Complexité** : Faible.
-**Justification** : `GET /quota` existe (S184) et alimente déjà le `QuotaBadge` du header, mais la page Facturation — pourtant le lieu naturel de gestion d'abonnement — n'affiche pas l'état du quota. Additif pur, aucun backend à créer. *(Pas d'historique mensuel exposé aujourd'hui → s'en tenir à l'état courant, ne pas promettre de graphique temporel.)*
+**Justification** : `GET /quota` existe (S184) et alimente déjà le `QuotaBadge` du header, mais la page Facturation — pourtant le lieu naturel de gestion d'abonnement — n'affiche pas l'état du quota. Additif pur, aucun backend à créer.
 **Référence** : `GET /quota` → `app/api/endpoints/quota.py` (`get_quota` `:19`) — vérifié `grep` S198 ; client typé `frontend/src/api/quota.ts` (`getQuota()` `:5`, type `QuotaStatus`) — vérifié S198 ; `frontend/src/pages/BillingPage.tsx` (page cible existante) ; la carte est **à créer**.
+
+### Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin worker métré
+**Objectif** : prouver que `_emit_usage_events` dans l'orchestrateur ne peut pas écrire un événement `usage_events` sous un tenant B depuis un contexte tenant A — gap couvert par la RLS PostgreSQL mais sans test d'intégration ciblé sur le chemin worker.
+**Complexité** : Moyenne.
+**Justification** : `usage_events` est la table de facturation (S166) ; une fuite cross-tenant serait une anomalie de facturation silencieuse. Les tests RLS S163-S165 couvrent la policy, mais pas l'émission depuis l'orchestrateur sous un tenant scopé.
+**Référence** : `app/orchestrator/core.py` — `_emit_usage_events` (à localiser par `grep` — à vérifier avant d'affirmer) ; `app/db/tenant_context.py` — `tenant_scope` (à vérifier) ; le test est **à créer**.
+
+### Sprint 204 — Frontend : page d'administration des tenants (super-admin)
+**Objectif** : page `/admin/tenants` listant les tenants (nom, plan, `stripe_customer_id` tronqué, date de création) via un endpoint `GET /admin/tenants` à créer, accessible super-admin uniquement.
+**Complexité** : Moyenne.
+**Justification** : aucune UI n'expose la liste des tenants — l'administrateur doit inspecter directement la DB. Utile pour l'onboarding B2B et le support.
+**Référence** : `app/api/endpoints/admin.py` — `_require_admin` (à re-grepper) ; `app/services/user_service.py` — `UserService` (à re-grepper) ; la route et la page sont **à créer**.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.85.0),
+Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.86.0),
 .claude/rules/tests-pyramide.md, .claude/rules/conventions-python.md.
-Sprint actif : 199 — Ops : parité du garde insecure sur le boot API réel (miroir de S196 côté API).
-COMMENCE PAR RE-GREP : app/api/main.py (lifespan, 1ᵉʳ await = create_runtime_pool), app/db/pool.py
-  (create_runtime_pool → resolve_app_database_url → require_secure_db_url AVANT asyncpg.create_pool),
-  app/utils/security_config.py (marqueur copilote:copilote@, message "par défaut").
-PATRON : tests/workers/test_worker_boot_insecure.py (S196).
-NOUVEAU FICHIER : tests/api/test_api_boot_insecure.py — 2 tests :
-  1. APP_ENV=production + APP_DATABASE_URL insecure → entrer lifespan(app) → pytest.raises(RuntimeError, match="par défaut")
-     + app.db.pool.asyncpg.create_pool (AsyncMock) .assert_not_awaited().
-  2. Discriminant : DSN secure en prod → mocker asyncpg.create_pool + l'aval réseau du lifespan
-     (RagClient.ensure_collection AsyncMock, etc.) → create_pool.assert_awaited().
-  create_runtime_pool NON mocké (garde réel exercé) ; seul asyncpg.create_pool (+ aval) patché.
-GATES : pytest (hors e2e/evals) + ruff. Pas de frontend, pas d'eval, mypy inchangé (zéro app/).
-PREUVE : le test insecure échoue si on neutralise require_secure_db_url dans create_runtime_pool
-  (puis restaurer pool.py byte-identique via git checkout). Confirmer avant git push.
+Sprint actif : 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool`.
+COMMENCE PAR RE-GREP : app/workers/tasks.py (0 occurrence asyncpg.create_pool/connect direct, ≥1 create_runtime_pool).
+NOUVEAU FICHIER : tests/meta/test_no_direct_asyncpg_in_workers.py — 2 tests :
+  1. Scan statique tasks.py : asserter 0 occurrence asyncpg.create_pool/asyncpg.connect en dehors commentaires.
+  2. Positif : ≥1 occurrence create_runtime_pool dans tasks.py (test non vacueux).
+  Pas de mock, pas de I/O réseau — lecture filesystem uniquement.
+GATES : pytest (hors e2e/evals) + ruff. Pas de frontend, pas d'eval.
+PREUVE : ajouter asyncpg.create_pool(...) factice dans tasks.py → test 1 rouge → retirer.
 ```
