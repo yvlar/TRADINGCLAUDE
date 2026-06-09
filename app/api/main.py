@@ -175,7 +175,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
 
     rag_client = RagClient(url=qdrant_url, collection=qdrant_coll)
-    await rag_client.ensure_collection()
+    # Qdrant non-fatal au démarrage : Qdrant lent à démarrer ou absent ne doit pas
+    # empêcher le service de répondre (auth, analyse, etc.). Le RAG est dégradé, pas l'API.
+    try:
+        await rag_client.ensure_collection()
+    except Exception as _qdrant_err:
+        logger.warning(
+            "Qdrant indisponible au démarrage (%s) — RAG désactivé, citations = []",
+            _qdrant_err,
+        )
 
     rag_service: RagService | None = None
     if openai_key:
