@@ -1,11 +1,12 @@
 import { useRef, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
-import { TrendingUp } from 'lucide-react'
+import { TrendingUp, ArrowRight } from 'lucide-react'
 import { AnalyzeForm } from '../components/AnalyzeForm'
 import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
 import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { PageTransition, StaggerItem } from '../components/PageTransition'
 import { QuotaBanner, isQuotaError, quotaDetailFromError } from '../components/QuotaBanner'
 import { streamAnalyze, postReport, downloadTickerPdf } from '../api/analyze'
@@ -210,18 +211,49 @@ export default function AnalyzePage() {
           </div>
         )}
 
-        {/* État vide — guide l'utilisateur */}
+        {/* État vide — guide l'utilisateur vers une première analyse */}
         {showEmptyState && (
-          <div className="rounded-xl border border-border/40 bg-card/40 px-6 py-10 text-center animate-fade-in-up">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
-              <TrendingUp size={18} className="text-primary" />
+          <div className="animate-fade-in-up space-y-4">
+            <div className="rounded-xl border border-border/40 bg-card/40 px-6 py-8 text-center">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                <TrendingUp size={18} className="text-primary" />
+              </div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Prêt à analyser</h3>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                Entrez un symbole boursier, récupérez les données automatiquement, puis lancez l'analyse.
+              </p>
             </div>
-            <h3 className="text-sm font-semibold text-foreground mb-1">Prêt à analyser</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Entrez un symbole boursier (ex. <span className="font-mono text-foreground/70">BNS.TO</span>,{' '}
-              <span className="font-mono text-foreground/70">AAPL</span>) puis cliquez{' '}
-              <strong>Récupérer les données</strong> pour charger automatiquement les ratios financiers.
-            </p>
+
+            {/* Exemples rapides pour démarrer */}
+            <div className="rounded-xl border border-border/30 bg-card/20 px-5 py-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3 font-medium">
+                Exemples populaires
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { ticker: 'BNS.TO', label: 'Banque Nova Scotia', workflow: 'value_graham' },
+                  { ticker: 'MSFT', label: 'Microsoft', workflow: 'compounder_buffett' },
+                  { ticker: 'CCO.TO', label: 'Cameco · Uranium', workflow: 'special_situation' },
+                  { ticker: 'NVDA', label: 'Nvidia · IA', workflow: 'fast_grower_lynch' },
+                ] as { ticker: string; label: string; workflow: string }[]).map((ex) => (
+                  <Button
+                    key={ex.ticker}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 text-sm font-normal h-9"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('tradingclaude:prefill', {
+                        detail: { ticker: ex.ticker, workflow: ex.workflow },
+                      }))
+                    }}
+                  >
+                    <span className="font-mono font-semibold text-foreground">{ex.ticker}</span>
+                    <span className="text-muted-foreground">{ex.label}</span>
+                    <ArrowRight size={12} className="text-muted-foreground ml-0.5" />
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

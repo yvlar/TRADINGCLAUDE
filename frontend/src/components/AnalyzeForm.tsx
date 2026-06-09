@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, Zap, Settings2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -53,6 +53,17 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
   const [autoFillError, setAutoFillError] = useState<string | null>(null)
   const [autoFillDone, setAutoFillDone] = useState(false)
   const [ratiosOpen, setRatiosOpen] = useState(false)
+
+  useEffect(() => {
+    function handlePrefill(e: Event) {
+      const ev = e as CustomEvent<{ ticker: string; workflow: string }>
+      setTicker(ev.detail.ticker.toUpperCase())
+      setWorkflow(ev.detail.workflow)
+      setAutoFillDone(false)
+    }
+    window.addEventListener('tradingclaude:prefill', handlePrefill)
+    return () => window.removeEventListener('tradingclaude:prefill', handlePrefill)
+  }, [])
 
   async function handleAutoFill() {
     if (!ticker.trim()) return
@@ -231,11 +242,13 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
             )}
           </div>
 
-          {/* Options — toujours visibles */}
-          <div className="flex flex-wrap gap-4 px-1">
+          {/* Options supplémentaires */}
+          <div className="rounded-lg border border-border/40 bg-secondary/20 px-4 py-3 space-y-2.5">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Options d'analyse</p>
+
             <label
-              className={`flex items-center gap-2 text-sm ${earningsAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-              title={earningsAvailable ? undefined : 'Utiliser Récupérer les données pour charger les données'}
+              className={`flex items-center gap-2.5 text-sm ${earningsAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+              title={earningsAvailable ? undefined : 'Utilisez "Récupérer les données" pour activer cette option'}
               data-testid="earnings-label"
             >
               <input
@@ -243,21 +256,21 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
                 checked={enableEarnings}
                 onChange={(e) => setEnableEarnings(e.target.checked)}
                 disabled={!earningsAvailable}
-                className="accent-primary w-4 h-4"
+                className="accent-primary w-4 h-4 shrink-0"
                 aria-label="Qualité bénéfices"
                 data-testid="earnings-checkbox"
               />
-              Qualité bénéfices
+              <span>Qualité des bénéfices</span>
               {earningsAvailable ? (
                 <span className="text-xs text-bull font-medium" data-testid="earnings-source">
                   {earningsSourceLabel}
                 </span>
               ) : (
-                <span className="text-xs text-muted-foreground">(récupération requise)</span>
+                <span className="text-xs text-muted-foreground italic">(récupération automatique requise)</span>
               )}
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <label className="flex items-center gap-2.5 cursor-pointer text-sm">
               <input
                 type="checkbox"
                 checked={enableThesis}
@@ -265,22 +278,24 @@ export function AnalyzeForm({ onSubmit, isLoading = false, initialTicker = '' }:
                   setEnableThesis(e.target.checked)
                   if (!e.target.checked) setEnableMunger(false)
                 }}
-                className="accent-primary w-4 h-4"
+                className="accent-primary w-4 h-4 shrink-0"
               />
-              Thèse d'investissement
+              <span>Thèse d'investissement</span>
+              <span className="text-xs text-muted-foreground italic">(bull / base / bear)</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <label className={`flex items-center gap-2.5 text-sm ${!enableThesis ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
               <input
                 type="checkbox"
                 checked={enableMunger}
                 disabled={!enableThesis}
                 onChange={(e) => setEnableMunger(e.target.checked)}
-                className="accent-primary w-4 h-4"
+                className="accent-primary w-4 h-4 shrink-0"
               />
               <span className={!enableThesis ? 'text-muted-foreground' : ''}>
-                Munger (nécessite Thèse)
+                Analyse Munger
               </span>
+              <span className="text-xs text-muted-foreground italic">(biais cognitifs — nécessite Thèse)</span>
             </label>
           </div>
 

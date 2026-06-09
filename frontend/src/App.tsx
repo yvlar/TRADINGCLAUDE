@@ -54,21 +54,21 @@ function NavItem({ to, label, icon, compact = false }: NavItemProps) {
       className={({ isActive }) =>
         `relative flex items-center gap-1.5 rounded-lg transition-all duration-150 group ${
           compact
-            ? 'px-2.5 py-2'
-            : 'px-3 py-2'
+            ? 'px-2.5 py-2.5'
+            : 'px-3 py-2.5'
         } ${
           isActive
-            ? 'bg-primary/10 text-primary'
+            ? 'bg-primary/15 text-primary'
             : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
         }`
       }
-      title={compact ? label : undefined}
+      title={label}
     >
       {({ isActive }) => (
         <>
           <span className={`shrink-0 ${isActive ? 'text-primary' : ''}`}>{icon}</span>
           {!compact && (
-            <span className="hidden md:inline text-sm font-medium">{label}</span>
+            <span className="hidden sm:inline text-sm font-medium">{label}</span>
           )}
           {compact && (
             <span className="sr-only">{label}</span>
@@ -104,11 +104,11 @@ function AppShell() {
         <div className="max-w-shell mx-auto w-full px-4 h-14 flex items-center gap-3">
           {/* Brand */}
           <div className="flex items-center gap-2 mr-2 shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0">
               <TrendingUp size={14} className="text-primary-foreground" />
             </div>
-            <span className="text-sm font-bold tracking-tight hidden sm:inline text-foreground">
-              Copilote Financier IA
+            <span className="text-sm font-bold tracking-tight text-foreground">
+              TradingClaude
             </span>
           </div>
 

@@ -102,10 +102,17 @@
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
   }
   /* Typographie : meilleure échelle de titre */
   h1, h2, h3, h4 {
     letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+  /* Focus visible accessible — remplace l'outline natif non stylisé */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 

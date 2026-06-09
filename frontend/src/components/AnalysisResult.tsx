@@ -57,24 +57,34 @@ function ScoreBar({ score, max }: { score: number; max: number }) {
 /** Score composite grand format */
 function CompositeHero({ cs }: { cs: CompositeScore }) {
   const pct = Math.round(cs.score)
-  const colorClass = cs.label === 'FORT' ? 'text-bull' : cs.label === 'MODÉRÉ' ? 'text-neutral' : 'text-bear'
-  const bgClass = cs.label === 'FORT' ? 'bg-bull/10 border-bull/20' : cs.label === 'MODÉRÉ' ? 'bg-neutral/10 border-neutral/20' : 'bg-bear/10 border-bear/20'
+  const isFort = cs.label === 'FORT'
+  const isMod = cs.label === 'MODÉRÉ'
+  const colorClass = isFort ? 'text-bull' : isMod ? 'text-neutral' : 'text-bear'
+  const bgClass = isFort ? 'bg-bull/10 border-bull/25' : isMod ? 'bg-neutral/10 border-neutral/25' : 'bg-bear/10 border-bear/25'
+  const barColor = isFort ? 'bg-bull' : isMod ? 'bg-neutral' : 'bg-bear'
+  const labelDesc = isFort ? 'Opportunité solide' : isMod ? 'Potentiel modéré' : 'Signaux faibles'
 
   return (
     <div className={`rounded-xl border px-5 py-4 ${bgClass}`}>
-      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Score composite</p>
-      <div className="flex items-baseline gap-2 mb-2">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">Score composite</p>
+        <span className={`text-xs font-semibold ${colorClass}`}>{labelDesc}</span>
+      </div>
+      <div className="flex items-baseline gap-2 mb-3">
         <span data-testid="composite-score" className={`text-4xl font-black tabular-nums ${colorClass}`}>
           {pct}
         </span>
         <span className="text-lg text-muted-foreground font-medium">/100</span>
-        <span className={`text-sm font-bold ml-1 ${colorClass}`}>{cs.label}</span>
       </div>
-      {/* Mini barre de progression */}
-      <div className="h-1.5 rounded-full bg-black/20 overflow-hidden">
+      <div className="h-2 rounded-full bg-black/20 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-1000 ${cs.label === 'FORT' ? 'bg-bull' : cs.label === 'MODÉRÉ' ? 'bg-neutral' : 'bg-bear'}`}
+          className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
           style={{ width: `${pct}%` }}
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Score composite : ${pct} sur 100`}
         />
       </div>
     </div>
@@ -96,7 +106,10 @@ function CriteriaTable({ criteria }: { criteria: GrahamCriterion[] }) {
       </TableHeader>
       <TableBody>
         {criteria.map((c) => (
-          <TableRow key={c.numero}>
+          <TableRow
+            key={c.numero}
+            className={c.passe === false ? 'bg-bear/5' : c.passe === true ? 'bg-bull/3' : ''}
+          >
             <TableCell className="text-muted-foreground text-xs">{c.numero}</TableCell>
             <TableCell className="text-sm">{c.nom}</TableCell>
             <TableCell className="font-mono text-xs">{c.valeur_observee}</TableCell>
@@ -105,7 +118,7 @@ function CriteriaTable({ criteria }: { criteria: GrahamCriterion[] }) {
               {c.passe === true ? (
                 <span className="text-bull font-bold">✓</span>
               ) : (
-                <span className="text-bear">✗</span>
+                <span className="text-bear font-bold">✗</span>
               )}
             </TableCell>
           </TableRow>
@@ -135,7 +148,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between p-5 text-left hover:bg-white/2 transition-colors rounded-xl"
+        className="w-full flex items-center justify-between p-5 text-left hover:bg-white/4 transition-colors rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         aria-expanded={open}
         data-testid={toggleTestId}
       >
@@ -179,15 +192,15 @@ function VerdictSummaryRow({ result }: { result: AnalyzeResponse }) {
   if (items.length === 0) return null
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {items.map((item) => (
-        <div key={item.label} className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-secondary/40 px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">{item.label}</span>
+        <div key={item.label} className="flex items-center gap-1.5 rounded-md border border-border/50 bg-secondary/30 px-2.5 py-1.5 min-h-[2rem]">
+          <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
           {item.score && (
-            <span className="text-xs font-semibold text-foreground">{item.score}</span>
+            <span className="text-xs font-bold text-foreground tabular-nums">{item.score}</span>
           )}
           {item.verdict && (
-            <Badge variant={verdictVariant(item.verdict)} className="text-[10px] px-1.5 py-0 h-4">
+            <Badge variant={verdictVariant(item.verdict)} className="text-xs px-2 py-0.5 font-semibold">
               {item.verdict}
             </Badge>
           )}
@@ -221,17 +234,38 @@ export function AnalysisResult({
         <CardContent className="pt-5 pb-4">
           {/* Titre + verdict + actions */}
           <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span data-testid="result-ticker" className="text-3xl font-black tracking-tight">
-                {result.ticker}
-              </span>
-              {g && (
-                <span data-testid="graham-verdict">
-                  {verdictBadge(g.verdict)}
+            <div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span data-testid="result-ticker" className="text-3xl font-black tracking-tight">
+                  {result.ticker}
                 </span>
+                {g && (
+                  <span data-testid="graham-verdict">
+                    {verdictBadge(g.verdict)}
+                  </span>
+                )}
+              </div>
+              {result.composite_score && (
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Analyse {result.workflow.replace(/_/g, ' ')}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-2">
+              {onExportAnalysis && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onExportAnalysis}
+                  disabled={isExportLoading}
+                  data-testid="export-analysis-pdf"
+                  className="gap-1.5"
+                  title="Télécharger le rapport PDF de cette analyse"
+                >
+                  <FileText size={13} />
+                  {isExportLoading ? 'Génération…' : 'Rapport PDF'}
+                </Button>
+              )}
               {onDownloadPdf && (
                 <Button
                   variant="outline"
@@ -239,22 +273,10 @@ export function AnalysisResult({
                   onClick={onDownloadPdf}
                   disabled={isPdfLoading}
                   className="gap-1.5"
+                  title="Générer un nouveau rapport avec les ratios actuels"
                 >
                   <Download size={13} />
-                  {isPdfLoading ? 'Génération…' : 'PDF'}
-                </Button>
-              )}
-              {onExportAnalysis && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onExportAnalysis}
-                  disabled={isExportLoading}
-                  data-testid="export-analysis-pdf"
-                  className="gap-1.5"
-                >
-                  <FileText size={13} />
-                  {isExportLoading ? 'Génération…' : 'Exporter'}
+                  {isPdfLoading ? 'Génération…' : 'Rapport'}
                 </Button>
               )}
             </div>
@@ -293,13 +315,16 @@ export function AnalysisResult({
             </div>
           )}
 
-          {/* Métadonnées techniques — discrètes */}
+          {/* Métadonnées — discrètes, sans les détails techniques internes */}
           <p className="text-xs text-muted-foreground/60 mt-3">
-            {result.workflow} · {new Date(result.created_at).toLocaleString('fr-CA')}
+            {result.workflow}
             {' · '}
-            <span className="tabular-nums">${result.cost_usd.toFixed(4)}</span>
+            {new Date(result.created_at).toLocaleString('fr-CA', {
+              day: 'numeric', month: 'short', year: 'numeric',
+              hour: '2-digit', minute: '2-digit',
+            })}
             {' · '}
-            {result.skills_applied.length} skill(s)
+            {result.skills_applied.length} framework{result.skills_applied.length > 1 ? 's' : ''}
           </p>
         </CardContent>
       </Card>
@@ -313,7 +338,6 @@ export function AnalysisResult({
               Défensif {g.defensive_score}/8 · Entreprenant {g.enterprising_score}/5
             </span>
           }
-          defaultOpen
         >
           <CardContent className="space-y-4 pt-4">
             {g.graham_number != null && (
