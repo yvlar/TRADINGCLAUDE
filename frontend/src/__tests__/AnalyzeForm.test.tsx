@@ -129,8 +129,9 @@ describe('AnalyzeForm', () => {
     })
   })
 
-  it("affiche le libellé honnête « Croissance EPS (totale) » (pas « 10a »)", () => {
+  it("affiche le libellé honnête « Croissance EPS (totale) » (pas « 10a »)", async () => {
     render(<AnalyzeForm onSubmit={vi.fn()} />)
+    await userEvent.click(screen.getByTestId('ratios-section-toggle'))
     expect(screen.getByText('Croissance EPS (totale)')).toBeInTheDocument()
     expect(screen.queryByText('Croissance EPS 10a')).not.toBeInTheDocument()
   })

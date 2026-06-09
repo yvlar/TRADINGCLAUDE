@@ -1,5 +1,20 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import {
+  TrendingUp,
+  Filter,
+  Bookmark,
+  LayoutDashboard,
+  Clock,
+  ArrowLeftRight,
+  Leaf,
+  Search,
+  Bell,
+  CreditCard,
+  Shield,
+  LogOut,
+  Command,
+} from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { RouteFallback } from './components/RouteFallback'
@@ -8,8 +23,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { Disclaimer } from './components/Disclaimer'
 import { TenantBadge } from './components/TenantBadge'
 import { QuotaBadge } from './components/QuotaBadge'
-// Imports dynamiques par page : chaque page (et recharts, embarqué par Dashboard/Esg/
-// Watchlist/Compare) forme un chunk séparé, exclu du bundle d'entrée (Sprint 123).
+
 const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
 const ScreenerPage = lazy(() => import('./pages/ScreenerPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
@@ -26,23 +40,38 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage'))
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 
-function NavItem({ to, label }: { to: string; label: string }) {
+interface NavItemProps {
+  to: string
+  label: string
+  icon: React.ReactNode
+  compact?: boolean
+}
+
+function NavItem({ to, label, icon, compact = false }: NavItemProps) {
   return (
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `relative px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors duration-150 ${
+        `relative flex items-center gap-1.5 rounded-lg transition-all duration-150 group ${
+          compact
+            ? 'px-2.5 py-2'
+            : 'px-3 py-2'
+        } ${
           isActive
-            ? 'text-foreground border-primary'
-            : 'text-muted-foreground border-transparent hover:text-foreground hover:border-primary/30'
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
         }`
       }
+      title={compact ? label : undefined}
     >
       {({ isActive }) => (
         <>
-          {label}
-          {isActive && (
-            <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary animate-scale-in" />
+          <span className={`shrink-0 ${isActive ? 'text-primary' : ''}`}>{icon}</span>
+          {!compact && (
+            <span className="hidden md:inline text-sm font-medium">{label}</span>
+          )}
+          {compact && (
+            <span className="sr-only">{label}</span>
           )}
         </>
       )}
@@ -50,11 +79,14 @@ function NavItem({ to, label }: { to: string; label: string }) {
   )
 }
 
+function NavDivider() {
+  return <div className="w-px h-5 bg-border/60 mx-1 self-center shrink-0" aria-hidden />
+}
+
 function AppShell() {
   const { isAuthenticated, logout, user } = useAuth()
   const [paletteOpen, setPaletteOpen] = useState(false)
 
-  // Raccourci global Ctrl+K / ⌘K pour ouvrir/fermer la palette
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -68,148 +100,103 @@ function AppShell() {
 
   return (
     <>
-      <header className="bg-card border-b border-border sticky top-0 z-50">
-        <div className="max-w-shell mx-auto w-full px-6 py-3 flex items-center gap-4">
-          <h1 className="text-lg font-bold tracking-tight">Copilote Financier IA</h1>
+      <header className="bg-card/80 backdrop-blur-sm border-b border-border sticky top-0 z-50">
+        <div className="max-w-shell mx-auto w-full px-4 h-14 flex items-center gap-3">
+          {/* Brand */}
+          <div className="flex items-center gap-2 mr-2 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
+              <TrendingUp size={14} className="text-primary-foreground" />
+            </div>
+            <span className="text-sm font-bold tracking-tight hidden sm:inline text-foreground">
+              Copilote Financier IA
+            </span>
+          </div>
+
           {isAuthenticated && (
-            <nav className="flex items-end gap-1 ml-4">
-              <NavItem to="/" label="Analyse" />
-              <NavItem to="/screener" label="Screener" />
-              <NavItem to="/historique" label="Historique" />
-              <NavItem to="/dashboard" label="Dashboard" />
-              <NavItem to="/watchlist" label="Watchlist" />
-              <NavItem to="/compare" label="Comparer" />
-              <NavItem to="/esg" label="ESG" />
-              <NavItem to="/recherche" label="Recherche" />
-              <NavItem to="/alerts" label="Alertes" />
-              <NavItem to="/facturation" label="Facturation" />
-              <NavItem to="/admin" label="Admin" />
+            <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1" aria-label="Navigation principale">
+              {/* Groupe principal */}
+              <NavItem to="/" label="Analyse" icon={<TrendingUp size={15} />} />
+              <NavItem to="/screener" label="Screener" icon={<Filter size={15} />} />
+              <NavItem to="/watchlist" label="Watchlist" icon={<Bookmark size={15} />} />
+
+              <NavDivider />
+
+              {/* Groupe recherche */}
+              <NavItem to="/dashboard" label="Dashboard" icon={<LayoutDashboard size={15} />} />
+              <NavItem to="/historique" label="Historique" icon={<Clock size={15} />} />
+              <NavItem to="/compare" label="Comparer" icon={<ArrowLeftRight size={15} />} />
+
+              <NavDivider />
+
+              {/* Groupe outils — icônes compactes */}
+              <NavItem to="/esg" label="ESG" icon={<Leaf size={15} />} compact />
+              <NavItem to="/recherche" label="Recherche" icon={<Search size={15} />} compact />
+              <NavItem to="/alerts" label="Alertes" icon={<Bell size={15} />} compact />
+              <NavItem to="/facturation" label="Facturation" icon={<CreditCard size={15} />} compact />
+              <NavItem to="/admin" label="Admin" icon={<Shield size={15} />} compact />
             </nav>
           )}
+
           {isAuthenticated && (
-            <>
+            <div className="flex items-center gap-2 ml-auto shrink-0">
+              {/* Palette de commandes */}
               <button
                 onClick={() => setPaletteOpen(true)}
-                className="ml-auto flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 rounded-md border border-border/60 bg-background/50 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 data-testid="command-palette-trigger"
                 aria-label="Ouvrir la palette de commandes"
               >
-                <span className="hidden md:inline">Rechercher…</span>
-                <kbd className="flex items-center gap-0.5 rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px]">
-                  <span>Ctrl</span>
-                  <span>K</span>
+                <Command size={12} />
+                <span className="hidden lg:inline">Rechercher…</span>
+                <kbd className="hidden lg:flex items-center gap-0.5 rounded border border-border bg-background/80 px-1 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  K
                 </kbd>
               </button>
+
               <TenantBadge tenantName={user?.tenant_name} />
               <QuotaBadge tenantId={user?.tenant_id} />
-              <Button variant="ghost" className="text-sm" onClick={logout}>
-                Déconnexion
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground h-8 w-8"
+                onClick={logout}
+                aria-label="Déconnexion"
+                title="Déconnexion"
+              >
+                <LogOut size={15} />
               </Button>
-            </>
+            </div>
           )}
         </div>
       </header>
+
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <main data-testid="app-main" className="max-w-shell mx-auto w-full px-6 py-6">
+
+      <main data-testid="app-main" className="max-w-shell mx-auto w-full px-4 sm:px-6 py-6">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <AnalyzePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/screener"
-              element={
-                <ProtectedRoute>
-                  <ScreenerPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/historique"
-              element={
-                <ProtectedRoute>
-                  <HistoryPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/watchlist"
-              element={
-                <ProtectedRoute>
-                  <WatchlistPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/compare"
-              element={
-                <ProtectedRoute>
-                  <ComparePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/esg"
-              element={
-                <ProtectedRoute>
-                  <EsgPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/recherche"
-              element={
-                <ProtectedRoute>
-                  <SearchPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/alerts"
-              element={
-                <ProtectedRoute>
-                  <AlertsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/facturation"
-              element={
-                <ProtectedRoute>
-                  <BillingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute>
-                  <AdminPage />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+            <Route path="/screener" element={<ProtectedRoute><ScreenerPage /></ProtectedRoute>} />
+            <Route path="/historique" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+            <Route path="/watchlist" element={<ProtectedRoute><WatchlistPage /></ProtectedRoute>} />
+            <Route path="/compare" element={<ProtectedRoute><ComparePage /></ProtectedRoute>} />
+            <Route path="/esg" element={<ProtectedRoute><EsgPage /></ProtectedRoute>} />
+            <Route path="/recherche" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+            <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
+            <Route path="/facturation" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </main>
+
       <footer className="border-t border-border mt-8">
-        <div className="max-w-shell mx-auto w-full px-6 py-4">
+        <div className="max-w-shell mx-auto w-full px-4 sm:px-6 py-4">
           <Disclaimer variant="footer" />
         </div>
       </footer>

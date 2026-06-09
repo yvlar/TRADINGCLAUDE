@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
+import { TrendingUp } from 'lucide-react'
 import { AnalyzeForm } from '../components/AnalyzeForm'
 import { AnalysisResult } from '../components/AnalysisResult'
 import { StreamingProgress } from '../components/StreamingProgress'
@@ -11,7 +12,6 @@ import { streamAnalyze, postReport, downloadTickerPdf } from '../api/analyze'
 import { saveRecentAnalysis } from '../lib/recentAnalyses'
 import type { AnalyzeRequest, AnalyzeResponse, SSESkillResult } from '../types'
 
-/** Mappe skill_id → champ de AnalyzeResponse. */
 const SKILL_FIELD: Record<string, keyof AnalyzeResponse> = {
   graham_analysis: 'graham',
   earnings_quality: 'earnings_quality',
@@ -46,7 +46,6 @@ export default function AnalyzePage() {
   const [lastRequest, setLastRequest] = useState<AnalyzeRequest | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamError, setStreamError] = useState<string | null>(null)
-  // Erreur de quota capturée telle quelle (ApiError) pour en dériver message + corps structuré.
   const [quotaError, setQuotaError] = useState<unknown>(null)
   const [partialResult, setPartialResult] = useState<Partial<AnalyzeResponse>>({})
   const [activeSkill, setActiveSkill] = useState<string | null>(null)
@@ -55,7 +54,6 @@ export default function AnalyzePage() {
   const [depuisCache, setDepuisCache] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Ticker pré-rempli depuis la palette de commandes (?ticker=BNS.TO)
   const prefillTicker = searchParams.get('ticker') ?? ''
   useEffect(() => {
     if (prefillTicker) setSearchParams({}, { replace: true })
@@ -140,7 +138,6 @@ export default function AnalyzePage() {
     },
   })
 
-  // analysis_id de cache composite n'est pas une analyse persistée exportable
   const canExportAnalysis =
     !!result && !['cached', 'cached_composite'].includes(result.analysis_id)
 
@@ -148,21 +145,21 @@ export default function AnalyzePage() {
     if (result) exportMutation.mutate(result)
   }
 
+  const showEmptyState = !isStreaming && !result && !streamError && !quotaError
+
   return (
     <PageTransition>
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-bold">Analyse individuelle</h2>
+      <div className="space-y-5">
+        {/* En-tête de page */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold tracking-tight">Analyse individuelle</h2>
             {depuisCache && (
               <Badge variant="secondary" data-testid="cache-badge">
                 Score depuis cache (&lt;24h)
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            Saisissez un ticker et les ratios Graham pour lancer l'analyse multi-skills.
-          </p>
         </div>
 
         <StaggerItem index={0}>
@@ -184,19 +181,21 @@ export default function AnalyzePage() {
         {streamError && (
           <div
             data-testid="error-message"
-            className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm animate-fade-in-up"
+            className="border border-bear/30 bg-bear/8 text-bear rounded-xl px-4 py-3 text-sm animate-fade-in-up"
           >
             Erreur : {streamError}
           </div>
         )}
 
         {isStreaming && (
-          <StreamingProgress
-            plannedSkills={plannedSkills}
-            completedSkills={completedSkills}
-            activeSkill={activeSkill}
-            partialResult={partialResult}
-          />
+          <div className="rounded-xl border border-border bg-card px-5 py-4 animate-fade-in-up">
+            <StreamingProgress
+              plannedSkills={plannedSkills}
+              completedSkills={completedSkills}
+              activeSkill={activeSkill}
+              partialResult={partialResult}
+            />
+          </div>
         )}
 
         {result && (
@@ -211,8 +210,23 @@ export default function AnalyzePage() {
           </div>
         )}
 
+        {/* État vide — guide l'utilisateur */}
+        {showEmptyState && (
+          <div className="rounded-xl border border-border/40 bg-card/40 px-6 py-10 text-center animate-fade-in-up">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+              <TrendingUp size={18} className="text-primary" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground mb-1">Prêt à analyser</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+              Entrez un symbole boursier (ex. <span className="font-mono text-foreground/70">BNS.TO</span>,{' '}
+              <span className="font-mono text-foreground/70">AAPL</span>) puis cliquez{' '}
+              <strong>Récupérer les données</strong> pour charger automatiquement les ratios financiers.
+            </p>
+          </div>
+        )}
+
         {pdfMutation.isError && (
-          <div className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm">
+          <div className="border border-bear/30 bg-bear/8 text-bear rounded-xl px-4 py-3 text-sm">
             Erreur PDF : {(pdfMutation.error as Error).message}
           </div>
         )}

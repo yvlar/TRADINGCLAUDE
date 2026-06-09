@@ -7,7 +7,7 @@
 }
 
 @keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -48,46 +48,47 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  /* Largeur maximale du shell applicatif — point de réglage unique du layout pleine largeur (génère max-w-shell) */
+  /* Largeur maximale du shell applicatif */
   --container-shell: 96rem;
 
-  /* Couleurs sémantiques financières — source unique positif/négatif/neutre */
+  /* Couleurs sémantiques financières */
   --color-bull: hsl(var(--bull));
   --color-bear: hsl(var(--bear));
   --color-neutral: hsl(var(--neutral));
 
-  /* Animations disponibles comme classes Tailwind */
+  /* Animations */
   --animate-shimmer:        shimmer 1.8s ease-in-out infinite;
-  --animate-fade-in-up:     fade-in-up 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-scale-in:       scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in-up:     fade-in-up 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in:       scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-right: slide-in-right 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-count-pulse:    count-pulse 1.2s ease-in-out 3;
 }
 
 @layer base {
   :root {
-    --background: 222 47% 7%;
-    --foreground: 214 32% 91%;
-    --card: 222 47% 11%;
-    --card-foreground: 214 32% 91%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 7%;
-    --secondary: 222 47% 15%;
-    --secondary-foreground: 214 32% 91%;
-    --muted: 222 47% 15%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 222 47% 15%;
-    --accent-foreground: 214 32% 91%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 214 32% 91%;
-    --border: 222 47% 18%;
-    --input: 222 47% 18%;
-    --ring: 217 91% 60%;
-    --radius: 0.5rem;
-    /* Sémantique financière : bull (positif), bear (négatif), neutral (modéré) */
-    --bull: 142 71% 58%;
-    --bear: 0 89% 71%;
-    --neutral: 38 92% 56%;
+    /* Palette sombre — plus de profondeur, moins de bleu saturé */
+    --background: 220 20% 6%;
+    --foreground: 215 20% 90%;
+    --card: 220 20% 10%;
+    --card-foreground: 215 20% 90%;
+    --primary: 217 85% 58%;
+    --primary-foreground: 220 20% 6%;
+    --secondary: 220 20% 14%;
+    --secondary-foreground: 215 20% 80%;
+    --muted: 220 20% 14%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 220 20% 14%;
+    --accent-foreground: 215 20% 90%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 215 20% 90%;
+    --border: 220 20% 16%;
+    --input: 220 20% 16%;
+    --ring: 217 85% 58%;
+    --radius: 0.625rem;
+    /* Sémantique financière */
+    --bull: 145 65% 52%;
+    --bear: 358 78% 65%;
+    --neutral: 40 90% 55%;
   }
 }
 
@@ -97,7 +98,14 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Typographie : meilleure échelle de titre */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.01em;
   }
 }
 
@@ -113,6 +121,15 @@
     background-size: 200% 100%;
     animation: var(--animate-shimmer);
     border-radius: var(--radius-md);
+  }
+
+  /* Masquer la scrollbar nativement (navigation horizontale) */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
 
