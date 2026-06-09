@@ -15,7 +15,7 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 3. Si un skill requis est absent ou son SKILL.md incomplet → **le signaler avant de continuer**
 4. Si une hypothèse financière est discutable ou des données manquent → **le signaler explicitement**
 
-### Catalogue des skills — 16 tier2 + 2 tier1 = 18 en production
+### Catalogue des skills — 16 tier2 + 2 tier1 = 18 en production + 1 outil batch
 
 #### Skills tier2 — frameworks d'analyse conceptuels
 
@@ -45,13 +45,36 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 | `yahoo_finance_extractor` | `app/skills/tier1/yahoo_finance.py` |
 | `sedar_plus_extractor` | `app/skills/tier1/sedar_plus.py` |
 
+#### Outil batch (pas un skill LLM — screening mécanique + ingestion Qdrant)
+
+| Outil | SKILL.md dans `.claude/skills/` | Scripts |
+|---|---|---|
+| `graham-screener` | `graham-screener/` | `.claude/skills/graham-screener/scripts/` |
+
+Ce skill applique les 7 critères Graham mécaniquement sur un univers entier (ex. S&P 500),
+sans appel Claude, et ingère les candidats dans la collection Qdrant `graham_screening`
+(embedder `text-embedding-3-small`, 1536 dims, aligné sur `investment_knowledge`).
+Pont entre le pilier value (analyse discrétionnaire) et le pilier algorithmique.
+
+Scripts :
+- `graham_screener.py` — moteur 7 critères, score/7, Graham Number, CSV
+- `batch_screen.py` — lot avec checkpoint/reprise, export `candidates.jsonl`
+- `ingest_qdrant.py` — upsert Qdrant idempotent (URL depuis `$QDRANT_URL`)
+
+Test hors-ligne de bout en bout :
+```bash
+python .claude/skills/graham-screener/scripts/batch_screen.py --universe demo --output-dir /tmp/t
+python .claude/skills/graham-screener/scripts/ingest_qdrant.py --input /tmp/t/candidates.jsonl --url ":memory:" --embedder dummy
+```
+
 ### Note sur les comptages
 
 - **16 skills tier2** en production = 15 frameworks originaux + `esg_simplified` (Sprint 70)
 - **18 en production** = 16 tier2 + 2 tier1
-- Le dossier `.claude/skills/` contient **16 SKILL.md** — tous les skills tier2 sont couverts (Sprint 75)
+- **1 outil batch** = `graham-screener` (scripts purement mécaniques, pas de LLM)
+- Le dossier `.claude/skills/` contient **17 SKILL.md** (16 tier2 + 1 batch)
 - Pour les skills tier2 : `app/skills/tier2/` est la source de vérité du code ; `.claude/skills/` est la source de vérité conceptuelle (formules, seuils, frameworks académiques)
 
 ### Cohérence du corpus RAG
 
-Les ~67 documents `references/*.md` dans `.claude/skills/` alimentent le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus.
+Les ~69 documents `references/*.md` dans `.claude/skills/` alimentent le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus. L'outil batch `graham-screener` alimente sa propre collection `graham_screening` via `ingest_qdrant.py`.

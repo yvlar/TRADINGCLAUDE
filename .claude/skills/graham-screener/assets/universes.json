@@ -1,0 +1,14 @@
+{
+  "_note": "Liste de repli si la récupération Wikipedia échoue. Sous-ensemble large caps représentatif — PAS les 500 constituants complets. Pour l'univers complet, le script batch_screen.py interroge Wikipedia en direct.",
+  "sp500_fallback": [
+    "AAPL","MSFT","GOOGL","AMZN","NVDA","META","BRK-B","JPM","V","MA",
+    "UNH","JNJ","XOM","CVX","PG","KO","PEP","WMT","COST","HD",
+    "MRK","PFE","BMY","ABBV","LLY","TMO","ABT","MDT","CI","CVS",
+    "BAC","WFC","GS","MS","SCHW","BLK","AXP","C","USB","PNC",
+    "CSCO","ORCL","IBM","INTC","AMD","QCOM","TXN","AVGO","ADBE","CRM",
+    "NKE","SBUX","MCD","DIS","CMCSA","VZ","T","TMUS","NFLX","LMT",
+    "RTX","BA","GE","CAT","DE","HON","MMM","UPS","FDX","UNP",
+    "STZ","KHC","GIS","CL","KMB","MO","PM","ADM","TGT","LOW",
+    "F","GM","TSLA","DAL","AAL","LUV","MAR","HLT","BKNG","CCL"
+  ]
+}

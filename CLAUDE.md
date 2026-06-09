@@ -81,7 +81,10 @@ frontend/src/             # SPA React 18 + TS
 
 .claude/
 ├── rules/                # 16 règles de convention (voir table de pointeurs)
-├── skills/<skill>/       # SKILL.md + references/ — source de vérité conceptuelle (RAG)
+├── skills/<skill>/       # 17 SKILL.md + references/ — source de vérité conceptuelle (RAG)
+│                         #   dont graham-screener/ : outil batch (scripts Python, pas LLM)
+│                         #   → scoring 7 critères Graham sur univers complet + ingestion Qdrant
+│                         #     collection graham_screening (text-embedding-3-small, 1536 dims)
 ├── prompts/              # Prompts réutilisables (bootstrap, exécution de sprint…)
 └── docs/                 # Notes projet
 
