@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-09 — Sprint 198 complété**
+**Dernière mise à jour : 2026-06-09 — Sprint 199 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.85.0 |
+| **Version** | 10.86.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 199 — Ops : parité du garde insecure sur le boot API réel (compléter S196 côté API) |
-| **Dernier sprint complété** | Sprint 198 — E5 : test composant de bascule CTA Facturation cross-tenant ✅. S190 a fermé la fuite cross-tenant par `queryClient.clear()` au logout ; S195 l'a prouvé au niveau `AuthContext` (flux login A→logout→login B). Ce sprint **monte d'un niveau vers la page** : `frontend/src/__tests__/BillingPageCrossTenant.test.tsx` monte la VRAIE chaîne `AuthProvider → BillingPage` (pas un `useAuth` mocké) avec un `QueryClient` **partagé** provider↔assertions, et prouve qu'après la bascule A(`free`)→B(`pro`) le CTA reflète le plan de B (`billing-portal-btn`, pas checkout) ET qu'aucune conso/donnée de A ne survit (`['usage',30]`/`['usage-reporting']` → `undefined`, page repassée en skeleton, le `$1.2345` de A disparu). Mocks `getUsage`/`getUsageReporting` **never-resolving** (`new Promise(() => {})`, idiome skeleton `BillingPage.test.tsx`) → cache déterministiquement vide après purge. **Sprint FRONTEND seul, test pur** (zéro `app/`, pas de backend/eval/mypy). **Preuve d'acceptation observable** : le test **échoue** quand `queryClient.clear()` est commenté dans `logout` (la conso de A survit → assertion `getQueryData(['usage',30]).toBeUndefined()` rouge ; vérifié localement, `AuthContext.tsx` restauré byte-identique à HEAD). ✅ |
+| **Sprint actif** | Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` |
+| **Dernier sprint complété** | Sprint 199 — Ops : parité du garde insecure sur le boot API réel (compléter S196 côté API) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -98,6 +98,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 199 — Ops : parité du garde insecure sur le boot API réel ✅
+
+**Objectif :** S196 a prouvé le garde `require_secure_db_url` sur le chemin **worker** (`_execute_weekly_watchlist_report` → `create_runtime_pool` = 1ᵉʳ `await`). Restait à verrouiller le **chemin API réel** : le lifespan FastAPI doit lever `RuntimeError` **avant** `asyncpg.create_pool` quand la DSN est insecure en prod. Sans ce test, un refactor futur court-circuitant `create_runtime_pool` dans `main.py` ré-ouvrirait le trou côté API sans être détecté. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep`/lecture — `app/api/main.py:169` `await create_runtime_pool(min_size=2, max_size=10)` = **1ᵉʳ `await`** du lifespan (lignes 150-168 = lectures d'env synchrones) ; `app/db/pool.py:23-24` : `resolve_app_database_url()` → `require_secure_db_url(dsn)` **avant** `asyncpg.create_pool` ; `app/utils/security_config.py:11,50-55` : marqueur insecure `copilote:copilote@`, message garde "par défaut" ; `AuthTokenService`/`PasswordResetService` appellent `resolve_jwt_secret()` fail-fast en prod (`:33`/`:29`) → `JWT_SECRET_KEY` requis pour le test discriminant. Patron mirrored : `tests/workers/test_worker_boot_insecure.py` (S196).
+
+**Décision tranchée — 2 tests dans `tests/api/test_api_boot_insecure.py` :** (1) insecure DSN prod → `pytest.raises(RuntimeError, match="par défaut")` + `asyncpg.create_pool.assert_not_awaited()` ; (2) discriminant secure DSN prod → lifespan patché (RagClient, Redis, `JWT_SECRET_KEY`) atteint `yield` → `create_pool.assert_awaited_once()`. `create_runtime_pool` NON mocké — le garde réel exercé. Mocks simplifiés : `AsyncMock` auto-crée des sous-attributs `AsyncMock` (vérifiés par introspection).
+
+**Preuve d'acceptation observable** : le test insecure **échoue** quand `require_secure_db_url(dsn)` est neutralisé dans `create_runtime_pool` (remplacé par `pass` — `pytest.raises(RuntimeError, match="par défaut")` échoue avec le message JWT non lié ; vérifié, `pool.py` restauré byte-identique via `cp`). Les tests S192/S196 (`test_pool.py`, `test_worker_boot_insecure.py`) restent **verts**.
+
+**Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high, 7 angles) — SHIP, 0 BLOCKER/MAJOR. Findings REFUTÉS : `assert_not_awaited()` hors context → safe (mocks retiennent leur état) ; CORS import-time → safe (conftest setdefault avant import) ; patch target collision → tests indépendants. **Qualité** (`/simplify`) — **5 lignes APPLIQUÉES** : `ensure_collection = AsyncMock()`, `close = AsyncMock()`, `aclose = AsyncMock()`, `return_value = AsyncMock()`, `return_value.close = AsyncMock()` — tous redondants (prouvé par `type(AsyncMock().close) == AsyncMock`). Journal : 5 corrections appliquées, 0 écartées.
+
+**Version** : 10.86.0
+**Tests** : **2372 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs S198's 2370) — 2329 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché** (zéro `frontend/` → Vitest inchangés, 516 S198). *(Note env conteneur web : `stripe`/`alembic` manquaient — réinstallés via `pip install -r requirements.txt`.)*
+
 ### Sprint 198 — E5 : test composant de bascule CTA Facturation cross-tenant ✅
 
 **Objectif :** Compléter S190 + S195 au **niveau page**. S190 a fermé la fuite cross-tenant par `queryClient.clear()` au logout ; S195 l'a prouvé au niveau **mécanisme/flux** dans `AuthContext` (login A → logout → login B). Restait à verrouiller l'**intention page** : après la bascule, la page `/facturation` doit refléter le plan du **nouveau** tenant (CTA portail vs checkout) et n'afficher **aucune** conso/donnée de l'ancien. Sans ce test, une régression future (ex. `clear()` déplacé, purge partielle, ou page lisant un plan en cache périmé) repasserait S190/S195 mais casserait la vue Facturation. **Sprint FRONTEND seul, test pur** (aucun `app/`, pas de backend, pas d'eval, pas de `mypy`).
@@ -142,22 +157,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.83.0
 **Tests** : **2 370 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs S192/S193's 2 368) — 2 327 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert ; `mypy app/ --ignore-missing-imports` vert (171 fichiers, **inchangé** — zéro `app/` touché) ; **frontend non touché** (Vitest inchangés par construction). *(Note env conteneur web : `stripe`/`alembic` manquaient au venv préparé — réinstallés via `pip install -r requirements.txt` ; sans quoi 193 échecs d'import parasites, non liés au sprint.)* **Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« SHIP »**, 0 BLOCKER/MAJOR, **4/4 critères MET** (`create_runtime_pool` non mocké, garde réel exercé ; pool = 1ᵉʳ `await` confirmé ; patch target `app.db.pool.asyncpg.create_pool` correct ; preuve fails-when-neutralized reproduite ; pas de fuite d'env entre tests), 2 MINOR/NIT cosmétiques (hostname `host` vs `postgres` sans incidence ; assertion `close()` optionnelle) ; 1 NIT **appliqué** : `match="PostgreSQL"` → `match="par défaut"` (discrimine le message du garde d'un RuntimeError de boot non lié) — proof fails-when-neutralized re-vérifiée après correction. **Qualité** (`/simplify`) — **0 APPLY** : duplication des littéraux DSN avec `test_pool.py` **écartée** (auto-portance des tests, « ne pas sur-abstraire ») ; 2ᵉ test discriminant **conservé** (non redondant avec `test_pool.py` — pilote la DSN secure via `APP_DATABASE_URL` + le vrai point d'entrée worker) ; retour anticipé watchlist vide = choix de mock minimal documenté.
-
-### Sprint 195 — E5 : test de flux re-connexion cross-tenant (compléter S190) ✅
-
-**Objectif :** Compléter S190. S190 a fermé la fuite cross-tenant par la purge `queryClient.clear()` au `logout` et l'a prouvé au niveau **mécanisme** (les clés ciblées passent à `undefined`). Restait à verrouiller l'**intention applicative** : un test de **flux** rejouant le scénario réel « un utilisateur du tenant A se déconnecte, un utilisateur du tenant B se connecte dans le même onglet, sans rechargement » et assertant qu'aucune donnée mise en cache sous A ne survit à la bascule. Sans ce test, une régression future (ex. `clear()` déplacé après `navigate`, ou remplacé par une purge partielle) repasserait le mécanisme S190 mais casserait le flux. **Sprint frontend seul, test pur** (aucun `app/`, pas de backend, pas d'eval, pas de `mypy`).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep`/lecture — `login` (`AuthContext.tsx:43`, `setUser(response.user)` `:45`), `logout` (`:58`, `setUser(null)` `:64`, `queryClient.clear()` `:68`, `navigate('/login')` `:69`) ; `authLogin` renvoie `AuthResponse = { user, message }` (`api/auth.ts:67`, `types/index.ts:821`) ; clés non scopées au tenant `['usage', 30]`/`['usage-reporting']` confirmées (`AuthContext.test.tsx` S190) ; pattern `renderWithProvider` + `QueryClientProvider` (client injectable) déjà en place. Le test de **mécanisme** (S190) existe ; le test de **flux** (login A → logout → login B) était bien **à créer**, distinct.
-
-**Décision tranchée — nouveau fichier `AuthContextCrossTenant.test.tsx` (pas d'extension de `AuthContext.test.tsx`) :** le test de flux a besoin d'un `Consumer` avec un bouton `login` (absent du `Consumer` mécanisme S190, focalisé refresh/logout). Convention projet = fichiers de test **auto-portants** (décision S190 : ne pas extraire de wrapper partagé — les wrappers diffèrent par leur routing). Le nouveau fichier mirroite le vocabulaire du sibling (`_user`, `renderWithProvider`, `QueryClientProvider`) sans factoriser. **`AuthContext.tsx` non modifié** (sprint de test pur).
-
-**Livrables :**
-- `frontend/src/__tests__/AuthContextCrossTenant.test.tsx` (nouveau) — 1 test de flux : `authMe` rejette au montage (pas de session), `authLogin` enchaîne user A (`tenant-a`/`free`) puis user B (`tenant-b`/`pro`), `authLogout` résout ; un **seul** `QueryClient` câblé au provider ET utilisé pour `setQueryData`/`getQueryData` (sinon le test ne verrouillerait pas le flux réel). Scénario : login A → pré-remplir `['usage', 30]`+`['usage-reporting']` → **assertion de pré-condition non vacue** → logout → login B → assertions (clés → `undefined`, `plan`=`pro`, `tenant_id`=`tenant-b`). Mocks typés (`_user(): User`, `_authResponse(): AuthResponse`), zéro `any`. Commentaire FR du WHY (le test verrouille le flux, pas l'appel).
-
-**Preuve d'acceptation observable** : le test **échoue** quand `queryClient.clear()` est neutralisé dans `logout` (vérifié en commentant la ligne puis en restaurant — la donnée de A survit à la bascule, les assertions `undefined` échouent) → il verrouille bien le **flux**, pas l'appel. Pré-condition (`['usage', 30]` = `{ cost_usd: 111 }` avant la bascule) garantit l'assertion finale non vacue. **Pas de Docker/navigateur live** dans le conteneur web → preuve par test composant (`@testing-library/react` + `QueryClient` réel + mocks `fetch`-free de `../api/auth`).
-
-**Version** : 10.82.0
-**Tests** : **frontend 515 Vitest** (mesuré `vitest list | wc -l` = 515 ; **+1** : le test de flux cross-tenant) ; `tsc --noEmit` + ESLint (0/0) verts ; suite complète 515/515 passés. **Backend non touché** (zéro `app/`/`tests/` → CI backend inchangé). **Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« ship it »**, 0 BLOCKER/MAJOR, **4/4 critères MET** (flux complet login A→logout→login B avec les clés réelles ; `clear()` verrouillé par un `QueryClient` partagé provider↔assertions ; mocks typés zéro `any` ; preuve d'acceptation non vacue gardée par la pré-condition) ; seuls des NIT (couplage d'ordre des mocks `authMe`/`authLogin` rendu déterministe par les barrières `waitFor` — sans défaut), 2ᵉ passe non requise (aucun code corrigé). **Qualité** (`/simplify`) — **0 APPLY** : chaque helper/assertion porte sa charge (`_authResponse` type l'enveloppe de login ; 2ᵉ clé prouve le `clear()` total vs purge ciblée ; assertion `plan` prouve l'identité B complète, pas seulement le tenant) ; extraction d'un wrapper partagé **écartée** (convention S190).
 
 ## Sprints antérieurs (Sprint 121 → Sprint 0)
 
