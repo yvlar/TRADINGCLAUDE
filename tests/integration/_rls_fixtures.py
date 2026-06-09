@@ -41,3 +41,10 @@ app_runtime_pytestmark = [
         reason="APP_DATABASE_URL non défini (PG migré + rôle app_runtime requis)",
     ),
 ]
+
+# S197 — helper de connexion simple non extrait (décision clos) :
+# Re-mesure : 7 sites `asyncpg.connect(_APP_DB_URL)` / `try/finally close` sur 3 fichiers
+# (test_revoke_public_rls×4, test_force_rls×1, test_app_runtime_rls×2).
+# S193 avait déjà tranché sur ce même périmètre : le `try/finally close` est idiomatique
+# Python, les tests restent auto-portants, gain marginal < coût d'une couche d'abstraction.
+# La famille `_RLS_DB_URL` (create_pool + apply_tenant_context) reste distincte et non foldée.

@@ -10,6 +10,26 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 193 — Ops : helper de test RLS partagé (réduction de la duplication des harnais d'intégration) ✅
+
+**Objectif :** Fermer un finding d'altitude **écarté en S185** (« refactor suite-wide ») et toujours ouvert après S191. L'inventaire des 7 tables RLS vivait en **2 définitions** (`_RLS_TABLES` `test_revoke_public_rls.py` + `_TABLES` `test_rls_isolation.py`) plus **1 import croisé** (`test_force_rls.py`), et le harnais de skip `APP_DATABASE_URL` (`_APP_DB_URL` + `pytest.mark.integration` + `skipif`) était recopié verbatim. Une migration ajoutant une 8ᵉ table RLS aurait dû être répercutée à plusieurs endroits → divergence silencieuse probable. **Sprint TEST/OPS seul** (zéro `app/`, pas de frontend, pas d'eval, pas de `mypy app/`).
+
+**Réconciliation carte↔code (anti-hallucination) :** la carte affirmait que le harnais de skip `APP_DATABASE_URL` était copié verbatim dans **4** fichiers (dont `test_rls_isolation.py`) — **prémisse partiellement fausse**, confirmée par `grep` : `test_rls_isolation.py` utilise un env var **distinct** (`RLS_TEST_DATABASE_URL`) avec une **reason différente** (« PG migré + rôle NOSUPERUSER requis »). Le harnais `APP_DATABASE_URL` n'est réellement identique que dans **3** fichiers (`test_revoke_public_rls`, `test_force_rls`, `test_app_runtime_rls`). La contrainte propre du sprint (« ne pas changer la sémantique de skip ») tranche d'elle-même : on centralise le skip `APP_DATABASE_URL` sur ces 3 fichiers seulement, et pour `test_rls_isolation.py` on ne centralise **que** l'inventaire de tables (son garde `RLS_TEST_DATABASE_URL` est laissé intact). L'inventaire des 7 tables est bien identique partout (`analysis_history`…`usage_events`).
+
+**Décision tranchée — module utilitaire `tests/integration/_rls_fixtures.py` (pas `conftest.py`) :** les symboles exportés sont des constantes de module (`RLS_TABLES`, `APP_DB_URL`) + une liste `pytestmark` — pas des fixtures pytest → ils doivent être **importés par nom**, ce que `conftest.py` ne permet pas (les hooks/fixtures de conftest ne s'importent pas explicitement). Le préfixe `_` + l'absence de `test_*` garantit la non-collecte par pytest (`python_files = test_*.py`).
+
+**Décision tranchée — `asyncpg.connect(_APP_DB_URL)` laissé en place (pas de helper de connexion) :** mesuré avant de s'engager — 7 sites de connexion simple répartis sur 3 fichiers, mais `test_rls_isolation.py` (et les ~9 fichiers `RLS_TEST_DATABASE_URL`) utilisent `create_pool(..., setup=apply_tenant_context)` + casts par-table → une fixture générique serait fragile et ne servirait que le motif simple, où le `try/finally close` est déjà idiomatique. Gain marginal vs risque de fragilité → **ne pas sur-abstraire** (cohérent avec la consigne de la carte). La duplication réellement fermée est l'inventaire (2 défs + 1 import → 1 déf) et le skip (3 copies verbatim → 1).
+
+**Livrables :**
+- `tests/integration/_rls_fixtures.py` (nouveau) — `RLS_TABLES` (inventaire unique des 7 tables RLS), `APP_DB_URL` (lecture `APP_DATABASE_URL`), `app_runtime_pytestmark` (`integration` + `skipif` même reason). Docstring FR du WHY + note de périmètre sur l'exclusion volontaire du garde `RLS_TEST_DATABASE_URL` de `test_rls_isolation.py`.
+- `tests/integration/test_revoke_public_rls.py` — définition inline `_RLS_TABLES` + harnais de skip retirés ; importe `RLS_TABLES`/`APP_DB_URL`/`app_runtime_pytestmark` (alias vers les noms privés locaux pour diff minimal).
+- `tests/integration/test_force_rls.py` — import repointé de `test_revoke_public_rls` vers `_rls_fixtures` (**couplage inter-tests brisé**) ; harnais de skip centralisé ; docstring mise à jour.
+- `tests/integration/test_app_runtime_rls.py` — harnais de skip centralisé (n'utilise pas l'inventaire de tables).
+- `tests/integration/test_rls_isolation.py` — `_TABLES` remplacé par l'import `RLS_TABLES` (commentaire conservé) ; garde `RLS_TEST_DATABASE_URL` **inchangé** (sémantique de skip distincte préservée).
+
+**Version** : 10.80.0
+**Tests** : **2 368 backend collectés** (mesuré) — 2 325 passés / 42 skipped / 1 xfailed ; `ruff check tests/` vert.
+
 ### Sprint 192 — Ops : garde `require_secure_db_url` uniformisé sur tous les pools runtime ✅
 
 **Objectif :** Fermer un special-case permanent **différé** des revues S187. Avant ce sprint, `require_secure_db_url` ne protégeait que le boot API (`app/api/main.py:158`) ; les **9 pools workers** bootaient sans ce garde fail-closed. En l'absorbant dans `create_runtime_pool()` (le chokepoint S187 où la DSN runtime est déjà résolue), **tout** pool runtime — API comme workers — refuse de démarrer avec des identifiants par défaut/insecure hors dev : l'isolation de prod ne dépend plus du site d'appel. Sprint **backend/ops seul** (plomberie de pool — aucun prompt de skill ni l'orchestrateur touché → pas de frontend, pas d'eval).
