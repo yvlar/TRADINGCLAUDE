@@ -89,6 +89,7 @@ function AppShell() {
           {isAuthenticated && (
             <>
               <button
+                type="button"
                 onClick={() => setPaletteOpen(true)}
                 className="ml-auto flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 data-testid="command-palette-trigger"

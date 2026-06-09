@@ -59,6 +59,7 @@ export function SkillAnalysesDrilldown({ skill, days, onClose }: Props) {
         </p>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
             className="text-xs text-muted-foreground hover:text-foreground"
             data-testid="skill-drilldown-close"

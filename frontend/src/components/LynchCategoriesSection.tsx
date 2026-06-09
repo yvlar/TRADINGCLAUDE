@@ -55,6 +55,7 @@ export function LynchCategoriesSection({ output }: LynchCategoriesSectionProps) 
     <Card data-testid="lynch-category">
       <CardHeader>
         <button
+          type="button"
           onClick={() => setOpen(!open)}
           className="flex items-center justify-between w-full text-left"
           aria-expanded={open}

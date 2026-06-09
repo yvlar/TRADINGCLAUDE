@@ -115,6 +115,7 @@ export default function EsgPage() {
             <TableRow>
               <TableHead>
                 <button
+                  type="button"
                   data-testid="sort-ticker"
                   className="flex items-center font-semibold hover:text-foreground"
                   onClick={() => toggleSort('ticker')}
@@ -125,6 +126,7 @@ export default function EsgPage() {
               </TableHead>
               <TableHead>
                 <button
+                  type="button"
                   data-testid="sort-esg-score"
                   className="flex items-center font-semibold hover:text-foreground"
                   onClick={() => toggleSort('last_esg_score')}
@@ -152,6 +154,7 @@ export default function EsgPage() {
                 >
                   <TableCell className="font-mono font-semibold">
                     <button
+                      type="button"
                       data-testid={`esg-ticker-btn-${entry.ticker}`}
                       onClick={() => setSelectedTicker(entry.ticker)}
                       className="hover:underline"

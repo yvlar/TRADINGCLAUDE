@@ -52,6 +52,46 @@ function defaultAsc(key: SortKey): boolean {
   return key === 'ticker' || key === 'cost'
 }
 
+function persist(nextSort: SortState, nextLabels: string[]) {
+  saveSortState(nextSort)
+  saveLabelFilter(nextLabels)
+  void putScreenerPreferences({ sort: nextSort, filter: nextLabels })
+}
+
+function SortIcon({ k, sortKey, asc }: { k: SortKey; sortKey: SortKey; asc: boolean }) {
+  if (sortKey !== k) return <span className="opacity-30 ml-1" aria-hidden="true">↕</span>
+  return <span className="ml-1" aria-hidden="true">{asc ? '↑' : '↓'}</span>
+}
+
+function SortableHead({
+  k,
+  label,
+  sortKey,
+  asc,
+  onSort,
+}: {
+  k: SortKey
+  label: string
+  sortKey: SortKey
+  asc: boolean
+  onSort: (k: SortKey) => void
+}) {
+  const ariaSort: 'ascending' | 'descending' | 'none' =
+    sortKey === k ? (asc ? 'ascending' : 'descending') : 'none'
+  return (
+    <TableHead aria-sort={ariaSort} className="p-0 select-none">
+      <button
+        type="button"
+        onClick={() => onSort(k)}
+        className="flex h-10 w-full items-center px-3 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        {label}
+        <SortIcon k={k} sortKey={sortKey} asc={asc} />
+      </button>
+    </TableHead>
+  )
+}
+
 interface ScreenerTableProps {
   entries: ScreenEntry[]
   workflow: string
@@ -82,13 +122,6 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
       cancelled = true
     }
   }, [])
-
-  // Miroir localStorage (anti-flash) + persistance serveur best-effort de l'état complet
-  function persist(nextSort: SortState, nextLabels: string[]) {
-    saveSortState(nextSort)
-    saveLabelFilter(nextLabels)
-    void putScreenerPreferences({ sort: nextSort, filter: nextLabels })
-  }
 
   function toggleSort(key: SortKey) {
     const next = sortKey === key ? { key, asc: !asc } : { key, asc: defaultAsc(key) }
@@ -143,29 +176,6 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
     a.download = `screener-${workflow}-filtre.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  function SortIcon({ k }: { k: SortKey }) {
-    if (sortKey !== k) return <span className="opacity-30 ml-1" aria-hidden="true">↕</span>
-    return <span className="ml-1" aria-hidden="true">{asc ? '↑' : '↓'}</span>
-  }
-
-  /** En-tête triable accessible au clavier (bouton + aria-sort sur le th). */
-  function SortableHead({ k, label }: { k: SortKey; label: string }) {
-    const ariaSort: 'ascending' | 'descending' | 'none' =
-      sortKey === k ? (asc ? 'ascending' : 'descending') : 'none'
-    return (
-      <TableHead aria-sort={ariaSort} className="p-0 select-none">
-        <button
-          type="button"
-          onClick={() => toggleSort(k)}
-          className="flex h-10 w-full items-center px-3 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          {label}
-          <SortIcon k={k} />
-        </button>
-      </TableHead>
-    )
   }
 
   const isFiltered = activeLabels.length > 0
@@ -224,12 +234,12 @@ export function ScreenerTable({ entries, workflow, durationMs }: ScreenerTablePr
           <TableHeader>
             <TableRow>
               <TableHead className="w-8">#</TableHead>
-              <SortableHead k="ticker" label="Ticker" />
-              <SortableHead k="score" label="Score défensif" />
+              <SortableHead k="ticker" label="Ticker" sortKey={sortKey} asc={asc} onSort={toggleSort} />
+              <SortableHead k="score" label="Score défensif" sortKey={sortKey} asc={asc} onSort={toggleSort} />
               <TableHead>Verdict</TableHead>
-              <SortableHead k="composite" label="Composite" />
-              <SortableHead k="freshness" label="Fraîcheur" />
-              <SortableHead k="cost" label="Coût" />
+              <SortableHead k="composite" label="Composite" sortKey={sortKey} asc={asc} onSort={toggleSort} />
+              <SortableHead k="freshness" label="Fraîcheur" sortKey={sortKey} asc={asc} onSort={toggleSort} />
+              <SortableHead k="cost" label="Coût" sortKey={sortKey} asc={asc} onSort={toggleSort} />
               <TableHead>Cache</TableHead>
               <TableHead>Erreur</TableHead>
             </TableRow>

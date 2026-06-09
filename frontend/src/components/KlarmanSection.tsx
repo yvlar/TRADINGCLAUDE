@@ -47,6 +47,7 @@ export function KlarmanSection({ output }: KlarmanSectionProps) {
     <Card>
       <CardHeader>
         <button
+          type="button"
           onClick={() => setOpen(!open)}
           className="flex items-center justify-between w-full text-left"
           aria-expanded={open}

@@ -33,6 +33,7 @@ function TickerQualityCard({ analysis }: { analysis: RecentAnalysis }) {
     <Card>
       <CardHeader>
         <button
+          type="button"
           onClick={() => setOpen(!open)}
           className="flex items-center justify-between w-full text-left"
           aria-expanded={open}
@@ -242,6 +243,7 @@ function CompositeChartSection() {
             data-testid="chart-ticker-input"
           />
           <button
+            type="button"
             onClick={handleCharger}
             className="rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             disabled={!inputValue.trim()}
@@ -315,6 +317,7 @@ function ComparisonSection() {
             data-testid="comparison-tickers-input"
           />
           <button
+            type="button"
             onClick={handleComparer}
             className="rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             disabled={!isValid || isLoading}

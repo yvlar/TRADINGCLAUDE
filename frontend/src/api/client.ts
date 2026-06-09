@@ -15,6 +15,10 @@ class ApiError extends Error {
   }
 }
 
+function getApiKey(): string | undefined {
+  return (localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)) || undefined
+}
+
 /** Lit le token CSRF depuis le cookie non-httpOnly (double-submit pattern). */
 function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)
@@ -30,7 +34,7 @@ async function request<T>(
   const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
 
   // Clé API programmatique (rétrocompatibilité) — priorité sur cookie auth
-  const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
+  const apiKey = getApiKey()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -67,7 +71,7 @@ async function request<T>(
 
 async function requestBlob(path: string, options: RequestInit = {}): Promise<Blob> {
   const url = `${BASE_URL}${path}`
-  const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
+  const apiKey = getApiKey()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -93,7 +97,7 @@ async function requestBlob(path: string, options: RequestInit = {}): Promise<Blo
 
 async function requestEmpty(path: string, options: RequestInit = {}): Promise<void> {
   const url = `${BASE_URL}${path}`
-  const apiKey = localStorage.getItem('api_token') ?? (import.meta.env.VITE_API_KEY as string | undefined)
+  const apiKey = getApiKey()
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
