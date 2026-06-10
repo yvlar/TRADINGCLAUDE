@@ -1,60 +1,52 @@
-# Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré
+# Sprint 204 — Frontend : page d'administration des tenants (super-admin)
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.89.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.90.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (202) a ajouté la carte « Quota mensuel » sur `/facturation` (plan, `used`/`limit`, barre, `reset_at`) via `GET /quota`, options react-query alignées sur le `QuotaBadge` (clé partagée). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (203) a ajouté `tests/integration/test_orchestrator_metering_rls.py` : preuve que l'émission `usage_events` par l'orchestrateur est scopée tenant (USING) et qu'un INSERT forgé cross-tenant est rejeté par la DB (WITH CHECK). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval) : `usage_events` est la table de facturation (source unique du metering E4/E5). Les tests RLS S163-S166 prouvent la policy table par table, et les tests S177/S181/S185 prouvent que les chemins **workers planifiés** émettent sous le bon tenant. Le chaînon non couvert : l'émission depuis **l'orchestrateur lui-même** (`_emit_usage_events`) sous un `tenant_scope` donné ne peut pas écrire sous un autre tenant — une fuite ici serait une anomalie de facturation silencieuse.
+> **Sprint FULL-STACK (backend + frontend)** : aucune UI n'expose la liste des tenants — l'administrateur doit inspecter la DB à la main pour l'onboarding B2B et le support. Ce sprint livre `GET /admin/tenants` (admin only) + une section « Tenants » sur la page Admin existante.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.89.0)
-2. `.claude/rules/tests-pyramide.md` (niveau **intégration** ; marqueur `@pytest.mark.integration` ; vraie DB requise).
-3. `.claude/rules/conventions-python.md` (type hints partout, docstrings FR du WHY, imports groupés).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.90.0)
+2. `.claude/rules/api-architecture.md` (contraintes endpoints) + `.claude/rules/conventions-frontend.md` (React 18, TS strict).
+3. `.claude/rules/tests-pyramide.md` (endpoint → test d'intégration obligatoire ; composant → happy path + erreur).
 4. **Code de référence à re-vérifier en début de session (anti-hallucination — les n° de ligne DÉRIVENT, re-grep obligatoire)** :
-   - `app/orchestrator/core.py` — `_emit_usage_events(self, skills_applied, all_usages, workflow)` (`:462`, best-effort, appariement lockstep) ; sites d'appel `:1098` et `:1677` — vérifiés `grep` S202.
-   - `app/db/tenant_context.py` — `tenant_scope` (`:65`, context manager ContextVar→GUC) — vérifié S202.
-   - `alembic/versions/0006_usage_events.py` — table + policy `usage_events_tenant_isolation` (USING + WITH CHECK) — vérifié S202.
-   - **Patron à suivre** : `tests/integration/test_watchlist_metering_rls.py` (S177) — même squelette (`_RLS_DB_URL`, `pytestmark` skipif, PG migré, rôle NOSUPERUSER, pool + `apply_tenant_context`) ; déjà câblé dans le job CI « Migrations — Alembic + RLS ».
+   - `app/api/endpoints/admin.py` — `_require_admin` (`:58`, fail-closed JWT admin S175) ; patron d'endpoint GET admin : `GET /admin/keys` (`@router.get` `:129`), `GET /admin/audit-log` (`:158`) — vérifiés `grep` S203.
+   - Table `tenants` : `id`, `name`, `slug`, `created_at` (`alembic/versions/0003_tenants.py:33-38`) + `plan` (ajouté par `0007_plan_limits`) — vérifié S203. **`stripe_customer_id` vit dans `subscriptions`** (S172, table HORS RLS) → LEFT JOIN requis pour l'afficher.
+   - `frontend/src/pages/AdminPage.tsx` — page existante (clés API + section « Journal d'audit » S180, filtre client `:74-80`) — patron de section à imiter ; vérifié S203.
+   - `frontend/src/api/` — clients admin existants (`admin.ts` ou équivalent — re-grep le nom exact du fichier portant `getAuditLog`/`listKeys`).
 
 ---
 
-## TÂCHE — Sprint 203 : prouver que `_emit_usage_events` ne peut pas écrire cross-tenant
+## TÂCHE — Sprint 204 : lister les tenants pour l'admin
 
-**Objectif** : sous un pool RLS réel (rôle NOSUPERUSER, `setup=apply_tenant_context`), exercer `_emit_usage_events` (pas une simple policy SQL) dans un contexte `tenant_scope(A)` et prouver : (a) l'événement émis est visible par A et **invisible** par B (lecture scopée B → 0 ligne) ; (b) une tentative d'émission forgée sous B depuis le contexte A (INSERT avec `tenant_id=B` explicite) est **rejetée par la policy WITH CHECK** — la RLS, pas l'applicatif, est la barrière.
+**Objectif** : endpoint `GET /admin/tenants` (admin only, fail-closed) retournant la liste des tenants (`id`, `name`, `slug`, `plan`, `stripe_customer_id` éventuel, `created_at`), et section « Tenants » sur la page Admin (tableau trié par date de création, customer Stripe tronqué, badge plan).
 
 ### Spécification
 
-1. **Nouveau fichier `tests/integration/test_orchestrator_metering_rls.py`** (patron `test_watchlist_metering_rls.py` : `_RLS_DB_URL`, skipif, probe NOSUPERUSER, cleanup).
-2. **Test obligatoire (émission scopée)** : construire un orchestrateur minimal (ou appeler `_emit_usage_events` directement sur une instance avec le pool RLS) sous `tenant_scope(tenant_a)` avec des `UsageDetail` factices → asserter qu'une ligne `usage_events` existe **vue depuis le scope A**, et que la même lecture **sous scope B** retourne 0 ligne (isolation de lecture).
-3. **Test obligatoire (WITH CHECK)** : depuis une connexion scopée A, tenter un `INSERT INTO usage_events (..., tenant_id) VALUES (..., B)` explicite → asserter l'échec (`asyncpg.exceptions` policy violation) — prouve que même un bug applicatif passant le mauvais tenant serait bloqué par la DB.
-4. **Contraintes** : aucun appel Claude réel (les `UsageDetail` sont des objets construits, pas issus d'une analyse) ; mocker le strict nécessaire de l'orchestrateur pour atteindre `_emit_usage_events` sans exécuter de skills ; marqueur `@pytest.mark.integration` ; type hints partout, docstrings FR du WHY ; cleanup des lignes de test (DELETE sous le scope propriétaire ou rôle migrations).
+1. **Backend — `GET /admin/tenants`** (`app/api/endpoints/admin.py`) : protégé par `_require_admin` (même dépendance que les 3 endpoints existants) ; requête `SELECT t.id, t.name, t.slug, t.plan, t.created_at, s.stripe_customer_id FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id = t.id ORDER BY t.created_at DESC` — **attention RLS** : `tenants` et `subscriptions` sont HORS RLS (vérifié S201/S203), la requête passe sur le pool standard sans scope ; modèle Pydantic `TenantAdminEntry` (+ réponse liste) dans `app/models/` ; limite raisonnable (`?limit=100` borné).
+2. **Frontend — section « Tenants »** sur `AdminPage.tsx` (patron de la section Journal d'audit) : tableau (nom, slug, badge plan, customer Stripe tronqué `cus_…` ou « — », date `fr-CA`), états chargement / erreur / vide ; client typé dans `frontend/src/api/` + type dans `types/index.ts` ; `data-testid` `admin-tenants-*`.
+3. **Conventions** : type hints/docstrings FR backend ; TS strict zéro `any` ; pas de pagination complexe (liste bornée — l'onboarding B2B compte des dizaines de tenants, pas des milliers).
 
 ### Tests / validation
-- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/`.
-- **Câblage CI obligatoire** : ajouter le fichier à la liste explicite du job « Migrations — Alembic + RLS » (`.github/workflows/ci.yml` — liste actuelle `:235-247`, 13 fichiers + celui-ci) — sans cette ligne le test ne tournera JAMAIS en CI (cf. sprint suggéré S206).
-- **Pas de frontend, pas d'eval.**
-- **⚠️ Pas de PostgreSQL dans le conteneur web** : constater localement collection + skip propre ; le gate vert réel est le CI.
-- **Preuve d'acceptation observable** : le test d'isolation **échoue** si on neutralise le scope (ex. émettre hors `tenant_scope` → l'événement n'est visible par personne sous RLS, ou lecture B non vide si la policy était `ENABLE` sans `FORCE`) — injecter la régression factice puis restaurer byte-identique.
+- **Backend** : test d'intégration endpoint (`tests/api/`) — 401/403 non-admin (parité avec les tests `_require_admin` existants — re-grep `tests/api/test_admin_auth.py`), 200 admin avec forme de réponse ; mock DB (pas de PG local).
+- **Frontend** : Vitest section Tenants — happy path, erreur, vide ; mock du client.
+- **Gates** : pytest (hors e2e/evals) + ruff + Vitest + `tsc --noEmit` + ESLint (0/0).
+- **Preuve d'acceptation observable** : section retirée du JSX → test rouge → restaurer ; endpoint sans cookie admin → 401/403 asserté.
 
 ### Note environnement conteneur web
-`pytest`/`ruff` tournent depuis `.venv` (hook `SessionStart`). Si des imports manquent (`stripe` a manqué S196-S201), relancer `.venv/bin/pip install -r requirements.txt`.
+`.venv` via hook `SessionStart` (sinon `pip install -r requirements.txt`) ; `frontend/node_modules` : `npm ci` + `npm install @rollup/rollup-linux-x64-gnu --no-save` si absent.
 
 ---
 
-## SPRINTS SUGGÉRÉS (suite E5/Ops — voir plan directeur §7-§8)
-
-### Sprint 204 — Frontend : page d'administration des tenants (super-admin)
-**Objectif** : page `/admin/tenants` listant les tenants (nom, plan, `stripe_customer_id` tronqué, date de création) via un endpoint `GET /admin/tenants` à créer, accessible admin uniquement.
-**Complexité** : Moyenne.
-**Justification** : aucune UI n'expose la liste des tenants — l'administrateur doit inspecter la DB. Utile pour l'onboarding B2B et le support.
-**Référence** : `app/api/endpoints/admin.py` — `_require_admin` (`:58`) — vérifié `grep` S200 ; `app/services/user_service.py` — `UserService` (`:22`) — vérifié S200 ; la route et la page sont **à créer**.
+## SPRINTS SUGGÉRÉS (suite E5/Ops)
 
 ### Sprint 205 — Ops : étendre le garde anti-contournement asyncpg à `app/` entier (allowlist)
 **Objectif** : généraliser le meta-test S200 de `app/workers/` à tout `app/`, avec allowlist explicite des deux usages légitimes — le chokepoint lui-même et le provisioning admin.
@@ -63,30 +55,37 @@ Le dernier sprint (202) a ajouté la carte « Quota mensuel » sur `/facturation
 **Référence** : scan AST réutilisable `tests/meta/test_no_direct_asyncpg_in_workers.py` (`_scan_violations`) — livré S200 ; à allowlister : `app/db/pool.py:25` et `app/db/provision_app_runtime.py:47` — vérifiés `grep` S200 ; l'extension est **à créer**.
 
 ### Sprint 206 — Ops : meta-test « tout test d'intégration est câblé dans le CI »
-**Objectif** : verrouiller par un meta-test (patron S200) que chaque `tests/integration/test_*.py` apparaît dans la liste explicite de fichiers du job CI « Migrations — Alembic + RLS » — un fichier oublié est aujourd'hui skippé localement ET jamais exécuté en CI : couverture zéro silencieuse.
+**Objectif** : verrouiller par un meta-test (patron S200) que chaque `tests/integration/test_*.py` apparaît dans la liste explicite du job CI « Migrations — Alembic + RLS » — un fichier oublié est skippé localement ET jamais exécuté en CI : couverture zéro silencieuse.
 **Complexité** : Faible.
-**Justification** : finding d'altitude de la revue S201 ; S201 et S203 ont chacun dû éditer `ci.yml` à la main — la discipline manuelle ne se prouve pas.
-**Référence** : liste explicite `.github/workflows/ci.yml:235-247` (13 fichiers) — vérifié `grep` S201 ; patron meta-test filesystem `tests/meta/test_no_direct_asyncpg_in_workers.py` — livré S200 ; le meta-test est **à créer**.
+**Justification** : finding d'altitude S201 ; S201 et S203 ont chacun dû éditer `ci.yml` à la main — la discipline manuelle ne se prouve pas.
+**Référence** : liste explicite `.github/workflows/ci.yml` (14 fichiers après S203 — re-grep les lignes exactes) — vérifié S203 ; patron `tests/meta/` — livré S200 ; le meta-test est **à créer**.
 
 ### Sprint 207 — Frontend : hook partagé `useQuota` + CTA contextuel à quota épuisé
 **Objectif** : extraire un hook `useQuota(tenantId)` consommé par `QuotaBadge` ET la carte Quota de `/facturation` (mêmes clé/options, logique fail-open unique), et afficher un CTA « Passer à Pro » contextuel dans la carte quand `remaining === 0` et plan `free`.
 **Complexité** : Faible.
-**Justification** : findings écartés-YAGNI de la revue S202 — dès qu'un 3ᵉ consommateur du quota apparaît (badge + carte aujourd'hui), la duplication clé/options/fail-open devient un risque de divergence réel ; le CTA à épuisement ferme la friction « scroller vers la carte Plan ».
-**Référence** : `frontend/src/components/QuotaBadge.tsx` (query `:12-20`) — vérifié S202 ; carte Quota `BillingPage.tsx` (query + JSX) — livré S202 ; le hook et le CTA sont **à créer**.
+**Justification** : findings écartés-YAGNI de la revue S202 — dès qu'un 3ᵉ consommateur apparaît, la duplication clé/options/fail-open devient un risque de divergence réel.
+**Référence** : `frontend/src/components/QuotaBadge.tsx` (query `:12-20`) — vérifié S202 ; carte Quota `BillingPage.tsx` — livrée S202 ; le hook et le CTA sont **à créer**.
+
+### Sprint 208 — Ops : nettoyage du test frère E4-S7 (cleanup non protégé)
+**Objectif** : aligner `tests/integration/test_stripe_billing_webhook.py` sur le patron `finally` imbriqué de S201 (un échec du DELETE de cleanup ne doit ni masquer l'échec d'origine ni laisser le pool ouvert).
+**Complexité** : Faible.
+**Justification** : finding hors-diff de la revue S201 (le fichier frère a un cleanup inline non protégé) — micro-sprint d'hygiène, zéro comportement.
+**Référence** : `tests/integration/test_stripe_billing_webhook.py:134-138` (cleanup inline) — observé revue S201 ; patron cible : `test_stripe_plan_to_quota.py` (finally imbriqué) — livré S201.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.89.0),
-.claude/rules/tests-pyramide.md, .claude/rules/conventions-python.md.
-Sprint actif : 203 — Ops : test d'isolation RLS usage_events sur le chemin orchestrateur métré.
-COMMENCE PAR RE-GREP : core.py _emit_usage_events (:462, appels :1098/:1677), tenant_context.tenant_scope (:65),
-patron tests/integration/test_watchlist_metering_rls.py, policy 0006_usage_events.
-LIVRABLE : tests/integration/test_orchestrator_metering_rls.py — 2 tests : (1) émission sous tenant_scope(A)
-visible par A / invisible par B ; (2) INSERT forgé tenant_id=B depuis scope A rejeté par WITH CHECK.
-+ AJOUTER le fichier à la liste du job CI « Migrations — Alembic + RLS » (ci.yml) — sinon jamais exécuté.
-GATES : pytest (hors e2e/evals) + ruff. Pas de PG local → collection + skip propre, preuve verte au CI.
-PREUVE : neutraliser le scope → test rouge → restaurer byte-identique.
+Tu es un développeur full-stack senior (FastAPI + React/TS) sur TradingClaude. Lis CLAUDE.md,
+ROADMAP.md (v10.90.0), .claude/rules/api-architecture.md, .claude/rules/conventions-frontend.md,
+.claude/rules/tests-pyramide.md.
+Sprint actif : 204 — Frontend : page d'administration des tenants (super-admin).
+COMMENCE PAR RE-GREP : admin.py _require_admin (:58) + patron GET (:129/:158), DDL tenants
+(0003 + plan 0007), subscriptions.stripe_customer_id (S172, LEFT JOIN), AdminPage.tsx section audit.
+LIVRABLE : GET /admin/tenants (admin only, LEFT JOIN subscriptions, TenantAdminEntry Pydantic)
++ section « Tenants » sur AdminPage (tableau nom/slug/plan/customer tronqué/date fr-CA,
+états chargement/erreur/vide, testids admin-tenants-*) + client typé + types TS.
+GATES : pytest + ruff + Vitest + tsc + ESLint. Tests : 401/403 non-admin + 200 forme ; happy/erreur/vide.
+PREUVE : section retirée → test rouge → restaurer ; accès sans admin → 401/403.
 ```
