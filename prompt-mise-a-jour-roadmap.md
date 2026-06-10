@@ -1,65 +1,54 @@
-# Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation
+# Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.88.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.89.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (201) a ajouté `tests/integration/test_stripe_plan_to_quota.py` : 2 tests prouvant qu'après un webhook Stripe signé (upgrade/downgrade), le `QuotaService` du même process voit la nouvelle borne sans redémarrage — chaînon manquant de la boucle de facturation E5. État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (202) a ajouté la carte « Quota mensuel » sur `/facturation` (plan, `used`/`limit`, barre, `reset_at`) via `GET /quota`, options react-query alignées sur le `QuotaBadge` (clé partagée). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Sprint FRONTEND seul, additif pur** (zéro backend à créer, pas d'eval, pas de migration) : la page `/facturation` est le lieu naturel de gestion d'abonnement mais n'affiche pas l'état du quota mensuel — l'utilisateur doit deviner depuis le badge du header. Ce sprint ajoute une carte « Quota mensuel » alimentée par `GET /quota` (existant, S184).
+> **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval) : `usage_events` est la table de facturation (source unique du metering E4/E5). Les tests RLS S163-S166 prouvent la policy table par table, et les tests S177/S181/S185 prouvent que les chemins **workers planifiés** émettent sous le bon tenant. Le chaînon non couvert : l'émission depuis **l'orchestrateur lui-même** (`_emit_usage_events`) sous un `tenant_scope` donné ne peut pas écrire sous un autre tenant — une fuite ici serait une anomalie de facturation silencieuse.
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.88.0)
-2. `.claude/rules/conventions-frontend.md` (React 18, TypeScript strict zéro `any`, structure pages/composants).
-3. `.claude/rules/tests-pyramide.md` (niveau **composant** ; happy path + cas d'erreur minimum ; `vi.mock` des clients API).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.89.0)
+2. `.claude/rules/tests-pyramide.md` (niveau **intégration** ; marqueur `@pytest.mark.integration` ; vraie DB requise).
+3. `.claude/rules/conventions-python.md` (type hints partout, docstrings FR du WHY, imports groupés).
 4. **Code de référence à re-vérifier en début de session (anti-hallucination — les n° de ligne DÉRIVENT, re-grep obligatoire)** :
-   - `frontend/src/api/quota.ts` — client typé `getQuota()` (`:5`) → `GET /quota` ; type `QuotaStatus` importé (`:2`) — vérifié `grep` S201.
-   - `frontend/src/types/index.ts` — `interface QuotaStatus` (`:906`) : `plan`, `used`, `limit`, `remaining`, `reset_at` (miroir de `QuotaStatusResponse`) — vérifié S201.
-   - `frontend/src/pages/BillingPage.tsx` — page cible : deux `useQuery` existants (`['usage',30]` `:82`, `['usage-reporting']` `:87`), cartes avec `data-testid` (`billing-plan-badge` `:141`, `billing-usage-loading` `:174`, `billing-usage` `:189`) — patron de carte à imiter ; vérifié S201.
-   - `frontend/src/components/QuotaBadge.tsx` + `QuotaBanner.tsx` — composants quota existants (header + bandeau) ; le badge utilise `getQuota()` avec `queryKey` scopé au tenant (S184) — **réutiliser le même patron de query, pas le composant lui-même** (la carte est un affichage détaillé, pas un badge).
-   - `frontend/src/__tests__/BillingPage.test.tsx` — tests composant existants de la page (mock `useAuth`) ; patron d'extension.
-   - Backend (contexte seulement, rien à modifier) : `GET /quota` → `app/api/endpoints/quota.py` (`get_quota` `:19`) ; fail-open `plan="unknown"` + `limit`/`remaining` `null` (jamais de 500).
+   - `app/orchestrator/core.py` — `_emit_usage_events(self, skills_applied, all_usages, workflow)` (`:462`, best-effort, appariement lockstep) ; sites d'appel `:1098` et `:1677` — vérifiés `grep` S202.
+   - `app/db/tenant_context.py` — `tenant_scope` (`:65`, context manager ContextVar→GUC) — vérifié S202.
+   - `alembic/versions/0006_usage_events.py` — table + policy `usage_events_tenant_isolation` (USING + WITH CHECK) — vérifié S202.
+   - **Patron à suivre** : `tests/integration/test_watchlist_metering_rls.py` (S177) — même squelette (`_RLS_DB_URL`, `pytestmark` skipif, PG migré, rôle NOSUPERUSER, pool + `apply_tenant_context`) ; déjà câblé dans le job CI « Migrations — Alembic + RLS ».
 
 ---
 
-## TÂCHE — Sprint 202 : carte « Quota mensuel » sur `/facturation`
+## TÂCHE — Sprint 203 : prouver que `_emit_usage_events` ne peut pas écrire cross-tenant
 
-**Objectif** : afficher l'état courant du quota mensuel d'analyses du tenant (plan, `used`/`limit`/`remaining`, date de réinitialisation `reset_at`) dans une carte dédiée de la page Facturation, en réutilisant le client `getQuota()` et le patron de carte existant de la page. Additif pur : aucune route, aucun backend, aucun type API à créer.
+**Objectif** : sous un pool RLS réel (rôle NOSUPERUSER, `setup=apply_tenant_context`), exercer `_emit_usage_events` (pas une simple policy SQL) dans un contexte `tenant_scope(A)` et prouver : (a) l'événement émis est visible par A et **invisible** par B (lecture scopée B → 0 ligne) ; (b) une tentative d'émission forgée sous B depuis le contexte A (INSERT avec `tenant_id=B` explicite) est **rejetée par la policy WITH CHECK** — la RLS, pas l'applicatif, est la barrière.
 
 ### Spécification
 
-1. **Nouvelle carte « Quota mensuel »** dans `BillingPage.tsx`, après la carte du plan (avant ou après la conso 30 j — choisir le plus lisible) : `useQuery` sur `getQuota()` (clé scopée au tenant, même patron que le `QuotaBadge`), affichant :
-   - plan (badge réutilisant le style `billing-plan-badge`),
-   - `used` / `limit` avec barre de progression (ou fraction texte si plus simple — pas de nouvelle dépendance),
-   - `remaining` analyses restantes,
-   - `reset_at` formaté `fr-CA` (« Réinitialisation le … »).
-2. **États obligatoires** : chargement (skeleton, `data-testid="billing-quota-loading"`), erreur (`billing-quota-error`), **fail-open neutre** : `plan="unknown"` ou `limit=null` → afficher le plan/compteur disponibles sans barre ni chiffres inventés (le backend garantit ce cas — S184) ; non authentifié → la page est déjà derrière l'auth, pas de cas à part.
-3. **`data-testid`** : `billing-quota-card`, `billing-quota-remaining`, `billing-quota-reset` (+ états ci-dessus) — nécessaires aux tests.
-4. **Conventions** : TypeScript strict zéro `any`, types depuis `types/index.ts` (le type `QuotaStatus` existe), commentaires FR du WHY uniquement, Tailwind + tokens existants de la page.
+1. **Nouveau fichier `tests/integration/test_orchestrator_metering_rls.py`** (patron `test_watchlist_metering_rls.py` : `_RLS_DB_URL`, skipif, probe NOSUPERUSER, cleanup).
+2. **Test obligatoire (émission scopée)** : construire un orchestrateur minimal (ou appeler `_emit_usage_events` directement sur une instance avec le pool RLS) sous `tenant_scope(tenant_a)` avec des `UsageDetail` factices → asserter qu'une ligne `usage_events` existe **vue depuis le scope A**, et que la même lecture **sous scope B** retourne 0 ligne (isolation de lecture).
+3. **Test obligatoire (WITH CHECK)** : depuis une connexion scopée A, tenter un `INSERT INTO usage_events (..., tenant_id) VALUES (..., B)` explicite → asserter l'échec (`asyncpg.exceptions` policy violation) — prouve que même un bug applicatif passant le mauvais tenant serait bloqué par la DB.
+4. **Contraintes** : aucun appel Claude réel (les `UsageDetail` sont des objets construits, pas issus d'une analyse) ; mocker le strict nécessaire de l'orchestrateur pour atteindre `_emit_usage_events` sans exécuter de skills ; marqueur `@pytest.mark.integration` ; type hints partout, docstrings FR du WHY ; cleanup des lignes de test (DELETE sous le scope propriétaire ou rôle migrations).
 
 ### Tests / validation
-- **Vitest** : étendre `BillingPage.test.tsx` (ou fichier frère auto-portant si plus lisible) — happy path (quota rendu : plan, fraction, restantes, date), cas erreur (`billing-quota-error`), cas fail-open (`plan="unknown"`, `limit=null` → rendu neutre sans NaN). Mock de `../api/quota` (`vi.mock`), jamais d'appel réseau réel.
-- **Gates frontend** : `npm test` (Vitest), `npm run typecheck` (`tsc --noEmit`, 0 erreur), ESLint (0 erreur / 0 warning).
-- **Backend non touché** : pytest/ruff inchangés par construction — ne pas re-mesurer, le dire.
-- **Preuve d'acceptation observable** : le test happy path **échoue** si la carte est retirée de la page (vérifier en commentant le bloc JSX puis en le restaurant) ; le cas fail-open ne rend **ni `NaN` ni barre pleine** quand `limit=null`.
+- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/`.
+- **Câblage CI obligatoire** : ajouter le fichier à la liste explicite du job « Migrations — Alembic + RLS » (`.github/workflows/ci.yml` — liste actuelle `:235-247`, 13 fichiers + celui-ci) — sans cette ligne le test ne tournera JAMAIS en CI (cf. sprint suggéré S206).
+- **Pas de frontend, pas d'eval.**
+- **⚠️ Pas de PostgreSQL dans le conteneur web** : constater localement collection + skip propre ; le gate vert réel est le CI.
+- **Preuve d'acceptation observable** : le test d'isolation **échoue** si on neutralise le scope (ex. émettre hors `tenant_scope` → l'événement n'est visible par personne sous RLS, ou lecture B non vide si la policy était `ENABLE` sans `FORCE`) — injecter la régression factice puis restaurer byte-identique.
 
 ### Note environnement conteneur web
-`frontend/node_modules` peut manquer au clone (S198 : réinstallé via `npm ci` puis `npm install @rollup/rollup-linux-x64-gnu --no-save` — sans quoi Vitest ne démarre pas). Le hook `SessionStart` s'en charge normalement ; sinon relancer ces deux commandes.
+`pytest`/`ruff` tournent depuis `.venv` (hook `SessionStart`). Si des imports manquent (`stripe` a manqué S196-S201), relancer `.venv/bin/pip install -r requirements.txt`.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — voir plan directeur §7-§8)
-
-### Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré
-**Objectif** : prouver que `_emit_usage_events` (orchestrateur) ne peut pas écrire un événement `usage_events` sous un tenant B depuis un contexte tenant A — gap couvert par la RLS PostgreSQL mais sans test d'intégration ciblé sur le chemin d'émission.
-**Complexité** : Moyenne.
-**Justification** : `usage_events` est la table de facturation (S166) ; une fuite cross-tenant serait une anomalie de facturation silencieuse. Les tests RLS S163-S165 couvrent la policy, pas l'émission depuis l'orchestrateur sous un tenant scopé.
-**Référence** : `app/orchestrator/core.py` — `_emit_usage_events` (`:462`, sites d'appel `:1098` et `:1677`) — vérifié `grep` S200 ; `app/db/tenant_context.py` — `tenant_scope` (`:65`) — vérifié S200 ; le test est **à créer**.
 
 ### Sprint 204 — Frontend : page d'administration des tenants (super-admin)
 **Objectif** : page `/admin/tenants` listant les tenants (nom, plan, `stripe_customer_id` tronqué, date de création) via un endpoint `GET /admin/tenants` à créer, accessible admin uniquement.
@@ -70,28 +59,34 @@ Le dernier sprint (201) a ajouté `tests/integration/test_stripe_plan_to_quota.p
 ### Sprint 205 — Ops : étendre le garde anti-contournement asyncpg à `app/` entier (allowlist)
 **Objectif** : généraliser le meta-test S200 de `app/workers/` à tout `app/`, avec allowlist explicite des deux usages légitimes — le chokepoint lui-même et le provisioning admin.
 **Complexité** : Faible.
-**Justification** : S200 verrouille les workers ; un endpoint ou service pourrait encore créer un pool direct (contournant garde insecure-creds + hook RLS). L'allowlist rend l'invariant global vérifiable sans faux positif. Alternative à évaluer en session : règle lint `ruff` banned-api (couverture équivalente, per-file-ignores) — trancher AVANT d'implémenter.
-**Référence** : scan AST réutilisable `tests/meta/test_no_direct_asyncpg_in_workers.py` (`_scan_violations`) — livré S200 ; usages légitimes à allowlister : `app/db/pool.py:25` (`asyncpg.create_pool` du chokepoint) et `app/db/provision_app_runtime.py:47` (`asyncpg.connect(admin_url)`, provisioning admin) — vérifiés `grep` S200 ; l'extension est **à créer**.
+**Justification** : S200 verrouille les workers ; un endpoint ou service pourrait encore créer un pool direct (contournant garde insecure-creds + hook RLS). Alternative à évaluer en session : règle lint `ruff` banned-api — trancher AVANT d'implémenter.
+**Référence** : scan AST réutilisable `tests/meta/test_no_direct_asyncpg_in_workers.py` (`_scan_violations`) — livré S200 ; à allowlister : `app/db/pool.py:25` et `app/db/provision_app_runtime.py:47` — vérifiés `grep` S200 ; l'extension est **à créer**.
 
 ### Sprint 206 — Ops : meta-test « tout test d'intégration est câblé dans le CI »
-**Objectif** : verrouiller par un meta-test (patron S200) que chaque `tests/integration/test_*.py` apparaît dans la liste explicite de fichiers du job CI « Migrations — Alembic + RLS » — un fichier oublié de la liste est aujourd'hui skippé localement (pas de PG) ET jamais exécuté en CI : couverture zéro silencieuse.
+**Objectif** : verrouiller par un meta-test (patron S200) que chaque `tests/integration/test_*.py` apparaît dans la liste explicite de fichiers du job CI « Migrations — Alembic + RLS » — un fichier oublié est aujourd'hui skippé localement ET jamais exécuté en CI : couverture zéro silencieuse.
 **Complexité** : Faible.
-**Justification** : finding d'altitude de la revue S201 — la liste explicite est un choix assumé (auditabilité), mais sans garde-fou chaque nouveau fichier dépend de la discipline manuelle (S201 a dû éditer `ci.yml` à la main). Le meta-test lit `ci.yml` + `tests/integration/*.py` et échoue avec la liste des absents (allowlist pour exclusions volontaires, ex. `_rls_fixtures.py`).
-**Référence** : liste explicite actuelle `.github/workflows/ci.yml:235-247` (13 fichiers, `pytest tests/integration/…`) — vérifié `grep` S201 ; patron meta-test filesystem `tests/meta/test_no_direct_asyncpg_in_workers.py` — livré S200 ; le meta-test est **à créer**.
+**Justification** : finding d'altitude de la revue S201 ; S201 et S203 ont chacun dû éditer `ci.yml` à la main — la discipline manuelle ne se prouve pas.
+**Référence** : liste explicite `.github/workflows/ci.yml:235-247` (13 fichiers) — vérifié `grep` S201 ; patron meta-test filesystem `tests/meta/test_no_direct_asyncpg_in_workers.py` — livré S200 ; le meta-test est **à créer**.
+
+### Sprint 207 — Frontend : hook partagé `useQuota` + CTA contextuel à quota épuisé
+**Objectif** : extraire un hook `useQuota(tenantId)` consommé par `QuotaBadge` ET la carte Quota de `/facturation` (mêmes clé/options, logique fail-open unique), et afficher un CTA « Passer à Pro » contextuel dans la carte quand `remaining === 0` et plan `free`.
+**Complexité** : Faible.
+**Justification** : findings écartés-YAGNI de la revue S202 — dès qu'un 3ᵉ consommateur du quota apparaît (badge + carte aujourd'hui), la duplication clé/options/fail-open devient un risque de divergence réel ; le CTA à épuisement ferme la friction « scroller vers la carte Plan ».
+**Référence** : `frontend/src/components/QuotaBadge.tsx` (query `:12-20`) — vérifié S202 ; carte Quota `BillingPage.tsx` (query + JSX) — livré S202 ; le hook et le CTA sont **à créer**.
 
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur React/TypeScript senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.88.0),
-.claude/rules/conventions-frontend.md, .claude/rules/tests-pyramide.md.
-Sprint actif : 202 — Frontend : carte « Quota mensuel » sur la page Facturation.
-COMMENCE PAR RE-GREP : frontend/src/api/quota.ts (getQuota :5), types/index.ts (QuotaStatus :906),
-pages/BillingPage.tsx (useQuery :82/:87, testids :141/:174/:189), components/QuotaBadge.tsx (patron queryKey).
-LIVRABLE : carte « Quota mensuel » (plan, used/limit, remaining, reset_at fr-CA) sur /facturation via
-getQuota() ; états loading/error/fail-open (plan="unknown", limit=null → rendu neutre sans NaN) ;
-data-testid billing-quota-*. Aucun backend.
-GATES : Vitest + tsc --noEmit + ESLint (0/0). Backend non touché par construction.
-PREUVE : test happy path rouge si la carte est retirée du JSX → restaurer ; fail-open sans NaN.
+Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.89.0),
+.claude/rules/tests-pyramide.md, .claude/rules/conventions-python.md.
+Sprint actif : 203 — Ops : test d'isolation RLS usage_events sur le chemin orchestrateur métré.
+COMMENCE PAR RE-GREP : core.py _emit_usage_events (:462, appels :1098/:1677), tenant_context.tenant_scope (:65),
+patron tests/integration/test_watchlist_metering_rls.py, policy 0006_usage_events.
+LIVRABLE : tests/integration/test_orchestrator_metering_rls.py — 2 tests : (1) émission sous tenant_scope(A)
+visible par A / invisible par B ; (2) INSERT forgé tenant_id=B depuis scope A rejeté par WITH CHECK.
++ AJOUTER le fichier à la liste du job CI « Migrations — Alembic + RLS » (ci.yml) — sinon jamais exécuté.
+GATES : pytest (hors e2e/evals) + ruff. Pas de PG local → collection + skip propre, preuve verte au CI.
+PREUVE : neutraliser le scope → test rouge → restaurer byte-identique.
 ```

@@ -5,9 +5,10 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BillingPage, { MAX_POLL_ATTEMPTS, POLL_INTERVAL_MS } from '../pages/BillingPage'
 import { ApiError } from '../api/client'
-import type { UsageReporting, UsageResponse, User } from '../types'
+import type { QuotaStatus, UsageReporting, UsageResponse, User } from '../types'
 
 vi.mock('../api/usage', () => ({ getUsage: vi.fn(), getUsageReporting: vi.fn() }))
+vi.mock('../api/quota', () => ({ getQuota: vi.fn() }))
 vi.mock('../api/billing', () => ({ createCheckout: vi.fn(), openPortal: vi.fn() }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: vi.fn() }))
 
@@ -19,6 +20,7 @@ vi.mock('react-router-dom', () => ({
 }))
 
 import { getUsage, getUsageReporting } from '../api/usage'
+import { getQuota } from '../api/quota'
 import { createCheckout, openPortal } from '../api/billing'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -39,6 +41,15 @@ const _USAGE: UsageResponse = {
 const _REPORTING: UsageReporting = {
   reported_through: '2026-06-01T12:00:00Z',
   pending_events: 7,
+}
+
+// midi UTC : la date locale fr-CA reste 2026-07-01 quel que soit le fuseau du runner.
+const _QUOTA: QuotaStatus = {
+  plan: 'free',
+  used: 3,
+  limit: 5,
+  remaining: 2,
+  reset_at: '2026-07-01T12:00:00Z',
 }
 
 function _user(plan: string): User {
@@ -77,6 +88,7 @@ describe('BillingPage', () => {
     mockSearchParams = new URLSearchParams()
     vi.mocked(getUsage).mockResolvedValue(_USAGE)
     vi.mocked(getUsageReporting).mockResolvedValue(_REPORTING)
+    vi.mocked(getQuota).mockResolvedValue(_QUOTA)
     setAuth('free')
     // Stub de window.location : la redirection CTA assigne `href` (jsdom ne navigue pas) ;
     // `reload` espionné pour prouver la bascule du CTA SANS rechargement de page.
@@ -326,5 +338,54 @@ describe('BillingPage', () => {
       await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * (MAX_POLL_ATTEMPTS + 1))
     })
     expect(mockRefreshUser).not.toHaveBeenCalled()
+  })
+
+  it('carte Quota mensuel : plan, fraction utilisée, restantes et date de réinitialisation (preuve d\'acceptation)', async () => {
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-quota')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('billing-quota-plan')).toHaveTextContent('FREE')
+    expect(screen.getByTestId('billing-quota-used')).toHaveTextContent('3')
+    expect(screen.getByTestId('billing-quota-used')).toHaveTextContent('/ 5')
+    expect(screen.getByTestId('billing-quota-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('billing-quota-remaining')).toHaveTextContent('2 analyses restantes')
+    // reset_at formaté fr-CA (YYYY-MM-DD) — fixture à midi UTC, insensible au fuseau du runner.
+    expect(screen.getByTestId('billing-quota-reset')).toHaveTextContent('2026-07-01')
+  })
+
+  it('carte Quota mensuel : squelette pendant le chargement', () => {
+    vi.mocked(getQuota).mockReturnValue(new Promise<QuotaStatus>(() => {}))
+    render(<BillingPage />, { wrapper })
+    expect(screen.getByTestId('billing-quota-loading')).toBeInTheDocument()
+  })
+
+  it('carte Quota mensuel : message neutre si /quota échoue (sans casser la page)', async () => {
+    vi.mocked(getQuota).mockRejectedValue(new ApiError(500, 'boom'))
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-quota-error')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Facturation')).toBeInTheDocument()
+  })
+
+  it('carte Quota mensuel fail-open (plan unknown, limit null) → rendu neutre sans NaN ni barre', async () => {
+    vi.mocked(getQuota).mockResolvedValue({
+      plan: 'unknown',
+      used: 0,
+      limit: null,
+      remaining: null,
+      reset_at: '2026-07-01T12:00:00Z',
+    })
+    render(<BillingPage />, { wrapper })
+    await waitFor(() => {
+      expect(screen.getByTestId('billing-quota-no-limit')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('billing-quota-plan')).toHaveTextContent('UNKNOWN')
+    expect(screen.queryByTestId('billing-quota-bar')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('billing-quota-remaining')).not.toBeInTheDocument()
+    expect(screen.getByTestId('billing-quota-reset')).toHaveTextContent('2026-07-01')
+    // Jamais de chiffre inventé : aucun NaN rendu dans la carte.
+    expect(screen.getByTestId('billing-quota-card').textContent).not.toContain('NaN')
   })
 })

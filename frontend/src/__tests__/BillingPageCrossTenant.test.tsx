@@ -17,6 +17,9 @@ vi.mock('../api/auth', () => ({
   AuthApiError: class extends Error {},
 }))
 vi.mock('../api/usage', () => ({ getUsage: vi.fn(), getUsageReporting: vi.fn() }))
+// Même idiome never-resolving que /usage : la carte Quota reste en skeleton sans re-peupler
+// le cache ni déclencher de vrai fetch (le fichier mocke TOUS les appels réseau de la page).
+vi.mock('../api/quota', () => ({ getQuota: vi.fn(() => new Promise(() => {})) }))
 vi.mock('../api/billing', () => ({ createCheckout: vi.fn(), openPortal: vi.fn() }))
 
 import { authMe, authLogin, authLogout } from '../api/auth'
