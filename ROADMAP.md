@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-09 — Sprint 199 complété**
+**Dernière mise à jour : 2026-06-10 — Sprint 200 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.86.0 |
+| **Version** | 10.87.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` |
-| **Dernier sprint complété** | Sprint 199 — Ops : parité du garde insecure sur le boot API réel (compléter S196 côté API) ✅ |
+| **Sprint actif** | Sprint 201 — E5 : test d'intégration de la bascule de plan Stripe (webhook → quotas) |
+| **Dernier sprint complété** | Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -98,6 +98,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` ✅
+
+**Objectif :** S192/S196/S199 prouvent que le garde `require_secure_db_url` verrouille pool/worker/API **à condition** que tout pool runtime passe par `create_runtime_pool` (qui câble aussi le hook tenant RLS). Rien n'empêchait un futur worker d'appeler `asyncpg.create_pool`/`asyncpg.connect` en direct — contournant silencieusement le garde ET l'isolation multi-tenant. Ce sprint pose un **meta-test statique** (scan AST) qui rend ce contournement impossible à introduire sans casser le CI. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep` — `app/workers/tasks.py` : **0** occurrence `asyncpg.create_pool|connect` directe, **10** occurrences `create_runtime_pool` (import `:16` + 9 sites d'appel) ; `app/db/pool.py:23-25` : `resolve_app_database_url()` → `require_secure_db_url(dsn)` → `asyncpg.create_pool` ; `app/api/main.py:44,169`. Découverte en session : `app/workers/` compte **4 modules** (pas seulement `tasks.py`) → le scan couvre le **package entier** (l'invariant dit « aucun worker »).
+
+**Décision tranchée — scan AST (pas grep) sur `app/workers/**/*.py`, 2 tests dans `tests/meta/test_no_direct_asyncpg_in_workers.py` :** (1) **scan** : aucune fabrication directe de connexion asyncpg — formes détectées : accès d'attribut via tout nom liant asyncpg (alias `import asyncpg as pg`, sous-modules `asyncpg.pool.create_pool` par reconstruction du nom pointé `_dotted_name`, noms liés par `from asyncpg import pool`), `from asyncpg[.x] import create_pool/connect` (asname compris) et wildcard `from asyncpg import *` ; immunité commentaires/docstrings (AST) et type hints `asyncpg.Pool` légitimes (`tasks.py:13`) sans faux positif. (2) **anti-vacuité** : import `create_runtime_pool` depuis `app.db.pool` (épingle la **provenance** — un homonyme local passerait un simple comptage) + ≥1 appel dans `tasks.py`. `getattr`/`importlib` documentés **hors périmètre** (garde-fou anti-régression, pas un sandbox anti-obfuscation).
+
+**Preuve d'acceptation observable** : matrice de **12 cas synthétiques** (8 formes de contournement détectées, 4 cas légitimes/immunités sans faux positif) + preuve sur fichiers réels : bypass ajouté dans `tasks.py`, `celery_app.py` puis `tenant_iteration.py` → scan **rouge** (fichier + ligne localisés), mention en commentaire → **vert** ; fichiers restaurés **byte-identiques** (sha256 vérifié).
+
+**Revue indépendante à contexte frais (sous-agents nourris des critères d'acceptation)** : **correctness** (`/code-review` high, 7 angles, 16 candidats bruts) — **4 CONFIRMÉS par construction et corrigés** : chaîne d'attributs `asyncpg.pool.create_pool` manquée, `from asyncpg.pool import create_pool` manqué, wildcard manqué, scan borné à `tasks.py` seul → généralisé au package. **2ᵉ passe** : 1 CONFIRMÉ **corrigé** (`from asyncpg import pool` puis `pool.create_pool` — tracking des noms liés par ImportFrom), 1 RÉFUTÉ mécaniquement (le check ImportFrom porte sur le nom **source**, pas l'asname). RÉFUTÉS/ÉCARTÉS notables : import relatif `from . import asyncpg` (lierait un module local, pas la vraie lib), fusion import-check/call-count (l'import épingle la provenance — load-bearing). **Qualité** (`/simplify`) — **3 APPLIQUÉS** (prédicat `_is_asyncpg_module` factorisé ×3, `elif` entre branches exclusives, `rglob` aligné sur la docstring « tout le package ») ; **2 ÉCARTÉS** (fusion des deux `ast.walk` : structure 2 phases load-bearing — ordre de l'arbre ≠ ordre d'exécution ; exclusion des noms interdits du tracking d'alias : la sur-approximation uniforme est plus simple que l'exception).
+
+**Version** : 10.87.0
+**Tests** : **2 380 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs **2 378 mesurés avant sprint** — base de branche > S199 : elle inclut graham-screener #164 et ux-audit #162-163) — 2 337 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché**. *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
+
 ### Sprint 199 — Ops : parité du garde insecure sur le boot API réel ✅
 
 **Objectif :** S196 a prouvé le garde `require_secure_db_url` sur le chemin **worker** (`_execute_weekly_watchlist_report` → `create_runtime_pool` = 1ᵉʳ `await`). Restait à verrouiller le **chemin API réel** : le lifespan FastAPI doit lever `RuntimeError` **avant** `asyncpg.create_pool` quand la DSN est insecure en prod. Sans ce test, un refactor futur court-circuitant `create_runtime_pool` dans `main.py` ré-ouvrirait le trou côté API sans être détecté. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
@@ -142,23 +157,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Version** : 10.84.0
 **Tests** : **2 370 backend collectés** (mesuré `pytest --co -q | tail -1` ; **inchangé** — décision pure, aucun test ajouté/retiré) — 2 327 passés / 42 skipped / 1 xfailed ; `ruff check tests/` vert. **Frontend non touché** (node_modules absent du conteneur web — Vitest inchangés par construction, 515 Vitest S195/S196). **Revue :** diff minimal (commentaire seul) — auto-revue : 0 BLOCKER/MAJOR/MINOR/NIT, note précise et vérifiée.
 
-### Sprint 196 — Ops : test de boot worker réel sous DSN insecure (preuve d'intégration du garde S192) ✅
-
-**Objectif :** Compléter S192. S192 a déplacé le garde fail-closed `require_secure_db_url` dans `create_runtime_pool` (chokepoint unique) et l'a prouvé en **isolation** (`tests/db/test_pool.py`, mock `asyncpg.create_pool`). Restait à prouver que le garde se déclenche aussi sur le **chemin de boot worker réel** : quand un `_execute_*` worker démarre sous une DSN insecure en prod, il doit lever `RuntimeError` **avant** toute I/O DB. Sans ce test, un refactor futur résolvant la DSN ailleurs (ou court-circuitant `create_runtime_pool` dans un worker) repasserait `test_pool.py` mais ré-ouvrirait le trou côté worker. **Sprint backend/ops seul, test pur** (`pool.py`/`tasks.py` **non modifiés** ; zéro frontend, pas d'eval, pas de migration).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep`/lecture — `create_runtime_pool` (`app/db/pool.py:9`) résout `dsn = resolve_app_database_url()` (`:23`) puis appelle `require_secure_db_url(dsn)` (`:24`) **avant** `asyncpg.create_pool(dsn, …)` (`:25`) ; `_execute_weekly_watchlist_report` (`app/workers/tasks.py:377`) appelle `create_runtime_pool` (`:386`) en **tout premier `await`** (lignes 377-385 = docstring seule, aucune I/O antérieure) — cible idéale où le garde déclenche avant tout le reste ; `resolve_app_database_url` (`app/utils/security_config.py:17`) lit `APP_DATABASE_URL` (`:29`) — la fixer à la DSN insecure suffit, pas de mock de résolution ; marqueur insecure `copilote:copilote@` (`:11`), message du garde « Identifiants PostgreSQL **par défaut**… » (`:51`) ; `is_dev_environment` (`app/utils/env.py:10`) → `production` ∉ `{dev,development,test,testing}` ; `conftest.py:16` pose `APP_ENV=test` par défaut → forcer `production` par `monkeypatch` pour exercer le vrai chemin insecure.
-
-**Décision tranchée — 2 tests (insecure + discriminant secure) dans un nouveau fichier `tests/workers/test_worker_boot_insecure.py` :** le test obligatoire (insecure prod → `RuntimeError` avant `create_pool`) seul pourrait passer pour une **mauvaise raison** (un échec de boot worker non lié au garde sous `APP_ENV=production`). Un 2ᵉ test discriminant (DSN secure en prod → garde passé → `create_pool` awaité, watchlist vide pour un retour anticipé propre sans sur-mocker) prouve que le `RuntimeError` vient bien du garde insecure-creds, pas de l'env prod en soi. **`create_runtime_pool` n'est PAS mocké** (sinon le garde réel ne serait pas exercé) ; seul `app.db.pool.asyncpg.create_pool` est patché (`AsyncMock`).
-
-**Livrables :**
-- `tests/workers/test_worker_boot_insecure.py` (nouveau) — 2 tests : (1) `APP_ENV=production` + `APP_DATABASE_URL` insecure → `pytest.raises(RuntimeError, match="par défaut")` (fragment **propre** au garde insecure-creds, discrimine d'un RuntimeError de boot non lié) + `asyncpg.create_pool.assert_not_awaited()` ; (2) DSN secure en prod + watchlist vide → `create_pool` **awaité** une fois + `list_entries` awaité (worker atteint la logique métier après le garde). Type hints partout (`monkeypatch: pytest.MonkeyPatch`, `-> None`), mocks typés (`AsyncMock`), docstrings FR du WHY (mock ciblé du chemin worker, pas un boot Celery complet — pas de PG dans le conteneur web).
-
-**Preuve d'acceptation observable** : le test insecure **échoue** quand `require_secure_db_url(dsn)` est neutralisé dans `create_runtime_pool` (vérifié en remplaçant la ligne par `pass` puis en restaurant — `pool.py` confirmé **byte-identique** à `HEAD`) → il verrouille bien le **chemin worker réel**, pas seulement le helper isolé de `test_pool.py`. Les 4 tests `test_pool.py` (S192) restent **verts**. **Pas de Docker/PG dans le conteneur web** → preuve par mock ciblé de `asyncpg.create_pool`, pas un boot Celery complet.
-
-**Version** : 10.83.0
-**Tests** : **2 370 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs S192/S193's 2 368) — 2 327 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert ; `mypy app/ --ignore-missing-imports` vert (171 fichiers, **inchangé** — zéro `app/` touché) ; **frontend non touché** (Vitest inchangés par construction). *(Note env conteneur web : `stripe`/`alembic` manquaient au venv préparé — réinstallés via `pip install -r requirements.txt` ; sans quoi 193 échecs d'import parasites, non liés au sprint.)* **Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« SHIP »**, 0 BLOCKER/MAJOR, **4/4 critères MET** (`create_runtime_pool` non mocké, garde réel exercé ; pool = 1ᵉʳ `await` confirmé ; patch target `app.db.pool.asyncpg.create_pool` correct ; preuve fails-when-neutralized reproduite ; pas de fuite d'env entre tests), 2 MINOR/NIT cosmétiques (hostname `host` vs `postgres` sans incidence ; assertion `close()` optionnelle) ; 1 NIT **appliqué** : `match="PostgreSQL"` → `match="par défaut"` (discrimine le message du garde d'un RuntimeError de boot non lié) — proof fails-when-neutralized re-vérifiée après correction. **Qualité** (`/simplify`) — **0 APPLY** : duplication des littéraux DSN avec `test_pool.py` **écartée** (auto-portance des tests, « ne pas sur-abstraire ») ; 2ᵉ test discriminant **conservé** (non redondant avec `test_pool.py` — pilote la DSN secure via `APP_DATABASE_URL` + le vrai point d'entrée worker) ; retour anticipé watchlist vide = choix de mock minimal documenté.
-
-## Sprints antérieurs (Sprint 121 → Sprint 0)
+## Sprints antérieurs (Sprint 196 → Sprint 0)
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à
