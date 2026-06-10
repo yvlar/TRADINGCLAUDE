@@ -22,8 +22,8 @@ def test_autofill_remplit_champs_graham(authenticated_page):
     # Déclencher Auto-fill
     autofill_btn.click()
 
-    # Attendre que le bouton repasse à "Auto-fill" (fin du chargement)
-    expect(autofill_btn).to_have_text("Auto-fill", timeout=10_000)
+    # Fin du chargement : le bouton confirme "Données chargées ✓"
+    expect(autofill_btn).to_have_text("Données chargées ✓", timeout=10_000)
 
     # P/E et P/B doivent être pré-remplis avec les valeurs du mock (11.0 et 1.3)
     expect(page.get_by_label("P/E")).to_have_value("11")
@@ -43,7 +43,7 @@ def test_autofill_active_checkbox_earnings(authenticated_page):
     # Auto-fill BNS
     page.get_by_label("Ticker").fill("BNS")
     page.locator("[data-testid='autofill-button']").click()
-    expect(page.locator("[data-testid='autofill-button']")).to_have_text("Auto-fill", timeout=10_000)
+    expect(page.locator("[data-testid='autofill-button']")).to_have_text("Données chargées ✓", timeout=10_000)
 
     # Checkbox doit maintenant être activée
     expect(earnings_checkbox).to_be_enabled()
@@ -61,7 +61,7 @@ def test_autofill_earnings_inclus_dans_analyse(authenticated_page):
     # Auto-fill BNS
     page.get_by_label("Ticker").fill("BNS")
     page.locator("[data-testid='autofill-button']").click()
-    expect(page.locator("[data-testid='autofill-button']")).to_have_text("Auto-fill", timeout=10_000)
+    expect(page.locator("[data-testid='autofill-button']")).to_have_text("Données chargées ✓", timeout=10_000)
 
     # Cocher la checkbox earnings (maintenant active)
     earnings_checkbox = page.locator("[data-testid='earnings-checkbox']")

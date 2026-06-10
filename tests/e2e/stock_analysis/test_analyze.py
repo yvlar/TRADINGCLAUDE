@@ -31,10 +31,12 @@ def test_analyse_workflow_lynch(authenticated_page):
 
 
 def test_analyse_ticker_vide_bloque(authenticated_page):
-    """Soumettre sans ticker ne déclenche aucune requête d'analyse."""
+    """Sans ticker, le bouton Analyser est désactivé — aucune requête possible."""
+    from playwright.sync_api import expect
+
     page = AnalyzePage(authenticated_page).goto()
-    page.submit.click()
-    # Pas de résultat attendu — la validation client doit empêcher l'appel.
+    # La validation client désactive le bouton tant que le ticker est vide.
+    expect(page.submit).to_be_disabled()
     assert page.result_ticker.count() == 0
 
 
