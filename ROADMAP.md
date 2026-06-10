@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-10 — Sprint 200 complété**
+**Dernière mise à jour : 2026-06-10 — Sprint 201 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.87.0 |
+| **Version** | 10.88.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 201 — E5 : test d'intégration de la bascule de plan Stripe (webhook → quotas) |
-| **Dernier sprint complété** | Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` ✅ |
+| **Sprint actif** | Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation |
+| **Dernier sprint complété** | Sprint 201 — E5 : bascule de plan Stripe → quotas, prouvée sans redémarrage ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -98,6 +98,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 201 — E5 : bascule de plan Stripe → quotas, prouvée sans redémarrage ✅
+
+**Objectif :** S172 a livré la synchro webhook → `tenants.plan` et E4-S7 l'a prouvée en intégration. Restait la **promesse produit complète** : un `QuotaService` du même process voit la **nouvelle** borne immédiatement après `customer.subscription.updated` (free→pro) — et symétriquement au downgrade (`customer.subscription.deleted` → repli free). Si un futur refactor introduisait un cache de plan en mémoire dans `_resolve_limits`, la bascule resterait invisible jusqu'au redémarrage : régression de facturation silencieuse qu'aucun test ne détectait. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `handle_event` (`stripe_service.py:247`, claim+mutation transactionnel), libellé `customer.subscription.updated` (`:41`), `UPDATE tenants SET plan` (`:315`) ; `_resolve_limits` (`quota_service.py:89`) lit `SELECT pl.plan … JOIN plan_limits` (`:93-95`) **à chaque appel, sans cache** ; `read_status` (`:165`) fail-open ; router billing lit `app.state.stripe_service` (`billing.py:43`) ; patron prouvé `tests/integration/test_stripe_billing_webhook.py` (E4-S7, même job CI).
+
+**Livrables :** `tests/integration/test_stripe_plan_to_quota.py` (nouveau — 2 tests upgrade free→pro / downgrade pro→free) : `QuotaService` construit **AVANT** le webhook (même process, aucune recréation), `read_status` asserté avant (borne du plan initial — pré-condition non vacue) puis après (borne du nouveau plan) ; bornes lues dans `plan_limits` (jamais codées en dur) + garde anti-vacuité `free != pro` ; webhook signé HMAC localement (aucun appel réseau Stripe) ; Redis du compteur mocké `get→None` (le sprint prouve la résolution de **plan**) ; probe NOSUPERUSER ; cleanup FK-safe (enfants → parent) ; `finally` imbriqué (un échec de nettoyage ne masque ni l'échec d'origine ni la fermeture du pool). Câblage CI : fichier ajouté à la liste explicite du job « Migrations — Alembic + RLS » (`ci.yml:240`).
+
+**Preuve d'acceptation observable** : pas de PG dans le conteneur web → constaté localement : collection + **2 skipped propres** ; le gate vert complet vient du **CI** (rôle NOSUPERUSER, DB migrée `alembic upgrade head`). La structure garantit l'échec sous mémoïsation : l'appel `before` amorcerait le cache, l'appel `after` verrait la borne périmée → assertions rouges. Limites documentées dans la PR : un cache à TTL court ou un cache Redis distribué échapperaient à un test de ce niveau (consigné, hors périmètre).
+
+**Revue indépendante à contexte frais (7 angles sous-agents nourris des critères d'acceptation, 17 candidats bruts)** : **correctness** — angle ligne-par-ligne **0 finding** (10 vérifications explicites passées : ordre params SQL du seed, schéma de signature `t=…,v1=…`, FK du cleanup, UUIDs, asyncio) ; cross-file « pool sans `apply_tenant_context` → vacuité » **RÉFUTÉ par construction** (les 4 tables touchées — `tenants`/`subscriptions`/`stripe_events`/`plan_limits` — hors RLS, `_TABLES` migration 0005 vérifié ; et le fail-open de `read_status` → `plan="unknown"` → échec **bruyant**, jamais silencieux ; absence de GUC = miroir de la sémantique prod du webhook, décision S172) ; cleanup inline du fichier frère E4-S7 → hors diff. **Qualité** — duplication `_sign`/`_build`/probe avec le frère **écartée** (auto-portance actée S197, seuil non atteint) ; `parametrize` upgrade/downgrade **écarté** (masquerait l'asymétrie sémantique `updated`/`deleted`) ; micro-coûts efficacité **écartés** (test 1×/CI). **Altitude** : liste explicite `ci.yml` sans meta-test (un fichier d'intégration oublié ne tournerait jamais en CI, silencieusement) → **sprint suggéré S206**.
+
+**Version** : 10.88.0
+**Tests** : **2 382 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs 2 380 S200) — 2 337 passés / **44 skipped** (+2 : les 2 nouveaux tests d'intégration, skip propre sans PG local) / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert ; **frontend non touché** (Vitest inchangés par construction). *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
+
 ### Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` ✅
 
 **Objectif :** S192/S196/S199 prouvent que le garde `require_secure_db_url` verrouille pool/worker/API **à condition** que tout pool runtime passe par `create_runtime_pool` (qui câble aussi le hook tenant RLS). Rien n'empêchait un futur worker d'appeler `asyncpg.create_pool`/`asyncpg.connect` en direct — contournant silencieusement le garde ET l'isolation multi-tenant. Ce sprint pose un **meta-test statique** (scan AST) qui rend ce contournement impossible à introduire sans casser le CI. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
@@ -144,20 +159,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Version** : 10.85.0
 **Tests** : **frontend 516 Vitest** (mesuré `vitest list | wc -l` = 516 ; **+1** vs S195's 515) ; suite complète 516/516 passés (86 fichiers) ; `tsc --noEmit` + ESLint (0/0) verts. **Backend non touché** (zéro `app/`/`tests/` → CI backend inchangé). *(Note env conteneur web : `frontend/node_modules` absent du clone + binaire natif `@rollup/rollup-linux-x64-gnu` manquant — réinstallés via `npm ci` puis `npm install @rollup/rollup-linux-x64-gnu --no-save` ; sans quoi Vitest ne démarre pas.)* **Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« SHIP »**, 0 BLOCKER/MAJOR/MINOR, **11/11 critères MET** (flux complet, `QueryClient` partagé vérifié, never-resolving déterministe, pas de race mount↔login grâce aux barrières `waitFor`, `_USAGE_A` valide rendu sans crash, fails-when-neutralized doublement protégé par (f) cache + (g) DOM) ; 3 NITs cosmétiques (`mockRejectedValue` persistant vs `Once`, couverture mocks, `navigate` sous `MemoryRouter`) tous **intentionnels/documentés** → aucun correctif, pas de 2ᵉ passe requise. **Qualité** (`/simplify`) — **0 APPLY** : extraction inter-fichiers `_user`/`_authResponse` **écartée** (convention auto-portant S190/S195) ; fixtures `_USAGE_A`/`_REPORTING_A` load-bearing (contrat de rendu de `BillingPage`) ; assertions (f) cache / (g) DOM non redondantes (raison d'être du test page) ; commentaires WHY-only justifiés.
 
-### Sprint 197 — Ops : fixture de connexion RLS partagée — décision clos ✅
-
-**Objectif :** Statuer définitivement sur l'extraction d'un helper de connexion partagé pour la famille `asyncpg.connect(_APP_DB_URL)`. S193 avait différé cette question explicitement sous la même mesure ; ce sprint la **re-mesure** maintenant que `_rls_fixtures.py` existe. Le livrable est la **décision documentée**, pas forcément du code. Sprint **OPS/TEST seul, zéro `app/`, zéro frontend, pas d'eval**.
-
-**Re-mesure (anti-hallucination) :** **7 sites** `asyncpg.connect(_APP_DB_URL)` + `try/finally close` sur **3 fichiers** (test_revoke_public_rls×4, test_force_rls×1, test_app_runtime_rls×2) — identique à la mesure S193. La carte supposait 5 sites (les 2 de `test_app_runtime_rls` avaient été omis) ; le re-grep corrige. Famille `_RLS_DB_URL` : `create_pool` + `apply_tenant_context`, setup distincts, sur 13+ sites — clairement non foldable.
-
-**Décision tranchée — NE PAS EXTRAIRE (clos) :** Le périmètre est strictement identique à S193 (même 7 sites, mêmes 3 fichiers). La présence de `_rls_fixtures.py` résout le « où placer le helper » mais n'améliore pas le ratio gain/fragilité. Le `try/finally close` est idiomatique Python, les tests sont auto-portants et lisibles sans abstraction. Gain marginal < coût d'une couche d'abstraction dans les tests.
-
-**Livrable :** Note de décision (S197 — clos, mesure, raisonnement) ajoutée à `tests/integration/_rls_fixtures.py`. Aucun changement de code de test.
-
-**Version** : 10.84.0
-**Tests** : **2 370 backend collectés** (mesuré `pytest --co -q | tail -1` ; **inchangé** — décision pure, aucun test ajouté/retiré) — 2 327 passés / 42 skipped / 1 xfailed ; `ruff check tests/` vert. **Frontend non touché** (node_modules absent du conteneur web — Vitest inchangés par construction, 515 Vitest S195/S196). **Revue :** diff minimal (commentaire seul) — auto-revue : 0 BLOCKER/MAJOR/MINOR/NIT, note précise et vérifiée.
-
-## Sprints antérieurs (Sprint 196 → Sprint 0)
+## Sprints antérieurs (Sprint 197 → Sprint 0)
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à

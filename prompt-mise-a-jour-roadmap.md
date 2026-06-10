@@ -1,59 +1,59 @@
-# Sprint 201 — E5 : test d'intégration de la bascule de plan Stripe (webhook → quotas)
+# Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation
 
 **Copier-coller ce fichier complet dans une nouvelle conversation Claude Code.**
 
 ---
 
-## État du projet (v10.87.0 — transformation B2B/SaaS, phase P0→P1)
+## État du projet (v10.88.0 — transformation B2B/SaaS, phase P0→P1)
 
-Le dernier sprint (200) a ajouté `tests/meta/test_no_direct_asyncpg_in_workers.py` : meta-test AST verrouillant l'invariant « aucun worker ne crée de connexion asyncpg hors du chokepoint `create_runtime_pool` » (8 formes de contournement détectées, immunité commentaires/docstrings). État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
+Le dernier sprint (201) a ajouté `tests/integration/test_stripe_plan_to_quota.py` : 2 tests prouvant qu'après un webhook Stripe signé (upgrade/downgrade), le `QuotaService` du même process voit la nouvelle borne sans redémarrage — chaînon manquant de la boucle de facturation E5. État courant complet (version, endpoints, fonctionnalités, compteurs de tests) : **`ROADMAP.md`** (source unique — ne pas le recopier ici).
 
-> **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval) : prouver que la bascule de plan déclenchée par un webhook Stripe est **visible par `QuotaService` sans redémarrage**. La moitié webhook → `tenants.plan` est DÉJÀ couverte en intégration ; la moitié `tenants.plan` → `QuotaService._resolve_limits` ne l'est pas — c'est le chaînon manquant de la boucle de facturation E5.
+> **Sprint FRONTEND seul, additif pur** (zéro backend à créer, pas d'eval, pas de migration) : la page `/facturation` est le lieu naturel de gestion d'abonnement mais n'affiche pas l'état du quota mensuel — l'utilisateur doit deviner depuis le badge du header. Ce sprint ajoute une carte « Quota mensuel » alimentée par `GET /quota` (existant, S184).
 
 ---
 
 ## LECTURE OBLIGATOIRE AVANT DE COMMENCER
 
-1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.87.0)
-2. `.claude/rules/tests-pyramide.md` (niveau **intégration** ; marqueur `@pytest.mark.integration` ; vraie DB requise).
-3. `.claude/rules/conventions-python.md` (type hints partout, docstrings FR du WHY, imports groupés).
+1. `CLAUDE.md` (déjà injecté) · `ROADMAP.md` (v10.88.0)
+2. `.claude/rules/conventions-frontend.md` (React 18, TypeScript strict zéro `any`, structure pages/composants).
+3. `.claude/rules/tests-pyramide.md` (niveau **composant** ; happy path + cas d'erreur minimum ; `vi.mock` des clients API).
 4. **Code de référence à re-vérifier en début de session (anti-hallucination — les n° de ligne DÉRIVENT, re-grep obligatoire)** :
-   - `tests/integration/test_stripe_billing_webhook.py:81` — test existant `test_webhook_signe_passe_le_tenant_a_pro_et_forge_rejete` : webhook signé → `tenants.plan='pro'` + rejet d'une signature forgée, sous vraie DB migrée (`alembic upgrade head`) et rôle NOSUPERUSER. **Patron et point d'extension naturel** — vérifié S200.
-   - `app/services/stripe_service.py` — `handle_event` (`:247`, claim+mutation dans une transaction), libellé `"customer.subscription.updated"` (`:41`), `UPDATE tenants SET plan = $1 WHERE id = $2::uuid` (`:315`) — vérifiés `grep` S200.
-   - `app/services/quota_service.py` — `_resolve_limits` (`:89`) lit le plan par `SELECT pl.plan, pl.max_analyses_per_month, …` (`:93`) `JOIN plan_limits pl ON pl.plan = t.plan` (`:95`) — **lecture DB à chaque appel, pas de cache de plan** ; vérifié S200.
-   - `tests/services/test_stripe_service.py` — unités `handle_event` mockées (aucune mention de `QuotaService` — gap confirmé S200) ; `tests/services/test_quota_service.py` — unités quota.
+   - `frontend/src/api/quota.ts` — client typé `getQuota()` (`:5`) → `GET /quota` ; type `QuotaStatus` importé (`:2`) — vérifié `grep` S201.
+   - `frontend/src/types/index.ts` — `interface QuotaStatus` (`:906`) : `plan`, `used`, `limit`, `remaining`, `reset_at` (miroir de `QuotaStatusResponse`) — vérifié S201.
+   - `frontend/src/pages/BillingPage.tsx` — page cible : deux `useQuery` existants (`['usage',30]` `:82`, `['usage-reporting']` `:87`), cartes avec `data-testid` (`billing-plan-badge` `:141`, `billing-usage-loading` `:174`, `billing-usage` `:189`) — patron de carte à imiter ; vérifié S201.
+   - `frontend/src/components/QuotaBadge.tsx` + `QuotaBanner.tsx` — composants quota existants (header + bandeau) ; le badge utilise `getQuota()` avec `queryKey` scopé au tenant (S184) — **réutiliser le même patron de query, pas le composant lui-même** (la carte est un affichage détaillé, pas un badge).
+   - `frontend/src/__tests__/BillingPage.test.tsx` — tests composant existants de la page (mock `useAuth`) ; patron d'extension.
+   - Backend (contexte seulement, rien à modifier) : `GET /quota` → `app/api/endpoints/quota.py` (`get_quota` `:19`) ; fail-open `plan="unknown"` + `limit`/`remaining` `null` (jamais de 500).
 
 ---
 
-## TÂCHE — Sprint 201 : prouver webhook Stripe → bascule de plan → quotas, sans redémarrage
+## TÂCHE — Sprint 202 : carte « Quota mensuel » sur `/facturation`
 
-**Objectif** : S172/S173 ont livré la facturation Stripe ; le test d'intégration S174+ prouve webhook → `tenants.plan`. Mais **aucun test ne prouve la promesse produit complète** : après `customer.subscription.updated` (free→pro), un appel `QuotaService` du même process voit la **nouvelle** limite (`max_analyses_per_month` du plan pro) — et symétriquement au downgrade (`customer.subscription.deleted` → repli free). Si un futur refactor introduisait un cache de plan en mémoire dans `QuotaService` ou `_resolve_limits`, la bascule resterait invisible jusqu'au redémarrage : régression silencieuse de facturation qu'aucun test actuel ne détecterait.
+**Objectif** : afficher l'état courant du quota mensuel d'analyses du tenant (plan, `used`/`limit`/`remaining`, date de réinitialisation `reset_at`) dans une carte dédiée de la page Facturation, en réutilisant le client `getQuota()` et le patron de carte existant de la page. Additif pur : aucune route, aucun backend, aucun type API à créer.
 
 ### Spécification
 
-1. **Étendre `tests/integration/test_stripe_billing_webhook.py`** (ou fichier frère `test_stripe_plan_to_quota.py` dans `tests/integration/` — au choix selon la lisibilité, même patron de fixtures).
-2. **Test obligatoire (upgrade)** : tenant en plan `free` → poster l'événement signé `customer.subscription.updated` (plan pro) via le même chemin que le test existant → asserter (a) `tenants.plan = 'pro'` (parité existante) ET (b) `QuotaService._resolve_limits(tenant_id)` (ou `read_status()`) retourne les limites du plan **pro** (`max_analyses_per_month` de `plan_limits` pro), **sans recréer le service ni le pool** — le même process voit la bascule.
-3. **Test obligatoire (downgrade)** : depuis l'état pro, poster `customer.subscription.deleted` → asserter le repli `tenants.plan = 'free'` ET les limites free vues par `QuotaService`.
-4. **Contraintes** : Redis du compteur mensuel mocké ou neutralisé si `read_status` l'exige (le sprint prouve la résolution de **plan**, pas le compteur) ; aucun appel réseau Stripe réel (événement construit + signé localement comme dans le test existant) ; marqueur `@pytest.mark.integration` ; type hints partout, docstrings FR du WHY.
+1. **Nouvelle carte « Quota mensuel »** dans `BillingPage.tsx`, après la carte du plan (avant ou après la conso 30 j — choisir le plus lisible) : `useQuery` sur `getQuota()` (clé scopée au tenant, même patron que le `QuotaBadge`), affichant :
+   - plan (badge réutilisant le style `billing-plan-badge`),
+   - `used` / `limit` avec barre de progression (ou fraction texte si plus simple — pas de nouvelle dépendance),
+   - `remaining` analyses restantes,
+   - `reset_at` formaté `fr-CA` (« Réinitialisation le … »).
+2. **États obligatoires** : chargement (skeleton, `data-testid="billing-quota-loading"`), erreur (`billing-quota-error`), **fail-open neutre** : `plan="unknown"` ou `limit=null` → afficher le plan/compteur disponibles sans barre ni chiffres inventés (le backend garantit ce cas — S184) ; non authentifié → la page est déjà derrière l'auth, pas de cas à part.
+3. **`data-testid`** : `billing-quota-card`, `billing-quota-remaining`, `billing-quota-reset` (+ états ci-dessus) — nécessaires aux tests.
+4. **Conventions** : TypeScript strict zéro `any`, types depuis `types/index.ts` (le type `QuotaStatus` existe), commentaires FR du WHY uniquement, Tailwind + tokens existants de la page.
 
 ### Tests / validation
-- **Backend** : `pytest tests/ --ignore=tests/e2e --ignore=tests/evals` + `ruff check app/ tests/` (+ `mypy app/ --ignore-missing-imports` — aucun `app/` touché → inchangé).
-- **Pas de frontend, pas d'eval**.
-- **Preuve d'acceptation observable** : le test upgrade **échoue** si on simule un cache de plan (ex. mémoïser temporairement le résultat de `_resolve_limits` avant la bascule, ou réécrire `tenants.plan` à `free` juste avant l'assertion quota) — vérifier en injectant la régression factice puis en la retirant (restauration byte-identique).
-- **⚠️ Pas de PostgreSQL dans le conteneur web** : les tests `tests/integration/` y sont **skippés** (comme la matrice RLS) — le gate réel est le CI. Constater localement la collection + le skip propre, et dire explicitement que la preuve verte complète vient du CI.
+- **Vitest** : étendre `BillingPage.test.tsx` (ou fichier frère auto-portant si plus lisible) — happy path (quota rendu : plan, fraction, restantes, date), cas erreur (`billing-quota-error`), cas fail-open (`plan="unknown"`, `limit=null` → rendu neutre sans NaN). Mock de `../api/quota` (`vi.mock`), jamais d'appel réseau réel.
+- **Gates frontend** : `npm test` (Vitest), `npm run typecheck` (`tsc --noEmit`, 0 erreur), ESLint (0 erreur / 0 warning).
+- **Backend non touché** : pytest/ruff inchangés par construction — ne pas re-mesurer, le dire.
+- **Preuve d'acceptation observable** : le test happy path **échoue** si la carte est retirée de la page (vérifier en commentant le bloc JSX puis en le restaurant) ; le cas fail-open ne rend **ni `NaN` ni barre pleine** quand `limit=null`.
 
 ### Note environnement conteneur web
-`pytest`/`ruff` tournent depuis `.venv` (préparé par le hook `SessionStart`). Si des imports manquent (`stripe` a manqué en S196/S199/S200), relancer `.venv/bin/pip install -r requirements.txt`.
+`frontend/node_modules` peut manquer au clone (S198 : réinstallé via `npm ci` puis `npm install @rollup/rollup-linux-x64-gnu --no-save` — sans quoi Vitest ne démarre pas). Le hook `SessionStart` s'en charge normalement ; sinon relancer ces deux commandes.
 
 ---
 
 ## SPRINTS SUGGÉRÉS (suite E5/Ops — voir plan directeur §7-§8)
-
-### Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation
-**Objectif** : afficher l'état courant du quota mensuel d'analyses (plan, `used`/`limit`/`remaining`, `reset_at`) dans une carte de la page `/facturation`, en réutilisant le client `getQuota()` existant.
-**Complexité** : Faible.
-**Justification** : `GET /quota` existe (S184) et alimente le `QuotaBadge` du header, mais la page Facturation — lieu naturel de gestion d'abonnement — n'affiche pas l'état du quota. Additif pur, aucun backend à créer.
-**Référence** : `GET /quota` → `app/api/endpoints/quota.py` (`get_quota` `:19`) — vérifié `grep` S200 ; client typé `frontend/src/api/quota.ts` (`getQuota()` `:5`, type `QuotaStatus` importé `:2`) — vérifié S200 ; `frontend/src/pages/BillingPage.tsx` (page cible existante, vérifié S200) ; la carte est **à créer**.
 
 ### Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré
 **Objectif** : prouver que `_emit_usage_events` (orchestrateur) ne peut pas écrire un événement `usage_events` sous un tenant B depuis un contexte tenant A — gap couvert par la RLS PostgreSQL mais sans test d'intégration ciblé sur le chemin d'émission.
@@ -73,19 +73,25 @@ Le dernier sprint (200) a ajouté `tests/meta/test_no_direct_asyncpg_in_workers.
 **Justification** : S200 verrouille les workers ; un endpoint ou service pourrait encore créer un pool direct (contournant garde insecure-creds + hook RLS). L'allowlist rend l'invariant global vérifiable sans faux positif. Alternative à évaluer en session : règle lint `ruff` banned-api (couverture équivalente, per-file-ignores) — trancher AVANT d'implémenter.
 **Référence** : scan AST réutilisable `tests/meta/test_no_direct_asyncpg_in_workers.py` (`_scan_violations`) — livré S200 ; usages légitimes à allowlister : `app/db/pool.py:25` (`asyncpg.create_pool` du chokepoint) et `app/db/provision_app_runtime.py:47` (`asyncpg.connect(admin_url)`, provisioning admin) — vérifiés `grep` S200 ; l'extension est **à créer**.
 
+### Sprint 206 — Ops : meta-test « tout test d'intégration est câblé dans le CI »
+**Objectif** : verrouiller par un meta-test (patron S200) que chaque `tests/integration/test_*.py` apparaît dans la liste explicite de fichiers du job CI « Migrations — Alembic + RLS » — un fichier oublié de la liste est aujourd'hui skippé localement (pas de PG) ET jamais exécuté en CI : couverture zéro silencieuse.
+**Complexité** : Faible.
+**Justification** : finding d'altitude de la revue S201 — la liste explicite est un choix assumé (auditabilité), mais sans garde-fou chaque nouveau fichier dépend de la discipline manuelle (S201 a dû éditer `ci.yml` à la main). Le meta-test lit `ci.yml` + `tests/integration/*.py` et échoue avec la liste des absents (allowlist pour exclusions volontaires, ex. `_rls_fixtures.py`).
+**Référence** : liste explicite actuelle `.github/workflows/ci.yml:235-247` (13 fichiers, `pytest tests/integration/…`) — vérifié `grep` S201 ; patron meta-test filesystem `tests/meta/test_no_direct_asyncpg_in_workers.py` — livré S200 ; le meta-test est **à créer**.
+
 ---
 
 ## Template de démarrage
 
 ```
-Tu es un développeur Python senior (backend/ops) sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.87.0),
-.claude/rules/tests-pyramide.md, .claude/rules/conventions-python.md.
-Sprint actif : 201 — E5 : test d'intégration de la bascule de plan Stripe (webhook → quotas).
-COMMENCE PAR RE-GREP : tests/integration/test_stripe_billing_webhook.py (test existant :81, patron),
-stripe_service.handle_event (:247), UPDATE tenants SET plan (:315), quota_service._resolve_limits (:89).
-LIVRABLE : 2 tests d'intégration (upgrade free→pro, downgrade pro→free) prouvant que QuotaService
-voit la bascule de plan SANS redémarrage, dans le même process que le webhook.
-GATES : pytest (hors e2e/evals) + ruff. Pas de frontend, pas d'eval. Pas de PG dans le conteneur
-web → collection + skip propre localement, preuve verte au CI.
-PREUVE : injecter une régression factice (cache de plan simulé) → test rouge → retirer.
+Tu es un développeur React/TypeScript senior sur TradingClaude. Lis CLAUDE.md, ROADMAP.md (v10.88.0),
+.claude/rules/conventions-frontend.md, .claude/rules/tests-pyramide.md.
+Sprint actif : 202 — Frontend : carte « Quota mensuel » sur la page Facturation.
+COMMENCE PAR RE-GREP : frontend/src/api/quota.ts (getQuota :5), types/index.ts (QuotaStatus :906),
+pages/BillingPage.tsx (useQuery :82/:87, testids :141/:174/:189), components/QuotaBadge.tsx (patron queryKey).
+LIVRABLE : carte « Quota mensuel » (plan, used/limit, remaining, reset_at fr-CA) sur /facturation via
+getQuota() ; états loading/error/fail-open (plan="unknown", limit=null → rendu neutre sans NaN) ;
+data-testid billing-quota-*. Aucun backend.
+GATES : Vitest + tsc --noEmit + ESLint (0/0). Backend non touché par construction.
+PREUVE : test happy path rouge si la carte est retirée du JSX → restaurer ; fail-open sans NaN.
 ```
