@@ -11,6 +11,7 @@ import { DailyCostTrendChart } from '../components/DailyCostTrendChart'
 import { QuotaBanner, isQuotaError, quotaDetailFromError } from '../components/QuotaBanner'
 import { useAuth } from '../contexts/AuthContext'
 import { getUsage, getUsageReporting } from '../api/usage'
+import { getQuota } from '../api/quota'
 import { createCheckout, openPortal } from '../api/billing'
 import { ApiError } from '../api/client'
 import type { UsageBySkill } from '../types'
@@ -30,6 +31,12 @@ function bySkillToCostMap(bySkill: UsageBySkill[]): Record<string, number> {
 function formatReportedThrough(reportedThrough: string | null): string {
   if (reportedThrough === null) return 'Aucun report effectué pour le moment'
   return `Rapporté à Stripe jusqu'au ${new Date(reportedThrough).toLocaleDateString('fr-CA')}`
+}
+
+/** Pourcentage de quota consommé, borné [0, 100] — borne ≤ 0 traitée comme pleine (évite NaN). */
+function quotaPercent(used: number, limit: number): number {
+  if (limit <= 0) return 100
+  return Math.min(100, (used / limit) * 100)
 }
 
 /** Message d'erreur assaini : 503 → facturation indisponible, sinon le détail renvoyé. */
@@ -87,6 +94,18 @@ export default function BillingPage() {
   const reporting = useQuery({
     queryKey: ['usage-reporting'],
     queryFn: () => getUsageReporting(),
+  })
+
+  // Clé scopée au tenant (patron QuotaBadge) : une re-connexion sous un autre tenant sans
+  // rechargement ne doit jamais servir le quota périmé du tenant précédent. Options alignées
+  // sur QuotaBadge (même clé, observers simultanés sur /facturation) — des politiques retry/
+  // focus divergentes sur une clé partagée donneraient un comportement réseau imprévisible.
+  const quota = useQuery({
+    queryKey: ['quota', user?.tenant_id],
+    queryFn: () => getQuota(),
+    enabled: Boolean(user?.tenant_id),
+    retry: false,
+    refetchOnWindowFocus: false,
   })
 
   const [actionLoading, setActionLoading] = useState(false)
@@ -163,6 +182,68 @@ export default function BillingPage() {
               </p>
             </CardContent>
           )}
+        </Card>
+
+        <Card data-testid="billing-quota-card">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <CardTitle>Quota mensuel</CardTitle>
+              {quota.data && (
+                <Badge variant="outline" data-testid="billing-quota-plan">
+                  {quota.data.plan.toUpperCase()}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {quota.isLoading ? (
+              <div data-testid="billing-quota-loading">
+                <Skeleton className="h-[80px] w-full" />
+              </div>
+            ) : quota.isError ? (
+              <p className="text-sm text-muted-foreground" data-testid="billing-quota-error">
+                Quota indisponible pour le moment.
+              </p>
+            ) : quota.data ? (
+              <div className="space-y-3" data-testid="billing-quota">
+                {quota.data.limit !== null ? (
+                  <>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                        Analyses ce mois-ci
+                      </p>
+                      <p className="text-2xl font-bold tabular-nums" data-testid="billing-quota-used">
+                        {quota.data.used.toLocaleString('fr-CA')}
+                        <span className="ml-1 text-sm font-normal text-muted-foreground">
+                          / {quota.data.limit.toLocaleString('fr-CA')}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted" data-testid="billing-quota-bar">
+                      <div
+                        className="h-2 rounded-full bg-primary"
+                        style={{ width: `${quotaPercent(quota.data.used, quota.data.limit)}%` }}
+                      />
+                    </div>
+                    {quota.data.remaining !== null && (
+                      <p className="text-sm text-muted-foreground" data-testid="billing-quota-remaining">
+                        {quota.data.remaining.toLocaleString('fr-CA')} analyses restantes
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  // Fail-open serveur (plan non résolu) : compteur seul — jamais de borne inventée.
+                  <p className="text-sm text-muted-foreground" data-testid="billing-quota-no-limit">
+                    {quota.data.used.toLocaleString('fr-CA')} analyses ce mois-ci — borne du plan
+                    indisponible pour le moment.
+                  </p>
+                )}
+                <p className="text-sm text-muted-foreground" data-testid="billing-quota-reset">
+                  Réinitialisation le {new Date(quota.data.reset_at).toLocaleDateString('fr-CA')}
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
         </Card>
 
         <Card>

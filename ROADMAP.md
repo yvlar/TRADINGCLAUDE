@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-10 — Sprint 201 complété**
+**Dernière mise à jour : 2026-06-10 — Sprint 202 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.88.0 |
+| **Version** | 10.89.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation |
-| **Dernier sprint complété** | Sprint 201 — E5 : bascule de plan Stripe → quotas, prouvée sans redémarrage ✅ |
+| **Sprint actif** | Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré |
+| **Dernier sprint complété** | Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -98,6 +98,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation ✅
+
+**Objectif :** `GET /quota` (S184) alimentait le `QuotaBadge` du header, mais la page `/facturation` — lieu naturel de gestion d'abonnement — n'affichait pas l'état du quota mensuel. Carte dédiée : plan, `used`/`limit` (barre de progression), `remaining`, `reset_at` (fr-CA). **Sprint FRONTEND seul, additif pur** (zéro backend, zéro migration, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `getQuota()` (`frontend/src/api/quota.ts:5`), `QuotaStatus` (`types/index.ts:906`), `BillingPage.tsx` (2 `useQuery` `:82`/`:87`, patron de cartes, testids), `QuotaBadge.tsx` (clé `['quota', tenantId]` scopée tenant `:13`, options `retry:false`/`refetchOnWindowFocus:false` délibérées `:18-19`).
+
+**Livrables :** carte « Quota mensuel » (`BillingPage.tsx`) — badge plan, fraction `used / limit` + barre Tailwind sans nouvelle dépendance (`quotaPercent` borné [0,100], borne ≤ 0 = pleine — jamais de NaN), « N analyses restantes », « Réinitialisation le … » (fr-CA) ; états skeleton / erreur neutre / **fail-open** (`limit=null` → compteur seul, jamais de borne inventée) ; query `['quota', tenant_id]` **alignée sur les options du QuotaBadge** (clé partagée, observers simultanés sur /facturation — politiques retry/focus divergentes sur une même clé = comportement réseau imprévisible) ; testids `billing-quota-*`. Tests : **+4 Vitest** (`BillingPage.test.tsx` — happy path, skeleton, erreur sans casser la page, fail-open sans NaN ni barre) ; mock `getQuota` never-resolving ajouté à `BillingPageCrossTenant.test.tsx` (le fichier mocke TOUS les appels réseau de la page).
+
+**Preuve d'acceptation observable :** le test happy path **échoue** quand la carte est retirée du JSX (vérifié : 1 failed, le reste vert ; `BillingPage.tsx` restauré **byte-identique**, sha256 vérifié) ; le cas fail-open ne rend **ni NaN ni barre** (asserté sur le textContent de la carte).
+
+**Revue indépendante à contexte frais (4 angles + 2ᵉ passe) :** **1 correctif APPLIQUÉ** — `retry:false`/`refetchOnWindowFocus:false` sur la query de la carte (finding convergent de 3 angles : clé partagée avec QuotaBadge, politiques divergentes). **2ᵉ passe sur le diff corrigé** : fix conforme ; « erreur figée pour toujours » **RÉFUTÉ** (`refetchOnMount` par défaut → la re-navigation re-fetch ; le sans-retry est la politique délibérée du badge). Écartés avec justification : hook partagé `useQuota` (YAGNI à 2 consommateurs), extraction `formatDateFrCA` (motif préexistant dans 6 fichiers — refactor transversal hors sprint additif), `<ProgressBar>` partagé (motif préexistant 8+ sites), CTA contextuel à `remaining=0` (la carte Plan au-dessus porte déjà le CTA) → suggéré S207 ; nuance fuseau d'affichage (idiome identique à `formatReportedThrough`).
+
+**Version** : 10.89.0
+**Tests** : **frontend 520 Vitest** (mesuré `vitest run` ; **+4** vs 516 S198) — 520/520 passés (86 fichiers) ; `tsc --noEmit` 0 erreur ; ESLint 0/0. **Backend non touché** (2 382 collectés S201, inchangés par construction). *(Env : `node_modules` réinstallé — `npm ci` + binaire rollup.)*
+
 ### Sprint 201 — E5 : bascule de plan Stripe → quotas, prouvée sans redémarrage ✅
 
 **Objectif :** S172 a livré la synchro webhook → `tenants.plan` et E4-S7 l'a prouvée en intégration. Restait la **promesse produit complète** : un `QuotaService` du même process voit la **nouvelle** borne immédiatement après `customer.subscription.updated` (free→pro) — et symétriquement au downgrade (`customer.subscription.deleted` → repli free). Si un futur refactor introduisait un cache de plan en mémoire dans `_resolve_limits`, la bascule resterait invisible jusqu'au redémarrage : régression de facturation silencieuse qu'aucun test ne détectait. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
@@ -143,23 +158,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Version** : 10.86.0
 **Tests** : **2372 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs S198's 2370) — 2329 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché** (zéro `frontend/` → Vitest inchangés, 516 S198). *(Note env conteneur web : `stripe`/`alembic` manquaient — réinstallés via `pip install -r requirements.txt`.)*
 
-### Sprint 198 — E5 : test composant de bascule CTA Facturation cross-tenant ✅
-
-**Objectif :** Compléter S190 + S195 au **niveau page**. S190 a fermé la fuite cross-tenant par `queryClient.clear()` au logout ; S195 l'a prouvé au niveau **mécanisme/flux** dans `AuthContext` (login A → logout → login B). Restait à verrouiller l'**intention page** : après la bascule, la page `/facturation` doit refléter le plan du **nouveau** tenant (CTA portail vs checkout) et n'afficher **aucune** conso/donnée de l'ancien. Sans ce test, une régression future (ex. `clear()` déplacé, purge partielle, ou page lisant un plan en cache périmé) repasserait S190/S195 mais casserait la vue Facturation. **Sprint FRONTEND seul, test pur** (aucun `app/`, pas de backend, pas d'eval, pas de `mypy`).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par lecture — `BillingPage` lit `user?.plan` (`BillingPage.tsx:46`), CTA `billing-checkout-btn` (free) / `billing-portal-btn` (pro) (`:149`), badge `billing-plan-badge` (`:141`), `useQuery(['usage',30])` (`:83`) + `useQuery(['usage-reporting'])` (`:88`) ; `AuthContext` `login`→`setUser(response.user)` (`:43-45`), `logout`→`setUser(null)`+`queryClient.clear()` (`:64-68`)+`navigate` (`:69`). Idiome never-resolving `new Promise(() => {})` déjà présent `BillingPage.test.tsx:119`. Le test de **bascule CTA au niveau page** était bien **à créer** (distinct de `BillingPage.test.tsx` qui mocke `useAuth`, et de `AuthContextCrossTenant.test.tsx` qui n'a pas de page).
-
-**Décision tranchée — monter la VRAIE chaîne `AuthProvider → BillingPage` (pas un `useAuth` mocké) :** `BillingPage.test.tsx` mocke `useAuth`, donc `logout`/`clear()` n'y est jamais exercé. Pour verrouiller le **flux de purge au niveau page**, il faut le vrai contexte ; seuls les appels réseau sous-jacents (`../api/auth`, `../api/usage`, `../api/billing`) sont mockés. `QueryClient` **partagé** provider↔assertions (même instance, sinon le test ne verrouille rien). Mocks `getUsage`/`getUsageReporting` **never-resolving** : sinon le `useQuery` de la page re-peuplerait le cache après `clear()` et l'assertion `undefined` deviendrait non déterministe — never-resolving garde le cache purgé vide ET la page en skeleton (preuve « la conso de A a disparu »). Nouveau fichier auto-portant (patron S195 : wrappers distincts par routing/provider).
-
-**Livrables :**
-- `frontend/src/__tests__/BillingPageCrossTenant.test.tsx` (nouveau) — 1 test de flux page : montage `AuthProvider → Harness(login/logout + BillingPage)` sous `MemoryRouter` + `QueryClient` partagé ; `authLogin` `Once(A free)` puis `Once(B pro)`. Scénario : login A → pré-remplir `['usage',30]`+`['usage-reporting']` avec `_USAGE_A` (`UsageResponse` valide, total `1.2345`) → **pré-condition non vacue** (cache `toEqual` + page rend `$1.2345`) → logout → login B → assertions : CTA `billing-portal-btn` présent / `billing-checkout-btn` absent / badge `PRO` (sans rechargement, même arbre monté) ; `getQueryData(['usage',30])` et `['usage-reporting']` → `undefined` ; page repassée en skeleton (`billing-usage-loading`, plus de `billing-total-cost`). Helpers typés (`_user: User`, `_authResponse: AuthResponse`, `_USAGE_A: UsageResponse`, `_REPORTING_A: UsageReporting`), zéro `any`, commentaires FR du WHY.
-
-**Preuve d'acceptation observable** : le test **échoue** quand `queryClient.clear()` est commenté dans `logout` (vérifié en neutralisant la ligne puis en restaurant — `_USAGE_A` survit à la bascule, `getQueryData(['usage',30]).toBeUndefined()` rouge à la ligne 146 ; `AuthContext.tsx` confirmé **byte-identique** à HEAD après restauration via `git checkout`). **Pas de Docker/navigateur live** dans le conteneur web → preuve par test composant (`@testing-library/react` + vrai `AuthProvider`/`QueryClient` + mocks `fetch`-free).
-
-**Version** : 10.85.0
-**Tests** : **frontend 516 Vitest** (mesuré `vitest list | wc -l` = 516 ; **+1** vs S195's 515) ; suite complète 516/516 passés (86 fichiers) ; `tsc --noEmit` + ESLint (0/0) verts. **Backend non touché** (zéro `app/`/`tests/` → CI backend inchangé). *(Note env conteneur web : `frontend/node_modules` absent du clone + binaire natif `@rollup/rollup-linux-x64-gnu` manquant — réinstallés via `npm ci` puis `npm install @rollup/rollup-linux-x64-gnu --no-save` ; sans quoi Vitest ne démarre pas.)* **Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high) — **« SHIP »**, 0 BLOCKER/MAJOR/MINOR, **11/11 critères MET** (flux complet, `QueryClient` partagé vérifié, never-resolving déterministe, pas de race mount↔login grâce aux barrières `waitFor`, `_USAGE_A` valide rendu sans crash, fails-when-neutralized doublement protégé par (f) cache + (g) DOM) ; 3 NITs cosmétiques (`mockRejectedValue` persistant vs `Once`, couverture mocks, `navigate` sous `MemoryRouter`) tous **intentionnels/documentés** → aucun correctif, pas de 2ᵉ passe requise. **Qualité** (`/simplify`) — **0 APPLY** : extraction inter-fichiers `_user`/`_authResponse` **écartée** (convention auto-portant S190/S195) ; fixtures `_USAGE_A`/`_REPORTING_A` load-bearing (contrat de rendu de `BillingPage`) ; assertions (f) cache / (g) DOM non redondantes (raison d'être du test page) ; commentaires WHY-only justifiés.
-
-## Sprints antérieurs (Sprint 197 → Sprint 0)
+## Sprints antérieurs (Sprint 198 → Sprint 0)
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à
