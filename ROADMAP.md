@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-10 — Sprint 202 complété**
+**Dernière mise à jour : 2026-06-10 — Sprint 203 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.89.0 |
+| **Version** | 10.90.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 203 — Ops : test d'isolation RLS `usage_events` sur le chemin orchestrateur métré |
-| **Dernier sprint complété** | Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation ✅ |
+| **Sprint actif** | Sprint 204 — Frontend : page d'administration des tenants (super-admin) |
+| **Dernier sprint complété** | Sprint 203 — Ops : isolation RLS `usage_events` sur le chemin orchestrateur métré ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -98,6 +98,21 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 203 — Ops : isolation RLS `usage_events` sur le chemin orchestrateur métré ✅
+
+**Objectif :** `usage_events` est la source unique de facturation. S163-S166 prouvent la policy table par table ; S177/S181/S185 couvrent les chemins workers planifiés. Chaînon restant : l'émission depuis l'**orchestrateur** (`_emit_usage_events`) sous un `tenant_scope` donné — une fuite cross-tenant ici serait une anomalie de facturation silencieuse. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `_emit_usage_events` (`core.py:462`, gather sur `record_usage_safe`, filtre `cost_usd > 0`, sites d'appel `:1098`/`:1677`) ; `Orchestrator.__init__` (`:422`, seuls `db_pool`+2 skills requis, zéro I/O) ; `UsageEventService.record` dérive `tenant_id` du **même ContextVar** que le GUC (`resolve_tenant`, égalité exigée par WITH CHECK) ; `as_tenant = tenant_scope` (`conftest.py:56`) ; policy 0006 USING+WITH CHECK ; patron `test_watchlist_metering_rls.py` (S177).
+
+**Livrables :** `tests/integration/test_orchestrator_metering_rls.py` (nouveau — 2 tests) : (1) **émission scopée** — `Orchestrator` réel minimal (skills mocks inertes, `UsageEventService` réel sur pool RLS `setup=apply_tenant_context`) appelle `_emit_usage_events` sous `as_tenant(A)` avec 2 usages (coût 0.01 + coût nul) → l'événement est **visible sous A, invisible sous B** (USING) et **le coût nul n'émet rien** (l'assertion d'égalité stricte sur la requête LIKE préfixe verrouille le filtre) ; (2) **WITH CHECK** — INSERT forgé `tenant_id=B` depuis le scope A → rejeté par PostgreSQL (`match="row-level security"`), assertions ceinture : rien d'écrit ni vu de A ni de B. Probe NOSUPERUSER, cleanup scopé, marqueurs uuid4 par run. Câblage CI : fichier ajouté à la liste explicite du job « Migrations — Alembic + RLS » (`ci.yml:243`).
+
+**Preuve d'acceptation observable :** pas de PG dans le conteneur web → constaté localement : collection + **2 skipped propres** ; le gate vert réel est le **CI** (rôle `rls_tester` NOSUPERUSER — GRANTs `usage_events`/`tenants` vérifiés dans le job, DB migrée). Structurellement : émettre hors `tenant_scope` → GUC vide → WITH CHECK rejette (l'événement n'existe pas, assertion A rouge) ; policy sans FORCE → visibilité B non nulle → assertion B rouge.
+
+**Revue indépendante à contexte frais (4 angles, 15 candidats) :** **0 correctif** — « l'assertion ne verrouille pas le filtre coût nul » **RÉFUTÉ par construction** (le LIKE préfixe capture le marqueur `-cache` ; l'égalité stricte échouerait) ; « résidus d'anciens runs matchés » **RÉFUTÉ** (marqueur uuid4 par run) ; « accumulation de tenants entre runs CI » **RÉFUTÉ** (service container PG éphémère par run) ; angle cross-file env CI : **[]** (GRANTs, ordre du job, imports conftest vérifiés). Écartés avec justification : duplication patron watchlist (auto-portance S197), pools par test (indépendance), pseudo-doublon test 2 ↔ matrice RLS (exigé par la spec — verrou dédié facturation), fragilités hypothétiques (transaction explicite future, casse du message PG).
+
+**Version** : 10.90.0
+**Tests** : **2 384 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs 2 382 S201) — 2 337 passés / **46 skipped** (+2 : les 2 nouveaux tests, skip propre sans PG local) / 1 xfailed ; `ruff check app/ tests/` vert ; **frontend non touché** (520 Vitest S202, inchangés par construction).
+
 ### Sprint 202 — Frontend : carte « Quota mensuel » sur la page Facturation ✅
 
 **Objectif :** `GET /quota` (S184) alimentait le `QuotaBadge` du header, mais la page `/facturation` — lieu naturel de gestion d'abonnement — n'affichait pas l'état du quota mensuel. Carte dédiée : plan, `used`/`limit` (barre de progression), `remaining`, `reset_at` (fr-CA). **Sprint FRONTEND seul, additif pur** (zéro backend, zéro migration, pas d'eval).
@@ -143,22 +158,7 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 **Version** : 10.87.0
 **Tests** : **2 380 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs **2 378 mesurés avant sprint** — base de branche > S199 : elle inclut graham-screener #164 et ux-audit #162-163) — 2 337 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché**. *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
 
-### Sprint 199 — Ops : parité du garde insecure sur le boot API réel ✅
-
-**Objectif :** S196 a prouvé le garde `require_secure_db_url` sur le chemin **worker** (`_execute_weekly_watchlist_report` → `create_runtime_pool` = 1ᵉʳ `await`). Restait à verrouiller le **chemin API réel** : le lifespan FastAPI doit lever `RuntimeError` **avant** `asyncpg.create_pool` quand la DSN est insecure en prod. Sans ce test, un refactor futur court-circuitant `create_runtime_pool` dans `main.py` ré-ouvrirait le trou côté API sans être détecté. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep`/lecture — `app/api/main.py:169` `await create_runtime_pool(min_size=2, max_size=10)` = **1ᵉʳ `await`** du lifespan (lignes 150-168 = lectures d'env synchrones) ; `app/db/pool.py:23-24` : `resolve_app_database_url()` → `require_secure_db_url(dsn)` **avant** `asyncpg.create_pool` ; `app/utils/security_config.py:11,50-55` : marqueur insecure `copilote:copilote@`, message garde "par défaut" ; `AuthTokenService`/`PasswordResetService` appellent `resolve_jwt_secret()` fail-fast en prod (`:33`/`:29`) → `JWT_SECRET_KEY` requis pour le test discriminant. Patron mirrored : `tests/workers/test_worker_boot_insecure.py` (S196).
-
-**Décision tranchée — 2 tests dans `tests/api/test_api_boot_insecure.py` :** (1) insecure DSN prod → `pytest.raises(RuntimeError, match="par défaut")` + `asyncpg.create_pool.assert_not_awaited()` ; (2) discriminant secure DSN prod → lifespan patché (RagClient, Redis, `JWT_SECRET_KEY`) atteint `yield` → `create_pool.assert_awaited_once()`. `create_runtime_pool` NON mocké — le garde réel exercé. Mocks simplifiés : `AsyncMock` auto-crée des sous-attributs `AsyncMock` (vérifiés par introspection).
-
-**Preuve d'acceptation observable** : le test insecure **échoue** quand `require_secure_db_url(dsn)` est neutralisé dans `create_runtime_pool` (remplacé par `pass` — `pytest.raises(RuntimeError, match="par défaut")` échoue avec le message JWT non lié ; vérifié, `pool.py` restauré byte-identique via `cp`). Les tests S192/S196 (`test_pool.py`, `test_worker_boot_insecure.py`) restent **verts**.
-
-**Revue indépendante à contexte frais (sous-agents dédiés nourris des critères d'acceptation)** : **correctness** (`/code-review` high, 7 angles) — SHIP, 0 BLOCKER/MAJOR. Findings REFUTÉS : `assert_not_awaited()` hors context → safe (mocks retiennent leur état) ; CORS import-time → safe (conftest setdefault avant import) ; patch target collision → tests indépendants. **Qualité** (`/simplify`) — **5 lignes APPLIQUÉES** : `ensure_collection = AsyncMock()`, `close = AsyncMock()`, `aclose = AsyncMock()`, `return_value = AsyncMock()`, `return_value.close = AsyncMock()` — tous redondants (prouvé par `type(AsyncMock().close) == AsyncMock`). Journal : 5 corrections appliquées, 0 écartées.
-
-**Version** : 10.86.0
-**Tests** : **2372 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs S198's 2370) — 2329 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché** (zéro `frontend/` → Vitest inchangés, 516 S198). *(Note env conteneur web : `stripe`/`alembic` manquaient — réinstallés via `pip install -r requirements.txt`.)*
-
-## Sprints antérieurs (Sprint 198 → Sprint 0)
+## Sprints antérieurs (Sprint 199 → Sprint 0)
 
 L'historique détaillé des sprints complétés est archivé dans
 [`docs/roadmap-archive.md`](docs/roadmap-archive.md) — il n'est **pas** lu à
