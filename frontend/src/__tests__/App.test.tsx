@@ -40,7 +40,7 @@ describe('App — shell pleine largeur', () => {
 
   it('affiche le titre de l’application', async () => {
     renderApp()
-    expect(await screen.findByText('Copilote Financier IA')).toBeInTheDocument()
+    expect(await screen.findByText('TradingClaude')).toBeInTheDocument()
   })
 
   it('affiche le nom du tenant dans le header une fois authentifié (Sprint 169)', async () => {

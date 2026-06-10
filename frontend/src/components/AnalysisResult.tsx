@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, Download, FileText } from 'lucide-react'
-import { Card, CardContent, CardHeader } from './ui/card'
+import { Card, CardContent } from './ui/card'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table'
@@ -178,7 +178,7 @@ function VerdictSummaryRow({ result }: { result: AnalyzeResponse }) {
     items.push({ label: 'Graham', score: `${result.graham.defensive_score}/8`, verdict: result.graham.verdict })
   }
   if (result.earnings_quality) items.push({ label: 'Qualité', verdict: result.earnings_quality.verdict })
-  if (result.dorsey) items.push({ label: 'Moat', verdict: result.dorsey.verdict })
+  if (result.dorsey) items.push({ label: 'Moat', verdict: result.dorsey.moat_type })
   if (result.buffett) items.push({ label: 'Buffett', verdict: result.buffett.verdict })
   if (result.valuation) items.push({ label: 'Valorisation', verdict: result.valuation.verdict })
   if (result.lynch) items.push({ label: 'Lynch', verdict: result.lynch.verdict })
@@ -186,7 +186,7 @@ function VerdictSummaryRow({ result }: { result: AnalyzeResponse }) {
   if (result.klarman) items.push({ label: 'Klarman', verdict: result.klarman.verdict })
   if (result.greenblatt) items.push({ label: 'Greenblatt', verdict: result.greenblatt.verdict })
   if (result.damodaran) items.push({ label: 'Damodaran', verdict: result.damodaran.verdict })
-  if (result.marks) items.push({ label: 'Marks', verdict: result.marks.verdict })
+  if (result.marks) items.push({ label: 'Marks', verdict: result.marks.recommandation_timing })
   if (result.pabrai) items.push({ label: 'Pabrai', verdict: result.pabrai.verdict })
 
   if (items.length === 0) return null
@@ -332,6 +332,7 @@ export function AnalysisResult({
       {/* ───── Section Graham — ouverte par défaut ───── */}
       {g && (
         <CollapsibleSection
+          defaultOpen
           title="Graham Analysis"
           badge={
             <span className="text-xs text-muted-foreground">

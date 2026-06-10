@@ -98,7 +98,6 @@ export function StreamingProgress({
         {order.map((skillId, index) => {
           const isActive = skillId === activeSkill
           const isDone = completedSkills.includes(skillId)
-          const isPending = !isActive && !isDone
           const verdict = isDone ? skillVerdict(skillId, partialResult) : undefined
           const label = SKILL_LABELS[skillId] ?? skillId
           const delay = Math.min(index * 30, 250)

@@ -1,0 +1,27 @@
+{
+  "skill_name": "graham-screener",
+  "trigger_evals": [
+    {"id": 1, "query": "Passe ces tickers au filtre Graham : BMY, NKE, LMT, STZ, PFE", "should_trigger": true},
+    {"id": 2, "query": "Screen le S&P 500 et donne-moi les candidats value", "should_trigger": true},
+    {"id": 3, "query": "Trouve-moi des actions sous-évaluées dans les large caps américaines", "should_trigger": true},
+    {"id": 4, "query": "Lesquels de ces titres sont de la vraie value : KO, PEP, JNJ, PG ?", "should_trigger": true},
+    {"id": 5, "query": "Calcule le Graham Number de ces 10 actions et classe-les", "should_trigger": true},
+    {"id": 6, "query": "Filtre cet univers de 50 tickers selon les 7 critères défensifs", "should_trigger": true},
+    {"id": 7, "query": "Compare BMY, PFE et MRK sur des critères value quantitatifs", "should_trigger": true},
+    {"id": 8, "query": "Avant l'analyse qualitative, valide quantitativement ma watchlist de 20 titres", "should_trigger": true},
+    {"id": 9, "query": "Quels titres du S&P 500 passent P/E ≤ 15 et P/B ≤ 1.5 avec dividendes continus ?", "should_trigger": true},
+    {"id": 10, "query": "Relance le screening Graham trimestriel et compare avec le dernier passage", "should_trigger": true}
+  ],
+  "no_trigger_evals": [
+    {"id": 11, "query": "Est-ce que RY.TO passe les critères Graham défensifs ?", "should_trigger": false, "rationale": "graham-stock-screening — analyse unitaire approfondie d'un seul titre"},
+    {"id": 12, "query": "Calcule la valeur intrinsèque selon la formule Graham pour Costco", "should_trigger": false, "rationale": "graham-stock-screening — formule V = EPS × (8.5 + 2g)"},
+    {"id": 13, "query": "Magic Formula de Greenblatt — classe ces actions par ROC et earnings yield", "should_trigger": false, "rationale": "greenblatt-magic-formula"},
+    {"id": 14, "query": "Comment Buffett valorise une entreprise de qualité ?", "should_trigger": false, "rationale": "buffett-quality-investing"},
+    {"id": 15, "query": "Y a-t-il manipulation comptable chez Tesla ?", "should_trigger": false, "rationale": "earnings-quality-fraud-detection"},
+    {"id": 16, "query": "Calcule un DCF complet pour Microsoft", "should_trigger": false, "rationale": "stock-valuation-triangulation"},
+    {"id": 17, "query": "Brookfield a-t-il un moat selon Dorsey ?", "should_trigger": false, "rationale": "dorsey-moat-analysis"},
+    {"id": 18, "query": "Apple en CELI ou REER ?", "should_trigger": false, "rationale": "canadian-tax-considerations"},
+    {"id": 19, "query": "Comment Klarman évalue une opportunité distressed ?", "should_trigger": false, "rationale": "klarman-margin-of-safety"},
+    {"id": 20, "query": "Lynch catégoriserait Costco comment ?", "should_trigger": false, "rationale": "lynch-categories-and-tenbaggers"}
+  ]
+}

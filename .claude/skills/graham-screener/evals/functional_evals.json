@@ -1,0 +1,33 @@
+{
+  "skill": "graham-screener",
+  "_note": "Assertions fonctionnelles sur les scripts (complément des trigger_evals d'evals.json). Vérifiées par tests/skills/test_graham_screener.py.",
+  "test_cases": [
+    {
+      "id": "demo-ranking",
+      "prompt": "Passe l'univers démo au filtre Graham et classe les titres.",
+      "command": "python .claude/skills/graham-screener/scripts/graham_screener.py --demo",
+      "assertions": [
+        "VALUECO obtient 7/7 et arrive premier",
+        "TRAPCO arrive dernier avec un score <= 2",
+        "Le critère 6 de TRAPCO est N/A (BPA moyen quasi nul), pas un P/E absurde",
+        "Chaque critère évalué sur moins de 10 ans porte le drapeau [fenêtre courte]",
+        "Le rapport se termine par le rappel filtre != recommandation"
+      ]
+    },
+    {
+      "id": "csv-export",
+      "prompt": "Exporte les résultats en CSV avec critères échoués nommés.",
+      "command": "python .claude/skills/graham-screener/scripts/graham_screener.py --demo --output out.csv",
+      "assertions": [
+        "Le CSV contient les colonnes score, graham_number, margin_of_safety, failed_criteria",
+        "Les critères échoués sont nommés explicitement dans failed_criteria"
+      ]
+    },
+    {
+      "id": "min-score-filter",
+      "prompt": "Ne montrer que les candidats sérieux (score >= 5).",
+      "command": "python .claude/skills/graham-screener/scripts/graham_screener.py --demo --min-score 5",
+      "assertions": ["Seul VALUECO apparaît dans le tableau"]
+    }
+  ]
+}
