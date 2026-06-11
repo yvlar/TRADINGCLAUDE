@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSemanticSearch } from '../api/search'
 import { Input } from '../components/ui/input'
@@ -44,8 +45,19 @@ function ResultCard({ result, index }: { result: SemanticSearchResult; index: nu
 }
 
 export default function SearchPage() {
-  const [input, setInput] = useState('')
-  const [query, setQuery] = useState('')
+  const [searchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q')?.trim() ?? ''
+  const [input, setInput] = useState(initialQuery)
+  const [query, setQuery] = useState(initialQuery)
+
+  // Préremplissage via ?q= (lien « En savoir plus » du glossaire) — relance si l'URL change.
+  useEffect(() => {
+    const q = searchParams.get('q')?.trim() ?? ''
+    if (q) {
+      setInput(q)
+      setQuery(q)
+    }
+  }, [searchParams])
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['semantic-search', query],

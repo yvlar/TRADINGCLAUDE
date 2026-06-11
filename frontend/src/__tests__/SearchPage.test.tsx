@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import SearchPage from '../pages/SearchPage'
 import * as searchApi from '../api/search'
 import type { SemanticSearchResponse } from '../types'
@@ -29,7 +30,22 @@ const MOCK_RESPONSE: SemanticSearchResponse = {
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  )
+}
+
+function wrapperWithQuery(initialEntry: string) {
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return (
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      </MemoryRouter>
+    )
+  }
 }
 
 describe('SearchPage', () => {
@@ -42,6 +58,17 @@ describe('SearchPage', () => {
     expect(screen.getByTestId('search-input')).toBeInTheDocument()
     expect(screen.getByTestId('search-submit')).toBeInTheDocument()
     expect(screen.getByTestId('search-idle')).toBeInTheDocument()
+  })
+
+  it('prérem­plit et lance la recherche depuis ?q= (lien glossaire)', async () => {
+    vi.mocked(searchApi.fetchSemanticSearch).mockResolvedValue(MOCK_RESPONSE)
+
+    render(<SearchPage />, { wrapper: wrapperWithQuery('/recherche?q=ratio%20cours%20benefice') })
+
+    await waitFor(() => {
+      expect(searchApi.fetchSemanticSearch).toHaveBeenCalledWith('ratio cours benefice', 5)
+    })
+    expect(screen.getByTestId('search-input')).toHaveValue('ratio cours benefice')
   })
 
   it('appelle fetchSemanticSearch avec la requête saisie', async () => {

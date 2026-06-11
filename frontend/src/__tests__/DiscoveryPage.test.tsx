@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
+import { UIModeProvider } from '../contexts/UIModeContext'
 import DiscoveryPage from '../pages/DiscoveryPage'
 import * as discoveryApi from '../api/discovery'
 import type { DiscoveryCategoriesResponse, DiscoveryCategoryResponse } from '../types'
@@ -56,7 +57,9 @@ function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
     <MemoryRouter>
-      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      <QueryClientProvider client={qc}>
+        <UIModeProvider>{children}</UIModeProvider>
+      </QueryClientProvider>
     </MemoryRouter>
   )
 }
@@ -64,6 +67,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('DiscoveryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear() // évite la fuite du mode UI entre tests
   })
 
   it('affiche la grille de catégories sans demander de ticker', async () => {
@@ -89,7 +93,9 @@ describe('DiscoveryPage', () => {
     })
     expect(await screen.findByTestId('suggestion-RY.TO')).toBeInTheDocument()
     expect(screen.getByText(/Banque Royale du Canada : entreprise établie/)).toBeInTheDocument()
-    expect(screen.getByText(/Dividende : 4.1 % par an/)).toBeInTheDocument()
+    // « Dividende » est rendu via GlossaryTerm → le libellé et la valeur sont des nœuds distincts
+    expect(screen.getByTestId('glossary-trigger-rendement_dividende')).toBeInTheDocument()
+    expect(screen.getByText(/4\.1 % par an/)).toBeInTheDocument()
   })
 
   it("le bouton analyse approfondie pointe vers l'analyse préremplie", async () => {
@@ -137,5 +143,31 @@ describe('DiscoveryPage', () => {
     render(<DiscoveryPage />, { wrapper })
 
     expect(await screen.findByTestId('discovery-error')).toBeInTheDocument()
+  })
+
+  it('masque le détail technique en mode débutant (défaut)', async () => {
+    const user = userEvent.setup()
+    localStorage.clear() // garantit le défaut débutant
+    vi.mocked(discoveryApi.fetchDiscoveryCategories).mockResolvedValue(MOCK_CATEGORIES)
+    vi.mocked(discoveryApi.fetchDiscoveryCategory).mockResolvedValue(MOCK_CATEGORY)
+
+    render(<DiscoveryPage />, { wrapper })
+    await user.click(await screen.findByTestId('category-card-solides_stables'))
+    await screen.findByTestId('suggestion-RY.TO')
+
+    expect(screen.queryByTestId('suggestion-advanced-RY.TO')).not.toBeInTheDocument()
+  })
+
+  it('affiche le détail technique en mode avancé', async () => {
+    const user = userEvent.setup()
+    localStorage.setItem('tc_ui_mode', 'avance')
+    vi.mocked(discoveryApi.fetchDiscoveryCategories).mockResolvedValue(MOCK_CATEGORIES)
+    vi.mocked(discoveryApi.fetchDiscoveryCategory).mockResolvedValue(MOCK_CATEGORY)
+
+    render(<DiscoveryPage />, { wrapper })
+    await user.click(await screen.findByTestId('category-card-solides_stables'))
+
+    expect(await screen.findByTestId('suggestion-advanced-RY.TO')).toBeInTheDocument()
+    localStorage.clear()
   })
 })

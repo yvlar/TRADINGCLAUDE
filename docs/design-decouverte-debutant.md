@@ -286,9 +286,9 @@ Deux options à trancher (voir §8) :
 6. `DiscoveryPage` + `CategoryCard` + `SuggestionCard` + client API typé + tests Vitest.
 7. Fiche titre niveau Débutant + bouton « Analyse approfondie » (branché sur `/analyze`).
 
-**Phase 4 — Pédagogie**
-8. `glossary.json` + composant `Glossary` (tooltips) + « en savoir plus » via `/semantic-search`.
-9. Bascule mode Débutant/Avancé.
+**Phase 4 — Pédagogie** ✅ livrée
+8. ✅ `data/glossary.ts` (10 termes) + composant `GlossaryTerm` (popover clic, accessible/tactile) + « en savoir plus » via `/recherche?q=` (SearchPage lit `?q=`).
+9. ✅ `UIModeContext` (Débutant/Avancé, persisté localStorage) + `UIModeToggle` dans le header + détail technique conditionnel sur les fiches de découverte.
 
 **Phase 5 — Élargissement**
 10. Catégories suivantes (ETF, Croissance de qualité, Ce que je connais) en réutilisant le même cadre.

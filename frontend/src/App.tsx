@@ -17,6 +17,8 @@ import {
   Command,
 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { UIModeProvider } from './contexts/UIModeContext'
+import { UIModeToggle } from './components/UIModeToggle'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { RouteFallback } from './components/RouteFallback'
 import { Button } from './components/ui/button'
@@ -156,6 +158,7 @@ function AppShell() {
                 </kbd>
               </button>
 
+              <UIModeToggle />
               <TenantBadge tenantName={user?.tenant_name} />
               <QuotaBadge tenantId={user?.tenant_id} />
 
@@ -212,7 +215,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppShell />
+        <UIModeProvider>
+          <AppShell />
+        </UIModeProvider>
       </AuthProvider>
     </BrowserRouter>
   )

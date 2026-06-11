@@ -8,6 +8,8 @@ import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { SkeletonCard } from '../components/ui/skeleton'
 import { PageTransition, StaggerItem } from '../components/PageTransition'
+import { GlossaryTerm } from '../components/GlossaryTerm'
+import { useUIMode } from '../contexts/UIModeContext'
 import type { DiscoveryCategorySummary, DiscoverySuggestion } from '../types'
 
 function riskBadgeVariant(risk: string): 'success' | 'warning' | 'destructive' {
@@ -66,7 +68,13 @@ function CategoryCard({
   )
 }
 
-function SuggestionCard({ suggestion }: { suggestion: DiscoverySuggestion }) {
+function SuggestionCard({
+  suggestion,
+  isBeginner,
+}: {
+  suggestion: DiscoverySuggestion
+  isBeginner: boolean
+}) {
   return (
     <Card data-testid={`suggestion-${suggestion.ticker}`}>
       <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -88,20 +96,34 @@ function SuggestionCard({ suggestion }: { suggestion: DiscoverySuggestion }) {
       <CardContent className="space-y-3">
         <p className="text-sm text-foreground">{suggestion.why}</p>
 
-        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
           {suggestion.price !== null && <span>Prix : {suggestion.price.toFixed(2)} $</span>}
           {suggestion.dividend_yield !== null && (
-            <span>Dividende : {(suggestion.dividend_yield * 100).toFixed(1)} % par an</span>
+            <span className="inline-flex items-center gap-1">
+              <GlossaryTerm term="rendement_dividende">Dividende</GlossaryTerm> :{' '}
+              {(suggestion.dividend_yield * 100).toFixed(1)} % par an
+            </span>
           )}
           {suggestion.dividend_years !== null && (
             <span>Versé depuis {suggestion.dividend_years} ans</span>
           )}
           {suggestion.pe !== null && (
-            <span title="Combien tu paies pour 1 $ de profit annuel">
-              P/E : {suggestion.pe.toFixed(1)}
+            <span className="inline-flex items-center gap-1">
+              <GlossaryTerm term="pe" /> : {suggestion.pe.toFixed(1)}
             </span>
           )}
         </div>
+
+        {!isBeginner && suggestion.composite_score !== null && (
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid={`suggestion-advanced-${suggestion.ticker}`}
+          >
+            <GlossaryTerm term="qualite">Score composite</GlossaryTerm> :{' '}
+            {suggestion.composite_score.toFixed(1)}/100 — pondère Graham, Buffett, valorisation,
+            moat Dorsey, qualité des bénéfices et cycles de marché.
+          </p>
+        )}
 
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
           <PiggyBank size={14} className="mt-0.5 shrink-0" aria-hidden />
@@ -120,6 +142,7 @@ function SuggestionCard({ suggestion }: { suggestion: DiscoverySuggestion }) {
 }
 
 function CategoryDetail({ categoryId, onBack }: { categoryId: string; onBack: () => void }) {
+  const { isBeginner } = useUIMode()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['discovery-category', categoryId],
     queryFn: () => fetchDiscoveryCategory(categoryId),
@@ -163,7 +186,7 @@ function CategoryDetail({ categoryId, onBack }: { categoryId: string; onBack: ()
             <div className="space-y-3">
               {data.suggestions.map((s, i) => (
                 <StaggerItem key={s.ticker} index={i}>
-                  <SuggestionCard suggestion={s} />
+                  <SuggestionCard suggestion={s} isBeginner={isBeginner} />
                 </StaggerItem>
               ))}
             </div>
