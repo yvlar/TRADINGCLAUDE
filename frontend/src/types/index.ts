@@ -961,3 +961,44 @@ export const WORKFLOWS: WorkflowOption[] = [
     description: 'Dhandho Pabrai + Klarman + Earnings Quality',
   },
 ]
+
+// ---- Découverte par catégorie (page débutant) ----
+export interface DiscoveryCategorySummary {
+  id: string
+  titre: string
+  emoji: string
+  description: string
+  niveau_risque: string // "faible" | "moyen" | "élevé"
+  nb_suggestions: number
+  as_of: string | null
+}
+
+export interface DiscoveryCategoriesResponse {
+  categories: DiscoveryCategorySummary[]
+}
+
+export interface DiscoverySuggestion {
+  ticker: string
+  name: string
+  composite_score: number | null
+  composite_label: string | null
+  risk_badge: string // "faible" | "moyen" | "élevé"
+  why: string
+  dividend_yield: number | null
+  dividend_years: number | null
+  pe: number | null
+  price: number | null
+  account_hint: string
+  as_of: string
+}
+
+export interface DiscoveryCategoryResponse {
+  id: string
+  titre: string
+  emoji: string
+  description: string
+  niveau_risque: string
+  account_hint: string
+  as_of: string | null
+  suggestions: DiscoverySuggestion[]
+}

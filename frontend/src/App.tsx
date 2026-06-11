@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import {
   TrendingUp,
+  Compass,
   Filter,
   Bookmark,
   LayoutDashboard,
@@ -25,6 +26,7 @@ import { TenantBadge } from './components/TenantBadge'
 import { QuotaBadge } from './components/QuotaBadge'
 
 const AnalyzePage = lazy(() => import('./pages/AnalyzePage'))
+const DiscoveryPage = lazy(() => import('./pages/DiscoveryPage'))
 const ScreenerPage = lazy(() => import('./pages/ScreenerPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -115,6 +117,7 @@ function AppShell() {
           {isAuthenticated && (
             <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1" aria-label="Navigation principale">
               {/* Groupe principal */}
+              <NavItem to="/decouvrir" label="Découvrir" icon={<Compass size={15} />} />
               <NavItem to="/" label="Analyse" icon={<TrendingUp size={15} />} />
               <NavItem to="/screener" label="Screener" icon={<Filter size={15} />} />
               <NavItem to="/watchlist" label="Watchlist" icon={<Bookmark size={15} />} />
@@ -181,6 +184,7 @@ function AppShell() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/" element={<ProtectedRoute><AnalyzePage /></ProtectedRoute>} />
+            <Route path="/decouvrir" element={<ProtectedRoute><DiscoveryPage /></ProtectedRoute>} />
             <Route path="/screener" element={<ProtectedRoute><ScreenerPage /></ProtectedRoute>} />
             <Route path="/historique" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
