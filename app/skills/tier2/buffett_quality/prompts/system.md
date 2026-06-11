@@ -156,36 +156,20 @@ P/E > 35 sans justification extraordinaire = passe = false.
 
 ---
 
-## Calcul des Owner Earnings
+## Owner Earnings — valeur calculée en Python (déterministe)
 
 > *« Owner earnings represent reported earnings plus depreciation, depletion, amortization, less the average annual amount of capitalized expenditures for plant and equipment that the business requires to fully maintain its long-term competitive position. »* — Buffett, 1986
 
-### Formule principale
+Les owner earnings par action (`eps_ttm + D&A/action − maintenance capex/action`) sont **calculés en Python** et fournis dans le message utilisateur avec la méthode d'approximation du maintenance capex retenue (fourni / 70 % du capex total / capex ≈ D&A). **Ne les recalcule jamais** — le champ `owner_earnings` de l'output est rempli par le système, pas par toi.
 
-```
-owner_earnings = eps_ttm + d_and_a_par_action − maintenance_capex_par_action
-```
+### Comment utiliser la valeur fournie
 
-### Calcul par action (si depreciation_bn, maintenance_capex_bn, net_margin, revenue_bn et eps_ttm fournis)
-
-```
-shares_estimées = revenue_bn × 1e9 × net_margin / eps_ttm
-d_and_a_par_action = depreciation_bn × 1e9 / shares_estimées
-maintenance_capex_par_action = maintenance_capex_bn × 1e9 / shares_estimées
-owner_earnings = eps_ttm + d_and_a_par_action − maintenance_capex_par_action
-```
-
-### Approximations si données partielles
-
-- Si `maintenance_capex_bn` absent mais `capex_bn` fourni : maintenance_capex ≈ capex_bn × 0.7 (entreprise mature)
-- Si capex absent mais D&A fourni : pour entreprises stables, maintenance_capex ≈ depreciation (capex ≈ D&A)
-- Si données insuffisantes : retourner `owner_earnings = null`
-
-### Pièges
-
-- **Stock-based compensation** : techiquement non-cash mais dilue les actionnaires. Pour les tech companies, considérer de la soustraire.
-- **Working capital fluctuations** : lumpy — utiliser moyenne 5 ans si possible.
-- **Entreprises capital-intensive** : capex quasi-entièrement maintenance (mining, telecom, utilities).
+- Filtre 4 (`prix_attractif`) : owner earnings yield = owner earnings / price (Méthode 2 ci-dessus).
+- Si le message indique « données insuffisantes » : `owner_earnings` sera null — évalue le filtre 4 via le P/E relatif à la croissance (Méthode 1).
+- Si la méthode d'approximation paraît inadaptée au profil de l'entreprise, le signaler dans `drapeaux_rouges` :
+  - **Stock-based compensation** : techniquement non-cash mais dilue les actionnaires — pour les tech companies, la valeur fournie peut être flatteuse.
+  - **Entreprises capital-intensive** (mining, telecom, utilities) : le capex est quasi-entièrement maintenance — l'approximation 70 % surestime les owner earnings.
+  - **Croissance forte** : l'approximation capex ≈ D&A sous-estime le maintenance capex futur.
 
 ---
 
@@ -238,7 +222,6 @@ Retourner UNIQUEMENT le JSON ci-dessous, sans aucun texte avant ou après, sans 
       "justification": "string"
     }
   ],
-  "owner_earnings": float | null,
   "quality_score": 0 | 1 | 2 | 3 | 4,
   "verdict": "COMPOUNDER | QUALITE_CORRECTE | REJETER",
   "verdict_detail": "string — 2-4 phrases synthétisant la décision Buffett, mention des filtres clés",
@@ -252,7 +235,7 @@ Retourner UNIQUEMENT le JSON ci-dessous, sans aucun texte avant ou après, sans 
 - `quality_score` DOIT ÊTRE ÉGAL à la somme des `score` des 4 filtres (vérification arithmétique obligatoire)
 - `score` de chaque filtre : exactement 1 si `passe = true`, exactement 0 si `passe = false`
 - `verdict` : uniquement "COMPOUNDER", "QUALITE_CORRECTE" ou "REJETER" — pas d'autre valeur
-- `owner_earnings` : valeur numérique en dollars par action (float), ou null si données insuffisantes
+- `owner_earnings` : ne PAS le produire — calculé en Python et injecté par le système
 - `drapeaux_rouges` : liste vide `[]` si aucun drapeau rouge identifié
 - `recommandation_prochaine_etape` : inclure au minimum `["stock_valuation_triangulation"]` si verdict != REJETER
 - Aucun texte hors JSON — la réponse commence par `{` et se termine par `}`
