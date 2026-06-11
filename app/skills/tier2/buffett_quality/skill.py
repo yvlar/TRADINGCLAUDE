@@ -8,6 +8,7 @@ from typing import Any, ClassVar
 import anthropic
 
 from app.rag.service import RagService
+from app.services.financial_calculations import OwnerEarningsDetail, owner_earnings_detail
 from app.skills.base import Citation, SkillBase, SkillConfig, UsageDetail
 from app.utils.costs import calculate_cost
 from app.utils.retry import call_claude_with_retry
@@ -18,10 +19,30 @@ from .schemas import BuffettQualityInput, BuffettQualityOutput
 logger = logging.getLogger(__name__)
 
 # Schéma dérivé de Pydantic — confidence_score et champs post-assignés exclus.
+# owner_earnings est calculé en Python et injecté post-parse — jamais produit par le LLM.
 _BUFFETT_TOOL_SCHEMA = build_tool_schema(
     BuffettQualityOutput,
-    exclude={"confidence_score", "citations", "cost_usd"},
+    exclude={"confidence_score", "citations", "cost_usd", "owner_earnings"},
 )
+
+_OE_METHODE_LABELS = {
+    "fourni": "maintenance capex fourni",
+    "capex_x070": "approximation 70 % du capex total (entreprise mature)",
+    "egal_dna": "approximation capex ≈ D&A (entreprise stable) — owner earnings = BPA",
+}
+
+
+def _compute_owner_earnings(input_data: BuffettQualityInput) -> OwnerEarningsDetail:
+    """Owner earnings déterministes depuis les ratios — source unique message + output."""
+    r = input_data.ratios
+    return owner_earnings_detail(
+        eps_ttm=r.eps_ttm,
+        net_margin=r.net_margin,
+        revenue_bn=r.revenue_bn,
+        depreciation_bn=r.depreciation_bn,
+        capex_bn=r.capex_bn,
+        maintenance_capex_bn=r.maintenance_capex_bn,
+    )
 
 
 class BuffettQualitySkill(SkillBase):
@@ -109,11 +130,29 @@ class BuffettQualitySkill(SkillBase):
         ratios_json = input_data.ratios.model_dump_json(indent=2)
         parts.append(
             f"Applique les 4 filtres Buffett à **{input_data.ticker}** "
-            f"(business compréhensible, economics favorables, management fiable, prix attractif) "
-            f"et calcule les owner earnings :\n\n"
+            f"(business compréhensible, economics favorables, management fiable, prix attractif) :\n\n"
             f"```json\n{ratios_json}\n```\n\n"
-            "Retourne l'analyse structurée via l'outil buffett_quality_output."
         )
+
+        oe = _compute_owner_earnings(input_data)
+        if oe.owner_earnings is not None:
+            methode = _OE_METHODE_LABELS.get(
+                oe.methode_maintenance_capex or "", oe.methode_maintenance_capex or ""
+            )
+            parts.append(
+                f"**Owner earnings** (calculés en Python, déterministe) : "
+                f"{oe.owner_earnings:.2f} $/action — méthode : {methode}. "
+                "Utilise cette valeur pour le filtre prix_attractif "
+                "(owner earnings yield = owner earnings / price) ; ne la recalcule pas.\n\n"
+            )
+        else:
+            parts.append(
+                "**Owner earnings** : données insuffisantes pour le calcul déterministe "
+                "(owner_earnings sera null dans l'output) — évalue le filtre prix_attractif "
+                "via le P/E relatif à la croissance.\n\n"
+            )
+
+        parts.append("Retourne l'analyse structurée via l'outil buffett_quality_output.")
 
         return "\n".join(parts)
 
@@ -159,6 +198,8 @@ class BuffettQualitySkill(SkillBase):
 
         data = dict(tool_use_block.input)
         data["citations"] = []
+        # Valeur déterministe calculée en Python — prime sur toute valeur LLM (parité Sprint 128).
+        data["owner_earnings"] = _compute_owner_earnings(input_data).owner_earnings
 
         cost_usd = calculate_cost(response.usage, self._model)
 

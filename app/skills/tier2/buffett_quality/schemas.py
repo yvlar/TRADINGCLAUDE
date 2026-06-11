@@ -51,7 +51,10 @@ class BuffettFiltre(BaseModel):
 class BuffettQualityOutput(BaseModel):
     ticker: str
     filtres: list[BuffettFiltre]
-    owner_earnings: float | None
+    owner_earnings: float | None = Field(
+        None,
+        description="$ par action — BPA + D&A/action − maintenance capex/action, calculé en Python (owner_earnings_detail), jamais par le LLM. Null si données insuffisantes.",
+    )
     quality_score: int
     verdict: str
     verdict_detail: str

@@ -15,6 +15,7 @@ from app.services.financial_calculations import (
     graham_number,
     montier_c_score,
     montier_c_signaux,
+    owner_earnings_detail,
     piotroski_f_criteria,
     piotroski_f_score,
     sloan_accrual_ratio,
@@ -54,6 +55,71 @@ class TestGrahamNumber:
 
     def test_bvps_zero(self):
         assert graham_number(10.0, 0.0) is None
+
+
+class TestOwnerEarnings:
+    def _vecteur(self, **overrides):
+        # actions = 38e9 × 0.27 / 7.25 ≈ 1.4152e9 ; D&A/action = 7.25×5/10.26 ≈ 3.5331 ;
+        # maint/action = 7.25×2/10.26 ≈ 1.4133 ; OE = 7.25 + 3.5331 − 1.4133 ≈ 9.3699
+        base = dict(
+            eps_ttm=7.25, net_margin=0.27, revenue_bn=38.0,
+            depreciation_bn=5.0, capex_bn=3.0, maintenance_capex_bn=2.0,
+        )
+        base.update(overrides)
+        return base
+
+    def test_maintenance_fourni_valeur_connue(self):
+        detail = owner_earnings_detail(**self._vecteur())
+        assert detail.owner_earnings == pytest.approx(9.369883, rel=1e-5)
+        assert detail.methode_maintenance_capex == "fourni"
+        assert detail.actions_estimees == pytest.approx(38e9 * 0.27 / 7.25, rel=1e-9)
+
+    def test_composantes_coherentes(self):
+        # invariant : OE = BPA + D&A/action − maintenance/action
+        detail = owner_earnings_detail(**self._vecteur())
+        assert detail.owner_earnings == pytest.approx(
+            7.25 + detail.d_and_a_par_action - detail.maintenance_capex_par_action, rel=1e-12
+        )
+
+    def test_repli_capex_x070(self):
+        # maintenance absent → 70 % du capex total : maint/action = 7.25×2.1/10.26
+        detail = owner_earnings_detail(**self._vecteur(maintenance_capex_bn=None))
+        assert detail.methode_maintenance_capex == "capex_x070"
+        assert detail.maintenance_capex_par_action == pytest.approx(7.25 * 2.1 / 10.26, rel=1e-9)
+
+    def test_repli_egal_dna(self):
+        # maintenance et capex absents → capex ≈ D&A, les deux termes s'annulent : OE = BPA
+        detail = owner_earnings_detail(
+            **self._vecteur(maintenance_capex_bn=None, capex_bn=None)
+        )
+        assert detail.methode_maintenance_capex == "egal_dna"
+        assert detail.owner_earnings == pytest.approx(7.25, rel=1e-12)
+
+    def test_egal_dna_sans_actions_estimables(self):
+        # revenue absent → actions inestimables, mais OE = BPA reste exact (différence nulle)
+        detail = owner_earnings_detail(
+            **self._vecteur(maintenance_capex_bn=None, capex_bn=None, revenue_bn=None)
+        )
+        assert detail.owner_earnings == pytest.approx(7.25)
+        assert detail.actions_estimees is None
+
+    def test_eps_none(self):
+        assert owner_earnings_detail(**self._vecteur(eps_ttm=None)).owner_earnings is None
+
+    def test_eps_negatif(self):
+        assert owner_earnings_detail(**self._vecteur(eps_ttm=-2.0)).owner_earnings is None
+
+    def test_depreciation_none(self):
+        assert owner_earnings_detail(**self._vecteur(depreciation_bn=None)).owner_earnings is None
+
+    def test_actions_inestimables_sans_repli(self):
+        # marge nette absente + maintenance fourni → par-action impossible → None
+        detail = owner_earnings_detail(**self._vecteur(net_margin=None))
+        assert detail.owner_earnings is None
+        assert detail.methode_maintenance_capex is None
+
+    def test_marge_negative(self):
+        assert owner_earnings_detail(**self._vecteur(net_margin=-0.1)).owner_earnings is None
 
 
 class TestAltmanZScore:

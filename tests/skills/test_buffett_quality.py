@@ -501,18 +501,8 @@ class TestBuffettQualitySkill:
         assert "Contexte dorsey_moat" in user_content
         assert "WIDE" in user_content
 
-    @pytest.mark.asyncio
-    async def test_owner_earnings_present_dans_output(
-        self,
-        ratios_buffett_avec_oe: BuffettRatios,
-    ):
-        """owner_earnings non None si eps_ttm, depreciation_bn, maintenance_capex_bn fournis."""
-        output_data = _make_buffett_output_dict(
-            ticker="BNS",
-            scores=[True, True, False, False],
-            owner_earnings=8.50,
-            verdict="QUALITE_CORRECTE",
-        )
+    @staticmethod
+    def _mock_client(output_data: dict) -> MagicMock:
         mock_response = MagicMock()
         mock_block = MagicMock()
         mock_block.type = "tool_use"
@@ -528,13 +518,68 @@ class TestBuffettQualitySkill:
         mock_client = MagicMock()
         mock_client.messages = AsyncMock()
         mock_client.messages.create.return_value = mock_response
+        return mock_client
+
+    @pytest.mark.asyncio
+    async def test_owner_earnings_substitue_post_parse(
+        self,
+        ratios_buffett_avec_oe: BuffettRatios,
+    ):
+        """La valeur Python prime sur toute valeur LLM (déterminisme, parité Sprint 128).
+
+        Vecteur : actions = 38e9 × 0.27 / 7.25 ; OE = 7.25 + 7.25×5/10.26 − 7.25×2/10.26.
+        """
+        output_data = _make_buffett_output_dict(owner_earnings=8.50)
+        mock_client = self._mock_client(output_data)
 
         skill = BuffettQualitySkill(client=mock_client, model="claude-sonnet-4-6")
         inp = BuffettQualityInput(ticker="BNS", ratios=ratios_buffett_avec_oe)
         output, _ = await skill.execute(inp)
 
-        assert output.owner_earnings is not None
-        assert output.owner_earnings == pytest.approx(8.50)
+        assert output.owner_earnings == pytest.approx(9.369883, rel=1e-5)
+
+    @pytest.mark.asyncio
+    async def test_owner_earnings_null_si_donnees_insuffisantes(
+        self,
+        ratios_buffett_bns: BuffettRatios,
+    ):
+        """Sans depreciation_bn, owner_earnings est null même si le LLM a halluciné une valeur."""
+        output_data = _make_buffett_output_dict(owner_earnings=12.0)
+        mock_client = self._mock_client(output_data)
+
+        skill = BuffettQualitySkill(client=mock_client, model="claude-sonnet-4-6")
+        inp = BuffettQualityInput(ticker="BNS", ratios=ratios_buffett_bns)
+        output, _ = await skill.execute(inp)
+
+        assert output.owner_earnings is None
+
+    def test_build_user_message_contient_oe_deterministe(
+        self,
+        ratios_buffett_avec_oe: BuffettRatios,
+    ):
+        """Le message utilisateur expose la valeur Python et la consigne de non-recalcul."""
+        skill = BuffettQualitySkill(client=MagicMock(), model="claude-sonnet-4-6")
+        inp = BuffettQualityInput(ticker="BNS", ratios=ratios_buffett_avec_oe)
+        msg = skill._build_user_message(inp, citations=[])
+        assert "9.37 $/action" in msg
+        assert "ne la recalcule pas" in msg
+
+    def test_build_user_message_oe_incalculable(
+        self,
+        ratios_buffett_bns: BuffettRatios,
+    ):
+        """Sans D&A, le message annonce owner_earnings null au lieu d'une valeur."""
+        skill = BuffettQualitySkill(client=MagicMock(), model="claude-sonnet-4-6")
+        inp = BuffettQualityInput(ticker="BNS", ratios=ratios_buffett_bns)
+        msg = skill._build_user_message(inp, citations=[])
+        assert "données insuffisantes" in msg
+
+    def test_tool_schema_exclut_owner_earnings(self):
+        """owner_earnings est injecté post-parse — jamais demandé au LLM."""
+        from app.skills.tier2.buffett_quality.skill import _BUFFETT_TOOL_SCHEMA
+
+        assert "owner_earnings" not in _BUFFETT_TOOL_SCHEMA["properties"]
+        assert "owner_earnings" not in _BUFFETT_TOOL_SCHEMA.get("required", [])
 
 
 # ---------------------------------------------------------------------------

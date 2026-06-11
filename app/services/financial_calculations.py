@@ -794,3 +794,71 @@ def sloan_accrual_ratio(
         (total_assets_t + total_assets_t1) / 2 if total_assets_t1 is not None else total_assets_t
     )
     return _ratio(net_income_t - cfo_t, actifs_moyens)
+
+
+@dataclass(frozen=True)
+class OwnerEarningsDetail:
+    """Owner earnings Buffett (1986) par action + composantes intermédiaires.
+
+    `methode_maintenance_capex` trace l'approximation retenue (owner-earnings.md) :
+    « fourni » (donnée explicite), « capex_x070 » (70 % du capex total, entreprise
+    mature) ou « egal_dna » (capex ≈ D&A, entreprise stable — les deux termes
+    s'annulent et owner_earnings = BPA). None si le calcul est impossible.
+    """
+
+    owner_earnings: float | None
+    d_and_a_par_action: float | None
+    maintenance_capex_par_action: float | None
+    actions_estimees: float | None
+    methode_maintenance_capex: str | None
+
+
+_OE_INCALCULABLE = OwnerEarningsDetail(None, None, None, None, None)
+
+
+def owner_earnings_detail(
+    *,
+    eps_ttm: float | None,
+    net_margin: float | None,
+    revenue_bn: float | None,
+    depreciation_bn: float | None,
+    capex_bn: float | None,
+    maintenance_capex_bn: float | None,
+) -> OwnerEarningsDetail:
+    """
+    Owner earnings par action = BPA + D&A/action − maintenance capex/action
+    (Buffett 1986, owner-earnings.md). Actions estimées via revenue × marge nette / BPA
+    faute de share count dans BuffettRatios. BPA ≤ 0 → None (l'estimation d'actions
+    n'a pas de sens sur résultat négatif). Jamais d'exception.
+    """
+    if eps_ttm is None or eps_ttm <= 0 or depreciation_bn is None:
+        return _OE_INCALCULABLE
+
+    if maintenance_capex_bn is not None:
+        maint_bn, methode = maintenance_capex_bn, "fourni"
+    elif capex_bn is not None:
+        maint_bn, methode = capex_bn * 0.7, "capex_x070"
+    else:
+        maint_bn, methode = depreciation_bn, "egal_dna"
+
+    resultat_net = (
+        revenue_bn * 1e9 * net_margin
+        if revenue_bn is not None and revenue_bn > 0 and net_margin is not None and net_margin > 0
+        else None
+    )
+    actions = resultat_net / eps_ttm if resultat_net is not None else None
+    if actions is None or actions <= 0:
+        # D&A − maintenance = 0 par construction : le par-action n'est pas requis
+        if methode == "egal_dna":
+            return OwnerEarningsDetail(eps_ttm, None, None, None, methode)
+        return _OE_INCALCULABLE
+
+    d_and_a_ps = depreciation_bn * 1e9 / actions
+    maint_ps = maint_bn * 1e9 / actions
+    return OwnerEarningsDetail(
+        owner_earnings=eps_ttm + d_and_a_ps - maint_ps,
+        d_and_a_par_action=d_and_a_ps,
+        maintenance_capex_par_action=maint_ps,
+        actions_estimees=actions,
+        methode_maintenance_capex=methode,
+    )
