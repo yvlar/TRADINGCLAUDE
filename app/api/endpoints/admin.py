@@ -10,8 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.db.tenant_context import get_current_tenant
+from app.models.tenant import TenantAdminEntry
 from app.services.api_key_service import ApiKeyRecord, ApiKeyService
 from app.services.audit_log_service import AuditLogEntry, AuditLogService
+from app.services.tenant_admin_service import TenantAdminService
 from app.utils.env import is_dev_environment
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,13 @@ def _get_audit_log_service(request: Request) -> AuditLogService:
     service = getattr(request.app.state, "audit_log_service", None)
     if service is None:
         raise HTTPException(status_code=503, detail="AuditLogService non disponible")
+    return service
+
+
+def _get_tenant_admin_service(request: Request) -> TenantAdminService:
+    service = getattr(request.app.state, "tenant_admin_service", None)
+    if service is None:
+        raise HTTPException(status_code=503, detail="TenantAdminService non disponible")
     return service
 
 
@@ -167,3 +176,16 @@ async def list_audit_log(
     service: AuditLogService = Depends(_get_audit_log_service),
 ) -> list[AuditLogEntry]:
     return await service.list_recent(limit)
+
+
+@router.get(
+    "/tenants",
+    response_model=list[TenantAdminEntry],
+    summary="Lister les tenants (super-admin onboarding/support)",
+)
+async def list_tenants(
+    limit: int = Query(100, ge=1, le=500),
+    _admin: ApiKeyRecord | None = Depends(_require_admin),
+    service: TenantAdminService = Depends(_get_tenant_admin_service),
+) -> list[TenantAdminEntry]:
+    return await service.list_tenants(limit)

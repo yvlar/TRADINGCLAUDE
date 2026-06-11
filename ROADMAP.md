@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-10 — Sprint 203 complété**
+**Dernière mise à jour : 2026-06-11 — Sprint 204 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.90.0 |
+| **Version** | 10.91.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 204 — Frontend : page d'administration des tenants (super-admin) |
-| **Dernier sprint complété** | Sprint 203 — Ops : isolation RLS `usage_events` sur le chemin orchestrateur métré ✅ |
+| **Sprint actif** | Sprint 205 — Ops : étendre le garde anti-contournement asyncpg à `app/` entier (allowlist) |
+| **Dernier sprint complété** | Sprint 204 — Full-stack : page d'administration des tenants (super-admin) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -51,6 +51,7 @@
 - `DELETE /admin/keys/{id}` — révoquer une clé (admin only) (Sprint 62)
 - `DELETE /history/{analysis_id}` — supprimer une analyse individuelle (admin only, 204/404/422) (Sprint 95)
 - `GET /admin/audit-log?limit=50` — journal d'audit append-only des mutations métier (watchlist, annotation, clé API), admin only (Sprint 160 — traçage best-effort côté service via `AuditLogService.record`, table `audit_log` posée par Alembic, `tenant_id` nullable en forward-compat E3)
+- `GET /admin/tenants?limit=100` — liste des tenants pour le super-admin (onboarding B2B + support), admin only (`_require_admin`, fail-closed) (Sprint 204) ; `TenantAdminService.list_tenants` fait `SELECT t.id,name,slug,plan,created_at, s.stripe_customer_id FROM tenants t LEFT JOIN subscriptions s ON s.tenant_id=t.id ORDER BY t.created_at DESC LIMIT $1` sur le **pool standard** — `tenants`/`subscriptions` sont HORS RLS, donc pas de scope tenant ; `limit` borné 1-500 (422 sinon) ; modèle `TenantAdminEntry` (`app/models/tenant.py`), client typé `frontend/src/api/admin.ts:listTenants`
 - `GET /ticker-report/{ticker}?days=90` — rapport PDF multi-pages par ticker (Sprint 63) ; **paramètre `analysis_id` optionnel (Sprint 122)** : cible une analyse précise (404 si absente/ticker différent), reconstruction multi-skills (16 outputs tier2, skill corrompu ignoré) + PDF enrichi (verdicts skill par skill, ratios clés, annotation, score ESG) ; sans `analysis_id` = comportement inchangé (rétrocompatible) ; **bloc « Sources des ratios complémentaires »** rendu via `_fmt_ratios_source` quand les ratios earnings/valuation reconstruits (Sprint 144) portent une source+date, ligne omise sinon — parité Graham (Sprint 145)
 - `POST /report` + `GET /report/{analysis_id}` — rapport PDF (analyse fraîche ou régénérée depuis `analysis_history`) ; **authentifié (cookie JWT) et scopé au tenant du demandeur (Sprint 176 — E4-S11)** : routes retirées de `EXEMPT_PREFIXES`/`CSRF_EXEMPT_PREFIXES`, tenant résolu via `_get_current_user` et lecture/analyse exécutées sous `tenant_scope` → la RLS masque les analyses des autres tenants (un tiers détenant l'UUID obtient **404**, plus de fuite legacy) et le metering POST cible le bon tenant ; **401** sans session (fail-closed)
 - Celery beat — `run_scheduled_screener` dimanche 11h00 UTC (Sprint 64) — screener watchlist complet + webhook FORT
@@ -78,7 +79,7 @@
 - **Alertes** `/alerts` — tableau des alertes Celery récentes
 - **Recherche** `/recherche` — recherche sémantique RAG en langage naturel
 - **Facturation** `/facturation` — tableau de bord self-service (Sprint 173) : badge du plan courant (lu sur `user.plan`), consommation 30 j depuis `GET /usage` (coût total + tokens entrée/sortie), réutilise `SkillCostPieChart` (ventilation `by_skill`) et `DailyCostTrendChart` (`daily_cost`) ; CTA « Passer à Pro » (→ `createCheckout('pro')` → redirection Stripe) si plan `free`, sinon « Gérer l'abonnement » (→ `openPortal()`) ; états chargement (skeleton) / erreur / facturation désactivée (503 → message sans casser la page) ; clients typés `frontend/src/api/usage.ts` + `billing.ts` ; **retour de checkout (Sprint 178)** : lit `?status=success\|cancel` (déposé par `billing.py:81-82`) → bandeau de confirmation/annulation + `refreshUser()` une seule fois sur succès (garde-fou `useRef`) → CTA repiloté checkout↔portail dès la synchro `tenants.plan` par le webhook, param nettoyé de l'URL (`replace`) ; **resync live du CTA (Sprint 183)** : après `?status=success`, un **polling court borné** re-`refreshUser()` toutes les 3 s (plafond 10 itérations ≈ 30 s) tant que `user.plan` reste `free` → ferme la fenêtre où le webhook met `tenants.plan` à jour APRÈS le refresh ponctuel ; s'arrête dès la bascule `pro` (le CTA passe checkout→portail **sans rechargement**) ou au plafond, interval nettoyé au démontage ; **carte « Facturation à l'usage » (Sprint 179)** : compteur `pending_events` (unités en attente du prochain cycle) + date `reported_through` (format `fr-CA`, ou libellé neutre si jamais rapporté) via `getUsageReporting()`, états chargement (skeleton) / erreur
-- **Admin** — gestion des clés API (créer/lister/révoquer) ; **section « Journal d'audit » (Sprint 180)** — table filtrable des mutations métier récentes (date `fr-CA`, action, type de cible, cible, tenant tronqué) lue via `GET /admin/audit-log`, filtre client sur action/type de cible, états chargement/erreur/vide
+- **Admin** — gestion des clés API (créer/lister/révoquer) ; **section « Journal d'audit » (Sprint 180)** — table filtrable des mutations métier récentes (date `fr-CA`, action, type de cible, cible, tenant tronqué) lue via `GET /admin/audit-log`, filtre client sur action/type de cible, états chargement/erreur/vide ; **section « Tenants » (Sprint 204)** — table des espaces clients (nom, slug, badge plan, customer Stripe tronqué `cus_…` ou « — », date `fr-CA`) lue via `GET /admin/tenants`, états chargement/erreur/403/vide, testids `admin-tenants-*`
 - **Auth** — pages register / forgot-password / reset-password, session restaurée au montage (authMe) ; **badge « Espace : <nom> »** (`TenantBadge`, réutilise le composant `Badge` du design system) affiché dans le header dès l'authentification, masqué si le nom de tenant est absent (rétrocompat réponse en cache) (Sprint 169) ; **badge de quota `QuotaBadge`** à côté (plan `FREE`/`PRO` + « N analyses restantes » via `GET /quota`, `queryKey` scopé au tenant, masqué proprement hors-auth ou si la donnée est absente — le header ne casse jamais) (Sprint 184) ; **purge totale du cache react-query au `logout`** (`queryClient.clear()` inconditionnel après `setUser(null)`) → une re-connexion sous un autre tenant (même session SPA, sans rechargement) ne sert plus de données périmées du tenant précédent (Sprint 190)
 - **Rapports PDF** — par ticker (ou analyse précise `analysis_id`), screener, watchlist, mensuel (section ESG) ; **bloc d'avertissement réglementaire** (« recherche éducative — pas un conseil financier ») inséré dans chaque rapport (Sprint 129)
 - **Avertissement de conformité** — composant `Disclaimer` (variantes `inline`/`footer`) affiché sous les résultats d'analyse, sous le tableau du Screener et sous la comparaison de tickers (Sprint 133), et en pied de page global ; texte centralisé (constante TS + constante Python) (Sprint 129)
@@ -97,6 +98,21 @@
 
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
+
+### Sprint 204 — Full-stack : page d'administration des tenants (super-admin) ✅
+
+**Objectif :** aucune UI n'exposait la liste des tenants — l'admin devait inspecter la DB à la main pour l'onboarding B2B et le support. Ce sprint livre `GET /admin/tenants` (admin only) + une section « Tenants » sur la page Admin. **Sprint FULL-STACK** (backend endpoint + frontend section), additif pur (zéro migration, pas d'eval).
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `_require_admin` (`admin.py:58`, fail-closed JWT S175) ; patron GET admin `GET /admin/keys`/`GET /admin/audit-log` + getter `_get_audit_log_service` ; DDL `tenants` (`0003_tenants.py` : id/name/slug/created_at) + `plan` (`0007_plan_limits`) ; `subscriptions.stripe_customer_id` (`0009_stripe_billing.py:43`, table HORS RLS → LEFT JOIN) ; `AdminPage.tsx` section Journal d'audit (patron de section) ; client `frontend/src/api/admin.ts` (`getAuditLog`/`listApiKeys`).
+
+**Livrables :** **Backend** — `TenantAdminService.list_tenants(limit)` (`app/services/tenant_admin_service.py`, nouveau) : `LEFT JOIN subscriptions` sur le pool standard (HORS RLS, pas de scope) ; modèle `TenantAdminEntry` (`app/models/tenant.py` : `id`/`name`/`slug`/`plan`/`stripe_customer_id: str|None`/`created_at`) ; endpoint `GET /admin/tenants` (`admin.py`, `_require_admin`, `limit` borné 1-500) + getter `_get_tenant_admin_service` ; câblage `app.state.tenant_admin_service` (`main.py`). **Frontend** — section « Tenants » (`AdminPage.tsx`, patron section audit) : table nom/slug/badge plan/customer Stripe tronqué (`shortStripe`, `cus_…` ou « — »)/date `fr-CA`, états chargement (skeleton)/erreur/403/vide, testids `admin-tenants-*` ; client `listTenants` ; type TS `TenantAdminEntry` miroir. Tests : **+5 backend** (`tests/api/test_tenants_endpoint.py` — 401 sans token, 403 reader, 200 forme+Stripe nul, propagation `limit`, 422 limite invalide) ; **+5 Vitest** (`AdminPage.test.tsx` — happy+troncature, skeleton, erreur, 403, vide).
+
+**Preuve d'acceptation observable :** section Tenants retirée du JSX → **5 tests rouges** (vérifié : 5 failed / 12 passed) ; `AdminPage.tsx` restauré **byte-identique** (sha256 vérifié). Endpoint sans cookie admin → 401 ; reader → 403 (assertions backend, `list_tenants` jamais awaité).
+
+**Revue indépendante à contexte frais (correctness high + qualité 4 angles) :** **0 correctif** — correctness : aucun bug matériel (auth fail-closed réutilisée à l'identique, SQL LEFT JOIN injection-safe avec binding `$1`, `subscriptions.tenant_id` unique → pas de duplication de lignes, mapping Pydantic correct, zéro `any`, troncature conforme au test). Qualité : duplication `shortStripe`/`shortId` **écartée** (sémantiques divergentes justifiées, helper inline préexistant) ; extraction d'un composant table partagé (3 sections keys/audit/tenants) **écartée YAGNI** (sections divergentes : badges+revoke / filtres / lecture seule — les 2 relecteurs recommandent SKIP) ; TODO de refactoring suggéré **écarté** (violerait la convention « pas de commentaire référençant une tâche »).
+
+**Version** : 10.91.0
+**Tests** : **2 403 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+5** : les 5 tests `test_tenants_endpoint.py`) — 2 356 passés / 46 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend 525 Vitest** (mesuré `vitest list | wc -l` ; **+5** vs 520 S202) — 525/525 passés (86 fichiers) ; `tsc --noEmit` 0 erreur ; ESLint 0/0. *(Note env conteneur web : `stripe` + `alembic` manquaient au venv, `node_modules` réinstallé — réinstallés en session.)*
 
 ### Sprint 203 — Ops : isolation RLS `usage_events` sur le chemin orchestrateur métré ✅
 
@@ -142,21 +158,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.88.0
 **Tests** : **2 382 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs 2 380 S200) — 2 337 passés / **44 skipped** (+2 : les 2 nouveaux tests d'intégration, skip propre sans PG local) / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert ; **frontend non touché** (Vitest inchangés par construction). *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
-
-### Sprint 200 — Ops : meta-test anti-contournement du chokepoint `create_runtime_pool` ✅
-
-**Objectif :** S192/S196/S199 prouvent que le garde `require_secure_db_url` verrouille pool/worker/API **à condition** que tout pool runtime passe par `create_runtime_pool` (qui câble aussi le hook tenant RLS). Rien n'empêchait un futur worker d'appeler `asyncpg.create_pool`/`asyncpg.connect` en direct — contournant silencieusement le garde ET l'isolation multi-tenant. Ce sprint pose un **meta-test statique** (scan AST) qui rend ce contournement impossible à introduire sans casser le CI. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** par `grep` — `app/workers/tasks.py` : **0** occurrence `asyncpg.create_pool|connect` directe, **10** occurrences `create_runtime_pool` (import `:16` + 9 sites d'appel) ; `app/db/pool.py:23-25` : `resolve_app_database_url()` → `require_secure_db_url(dsn)` → `asyncpg.create_pool` ; `app/api/main.py:44,169`. Découverte en session : `app/workers/` compte **4 modules** (pas seulement `tasks.py`) → le scan couvre le **package entier** (l'invariant dit « aucun worker »).
-
-**Décision tranchée — scan AST (pas grep) sur `app/workers/**/*.py`, 2 tests dans `tests/meta/test_no_direct_asyncpg_in_workers.py` :** (1) **scan** : aucune fabrication directe de connexion asyncpg — formes détectées : accès d'attribut via tout nom liant asyncpg (alias `import asyncpg as pg`, sous-modules `asyncpg.pool.create_pool` par reconstruction du nom pointé `_dotted_name`, noms liés par `from asyncpg import pool`), `from asyncpg[.x] import create_pool/connect` (asname compris) et wildcard `from asyncpg import *` ; immunité commentaires/docstrings (AST) et type hints `asyncpg.Pool` légitimes (`tasks.py:13`) sans faux positif. (2) **anti-vacuité** : import `create_runtime_pool` depuis `app.db.pool` (épingle la **provenance** — un homonyme local passerait un simple comptage) + ≥1 appel dans `tasks.py`. `getattr`/`importlib` documentés **hors périmètre** (garde-fou anti-régression, pas un sandbox anti-obfuscation).
-
-**Preuve d'acceptation observable** : matrice de **12 cas synthétiques** (8 formes de contournement détectées, 4 cas légitimes/immunités sans faux positif) + preuve sur fichiers réels : bypass ajouté dans `tasks.py`, `celery_app.py` puis `tenant_iteration.py` → scan **rouge** (fichier + ligne localisés), mention en commentaire → **vert** ; fichiers restaurés **byte-identiques** (sha256 vérifié).
-
-**Revue indépendante à contexte frais (sous-agents nourris des critères d'acceptation)** : **correctness** (`/code-review` high, 7 angles, 16 candidats bruts) — **4 CONFIRMÉS par construction et corrigés** : chaîne d'attributs `asyncpg.pool.create_pool` manquée, `from asyncpg.pool import create_pool` manqué, wildcard manqué, scan borné à `tasks.py` seul → généralisé au package. **2ᵉ passe** : 1 CONFIRMÉ **corrigé** (`from asyncpg import pool` puis `pool.create_pool` — tracking des noms liés par ImportFrom), 1 RÉFUTÉ mécaniquement (le check ImportFrom porte sur le nom **source**, pas l'asname). RÉFUTÉS/ÉCARTÉS notables : import relatif `from . import asyncpg` (lierait un module local, pas la vraie lib), fusion import-check/call-count (l'import épingle la provenance — load-bearing). **Qualité** (`/simplify`) — **3 APPLIQUÉS** (prédicat `_is_asyncpg_module` factorisé ×3, `elif` entre branches exclusives, `rglob` aligné sur la docstring « tout le package ») ; **2 ÉCARTÉS** (fusion des deux `ast.walk` : structure 2 phases load-bearing — ordre de l'arbre ≠ ordre d'exécution ; exclusion des noms interdits du tracking d'alias : la sur-approximation uniforme est plus simple que l'exception).
-
-**Version** : 10.87.0
-**Tests** : **2 380 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs **2 378 mesurés avant sprint** — base de branche > S199 : elle inclut graham-screener #164 et ux-audit #162-163) — 2 337 passés / 42 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché**. *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
 
 ## Sprints antérieurs (Sprint 199 → Sprint 0)
 

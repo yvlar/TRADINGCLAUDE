@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listApiKeys, createApiKey, revokeApiKey, getAuditLog } from '../api/admin'
+import { listApiKeys, createApiKey, revokeApiKey, getAuditLog, listTenants } from '../api/admin'
 import { ApiError } from '../api/client'
-import type { ApiKey, AuditLogEntry } from '../types'
+import type { ApiKey, AuditLogEntry, TenantAdminEntry } from '../types'
 import { Button } from '../components/ui/button'
 import { Badge } from '../components/ui/badge'
 import { SkeletonTable } from '../components/ui/skeleton'
@@ -10,6 +10,11 @@ import { SkeletonTable } from '../components/ui/skeleton'
 function shortId(id: string | null): string {
   if (!id) return '—'
   return `${id.slice(0, 8)}…`
+}
+
+function shortStripe(id: string | null): string {
+  if (!id) return '—'
+  return id.length > 14 ? `${id.slice(0, 14)}…` : id
 }
 
 function formatDate(iso: string | null): string {
@@ -105,6 +110,19 @@ export default function AdminPage() {
   )
 
   const auditIs403 = auditError instanceof ApiError && auditError.status === 403
+
+  // --- Tenants (super-admin onboarding/support — Sprint 204) ---
+  const {
+    data: tenants,
+    error: tenantsError,
+    isLoading: tenantsLoading,
+  } = useQuery<TenantAdminEntry[], Error>({
+    queryKey: ['admin-tenants'],
+    queryFn: () => listTenants(),
+    retry: false,
+  })
+
+  const tenantsIs403 = tenantsError instanceof ApiError && tenantsError.status === 403
 
   return (
     <div className="space-y-8">
@@ -374,6 +392,78 @@ export default function AdminPage() {
                 Aucune entrée ne correspond au filtre.
               </p>
             )}
+          </div>
+        )}
+      </section>
+
+      {/* Tenants (Sprint 204) */}
+      <section
+        data-testid="admin-tenants-section"
+        className="bg-card border border-border rounded-lg p-6 space-y-4"
+      >
+        <div>
+          <h3 className="font-semibold text-lg">Tenants</h3>
+          <p className="text-muted-foreground text-sm mt-1">
+            Espaces clients (onboarding B2B et support) — abonnement Stripe et plan courant.
+          </p>
+        </div>
+
+        {tenantsIs403 && (
+          <p data-testid="admin-tenants-error" className="text-destructive text-sm">
+            Accès refusé — vous devez être administrateur.
+          </p>
+        )}
+        {!tenantsIs403 && tenantsError && (
+          <p data-testid="admin-tenants-error" className="text-destructive text-sm">
+            {tenantsError.message}
+          </p>
+        )}
+        {tenantsLoading && (
+          <div data-testid="admin-tenants-loading">
+            <SkeletonTable rows={5} cols={5} />
+          </div>
+        )}
+
+        {!tenantsError && !tenantsLoading && tenants && tenants.length === 0 && (
+          <p data-testid="admin-tenants-empty" className="text-muted-foreground text-sm">
+            Aucun tenant enregistré.
+          </p>
+        )}
+
+        {!tenantsError && tenants && tenants.length > 0 && (
+          <div className="overflow-x-auto">
+            <table data-testid="admin-tenants-table" className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="pb-2 pr-4 font-medium">Nom</th>
+                  <th className="pb-2 pr-4 font-medium">Slug</th>
+                  <th className="pb-2 pr-4 font-medium">Plan</th>
+                  <th className="pb-2 pr-4 font-medium">Customer Stripe</th>
+                  <th className="pb-2 font-medium">Créé le</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tenants.map((t) => (
+                  <tr
+                    key={t.id}
+                    data-testid={`admin-tenants-row-${t.id}`}
+                    className="border-b border-border last:border-0"
+                  >
+                    <td className="py-3 pr-4">{t.name}</td>
+                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">{t.slug}</td>
+                    <td className="py-3 pr-4">
+                      <Badge variant={t.plan === 'pro' ? 'default' : 'secondary'}>{t.plan}</Badge>
+                    </td>
+                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">
+                      {shortStripe(t.stripe_customer_id)}
+                    </td>
+                    <td className="py-3 text-muted-foreground whitespace-nowrap">
+                      {formatDate(t.created_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
