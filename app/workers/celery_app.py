@@ -57,6 +57,11 @@ celery_app.conf.beat_schedule = {
         "task": "run_scheduled_screener",
         "schedule": crontab(day_of_week="sunday", hour=11, minute=0),
     },
+    # Suggestions page Découvrir — lundi 06h00 UTC (caches d'analyse du dimanche encore chauds)
+    "run-discovery-refresh-weekly": {
+        "task": "run_discovery_refresh",
+        "schedule": crontab(day_of_week="monday", hour=6, minute=0),
+    },
     # Rapport PDF mensuel consolidé — 1er du mois à 08h00 UTC
     "run-monthly-report": {
         "task": "app.workers.tasks.run_monthly_report",

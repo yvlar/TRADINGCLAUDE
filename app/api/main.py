@@ -23,6 +23,7 @@ from app.api.endpoints.backtest import router as backtest_router
 from app.api.endpoints.billing import router as billing_router
 from app.api.endpoints.compare import router as compare_router
 from app.api.endpoints.composite_history import router as composite_history_router
+from app.api.endpoints.discovery import router as discovery_router
 from app.api.endpoints.esg_history import router as esg_history_router
 from app.api.endpoints.evals import router as evals_router
 from app.api.endpoints.export import router as export_router
@@ -69,6 +70,7 @@ from app.services.audit_log_service import AuditLogService
 from app.services.auth_token_service import AuthTokenService
 from app.services.compare_service import CompareService
 from app.services.composite_history_service import CompositeHistoryService
+from app.services.discovery_service import DiscoveryService
 from app.services.esg_history_service import EsgHistoryService
 from app.services.eval_drift_service import EvalDriftService
 from app.services.monthly_report_service import MonthlyReportService
@@ -360,6 +362,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         cache=analysis_cache,
     )
 
+    # Lecture seule sur le chemin requête — le rafraîchissement vit dans le worker Celery.
+    discovery_service = DiscoveryService(db_pool=db_pool)
+
     langfuse_client = _init_langfuse_if_configured()
     obs_service = ObservabilityService(
         redis_client=redis_pool,
@@ -415,6 +420,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.analysis_cache = analysis_cache
     app.state.quota_service = quota_service
     app.state.screener = screener
+    app.state.discovery_service = discovery_service
     app.state.observability = obs_service
     app.state.watchlist_service = watchlist_service
     app.state.webhook_service = webhook_service
@@ -489,6 +495,7 @@ app.include_router(screener_report_router)
 app.include_router(ticker_report_router)
 app.include_router(analyze_stream_router)
 app.include_router(composite_history_router)
+app.include_router(discovery_router)
 app.include_router(esg_history_router)
 app.include_router(backtest_router)
 app.include_router(billing_router)

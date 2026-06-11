@@ -79,11 +79,16 @@ class TestBeatSchedule:
         assert schedule.hour == frozenset({10})
         assert schedule.minute == frozenset({0})
 
-    def test_9_taches_planifiees_au_total(self):
+    def test_10_taches_planifiees_au_total(self):
         # Sprint 94 : run_esg_degradation_check (7) ; Sprint 171 : run_retention_purge (8) ;
-        # Sprint 174 : run_usage_reporting (9)
+        # Sprint 174 : run_usage_reporting (9) ; découverte : run_discovery_refresh (10)
         schedule = celery_app.conf.beat_schedule
-        assert len(schedule) == 9
+        assert len(schedule) == 10
+
+    def test_discovery_refresh_planifiee_lundi(self):
+        schedule = celery_app.conf.beat_schedule["run-discovery-refresh-weekly"].get("schedule")
+        assert schedule.day_of_week == frozenset({1})
+        assert schedule.hour == frozenset({6})
 
     def test_price_alert_toujours_planifiee(self):
         assert "run-price-alert-check-daily" in celery_app.conf.beat_schedule

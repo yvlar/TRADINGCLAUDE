@@ -1,0 +1,29 @@
+{
+  "solides_stables": {
+    "titre": "Solides et stables",
+    "emoji": "🟢",
+    "description": "Des entreprises établies, rentables depuis des années, qui versent souvent un dividende régulier. Moins de surprises — le point de départ classique d'un portefeuille prudent.",
+    "niveau_risque": "faible",
+    "workflow": "value_graham",
+    "min_composite_score": 45.0,
+    "min_dividend_years": 5,
+    "max_suggestions": 8,
+    "account_hint": "Dividende canadien admissible — souvent avantageux en CELI ou en compte non enregistré (crédit d'impôt pour dividendes). Vérifie ta situation fiscale.",
+    "univers": [
+      { "ticker": "RY.TO", "name": "Banque Royale du Canada" },
+      { "ticker": "TD.TO", "name": "Banque TD" },
+      { "ticker": "BNS.TO", "name": "Banque Scotia" },
+      { "ticker": "BMO.TO", "name": "Banque de Montréal" },
+      { "ticker": "CM.TO", "name": "Banque CIBC" },
+      { "ticker": "NA.TO", "name": "Banque Nationale" },
+      { "ticker": "BCE.TO", "name": "BCE (Bell Canada)" },
+      { "ticker": "T.TO", "name": "Telus" },
+      { "ticker": "ENB.TO", "name": "Enbridge" },
+      { "ticker": "TRP.TO", "name": "TC Énergie" },
+      { "ticker": "FTS.TO", "name": "Fortis" },
+      { "ticker": "EMA.TO", "name": "Emera" },
+      { "ticker": "CNR.TO", "name": "Canadien National" },
+      { "ticker": "CP.TO", "name": "Canadien Pacifique Kansas City" }
+    ]
+  }
+}

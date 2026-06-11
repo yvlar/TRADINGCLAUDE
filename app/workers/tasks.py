@@ -22,6 +22,7 @@ from app.rag.embeddings import EmbeddingClient
 from app.rag.service import RagService
 from app.services.alert_history_service import AlertHistoryService
 from app.services.composite_alert import CompositeAlertService
+from app.services.discovery_service import DiscoveryService
 from app.services.email_service import EmailService
 from app.services.price_alert_service import PriceAlertService
 from app.services.report import ReportService
@@ -1037,6 +1038,38 @@ def run_usage_reporting(self) -> dict:
         result.get("total_quantity", 0),
     )
     return result
+
+
+async def _execute_discovery_refresh() -> dict[str, int]:
+    """Rafraîchit les suggestions de la page Découvrir (toutes catégories).
+
+    Pas de metering ni de tenant_scope : `discovery_suggestions` est une table de
+    référence GLOBALE hors RLS (comme `plan_limits`) — la conso de cette tâche
+    système n'est imputable à aucun tenant (with_metering=False).
+    """
+    orchestrator, db_pool = await _build_orchestrator(with_metering=False)
+    try:
+        extractor = YahooFinanceExtractor()
+        screener = ScreenerService(orchestrator=orchestrator, extractor=extractor)
+        service = DiscoveryService(db_pool=db_pool, screener=screener, extractor=extractor)
+        return await service.refresh_all()
+    finally:
+        await db_pool.close()
+
+
+@celery_app.task(name="run_discovery_refresh", bind=True)
+def run_discovery_refresh(self) -> dict:
+    """
+    Tâche Celery — rafraîchissement hebdomadaire des suggestions de découverte.
+    Planifiée chaque lundi à 06h00 UTC (caches d'analyse du dimanche encore chauds).
+    """
+    logger.info("Début rafraîchissement découverte par catégorie")
+    counts = asyncio.run(_execute_discovery_refresh())
+    logger.info(
+        "Fin rafraîchissement découverte — %s",
+        ", ".join(f"{cat}: {n}" for cat, n in counts.items()) or "aucune catégorie",
+    )
+    return counts
 
 
 @celery_app.task(name="run_scheduled_screener", bind=True)
