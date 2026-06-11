@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { ApiKey, ApiKeyCreate, AuditLogEntry } from '../types'
+import type { ApiKey, ApiKeyCreate, AuditLogEntry, TenantAdminEntry } from '../types'
 
 export const listApiKeys = (): Promise<ApiKey[]> =>
   apiClient.request<ApiKey[]>('/admin/keys')
@@ -15,3 +15,6 @@ export const revokeApiKey = (id: string): Promise<void> =>
 
 export const getAuditLog = (limit = 50): Promise<AuditLogEntry[]> =>
   apiClient.request<AuditLogEntry[]>(`/admin/audit-log?limit=${limit}`)
+
+export const listTenants = (limit = 100): Promise<TenantAdminEntry[]> =>
+  apiClient.request<TenantAdminEntry[]>(`/admin/tenants?limit=${limit}`)

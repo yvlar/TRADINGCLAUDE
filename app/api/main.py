@@ -80,6 +80,7 @@ from app.services.screener import ScreenerService
 from app.services.screener_pdf_service import ScreenerPdfService
 from app.services.slack_service import SlackService
 from app.services.stripe_service import StripeService
+from app.services.tenant_admin_service import TenantAdminService
 from app.services.usage_event_service import UsageEventService
 from app.services.user_service import UserService
 from app.services.watchlist_pdf_service import WatchlistPdfService
@@ -368,6 +369,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     audit_log_service = AuditLogService(db_pool=db_pool)
+    tenant_admin_service = TenantAdminService(db_pool=db_pool)
     alert_history_service = AlertHistoryService(db_pool=db_pool)
     annotation_service = AnnotationService(db_pool=db_pool, audit_log=audit_log_service)
     compare_service = CompareService(db_pool=db_pool)
@@ -401,6 +403,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     app.state.audit_log_service = audit_log_service
+    app.state.tenant_admin_service = tenant_admin_service
     app.state.usage_event_service = usage_event_service
     app.state.alert_history_service = alert_history_service
     app.state.annotation_service = annotation_service

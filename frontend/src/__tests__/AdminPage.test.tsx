@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AdminPage from '../pages/AdminPage'
 import * as adminApi from '../api/admin'
 import { ApiError } from '../api/client'
-import type { ApiKey, AuditLogEntry } from '../types'
+import type { ApiKey, AuditLogEntry, TenantAdminEntry } from '../types'
 
 vi.mock('../api/admin')
 
@@ -31,6 +31,16 @@ const makeAudit = (overrides: Partial<AuditLogEntry> = {}): AuditLogEntry => ({
   ...overrides,
 })
 
+const makeTenant = (overrides: Partial<TenantAdminEntry> = {}): TenantAdminEntry => ({
+  id: 'tttt0000-0000-0000-0000-000000000001',
+  name: 'Acme',
+  slug: 'acme',
+  plan: 'pro',
+  stripe_customer_id: 'cus_abc123def456',
+  created_at: '2026-05-15T09:00:00Z',
+  ...overrides,
+})
+
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
@@ -42,6 +52,7 @@ describe('AdminPage', () => {
     vi.mocked(adminApi.createApiKey).mockResolvedValue({ key: 'sk-test-generatedkey', id: 'new-id' })
     vi.mocked(adminApi.revokeApiKey).mockResolvedValue(undefined)
     vi.mocked(adminApi.getAuditLog).mockResolvedValue([])
+    vi.mocked(adminApi.listTenants).mockResolvedValue([])
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -172,6 +183,55 @@ describe('AdminPage', () => {
         expect(screen.getByTestId('audit-log-empty')).toBeInTheDocument()
       })
       expect(screen.queryByTestId('audit-log-table')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('Tenants', () => {
+    it('rend une ligne par tenant mocké avec customer Stripe tronqué', async () => {
+      vi.mocked(adminApi.listTenants).mockResolvedValue([
+        makeTenant({ id: 'tenant-1', name: 'Acme', stripe_customer_id: 'cus_abc123def456ghi' }),
+        makeTenant({ id: 'tenant-2', name: 'Globex', plan: 'free', stripe_customer_id: null }),
+      ])
+      wrap(<AdminPage />)
+      await waitFor(() => {
+        expect(screen.getByTestId('admin-tenants-table')).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('admin-tenants-row-tenant-1')).toBeInTheDocument()
+      expect(screen.getByTestId('admin-tenants-row-tenant-2')).toBeInTheDocument()
+      expect(screen.getByText('cus_abc123def4…')).toBeInTheDocument()
+      // tenant sans abonnement → tiret
+      expect(screen.getByTestId('admin-tenants-row-tenant-2')).toHaveTextContent('—')
+    })
+
+    it('affiche le squelette pendant le chargement', () => {
+      vi.mocked(adminApi.listTenants).mockReturnValue(new Promise<TenantAdminEntry[]>(() => {}))
+      wrap(<AdminPage />)
+      expect(screen.getByTestId('admin-tenants-loading')).toBeInTheDocument()
+    })
+
+    it('affiche un message d\'erreur si listTenants échoue', async () => {
+      vi.mocked(adminApi.listTenants).mockRejectedValue(new Error('Panne tenants'))
+      wrap(<AdminPage />)
+      await waitFor(() => {
+        expect(screen.getByTestId('admin-tenants-error')).toHaveTextContent('Panne tenants')
+      })
+    })
+
+    it('affiche "Accès refusé" si listTenants lance une ApiError 403', async () => {
+      vi.mocked(adminApi.listTenants).mockRejectedValue(new ApiError(403, 'Forbidden'))
+      wrap(<AdminPage />)
+      await waitFor(() => {
+        expect(screen.getByTestId('admin-tenants-error')).toHaveTextContent('Accès refusé')
+      })
+    })
+
+    it('affiche un message neutre quand la liste est vide', async () => {
+      vi.mocked(adminApi.listTenants).mockResolvedValue([])
+      wrap(<AdminPage />)
+      await waitFor(() => {
+        expect(screen.getByTestId('admin-tenants-empty')).toBeInTheDocument()
+      })
+      expect(screen.queryByTestId('admin-tenants-table')).not.toBeInTheDocument()
     })
   })
 })

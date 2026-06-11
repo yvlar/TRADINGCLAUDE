@@ -733,6 +733,16 @@ export interface AuditLogEntry {
   created_at: string        // ISO 8601
 }
 
+// ---- Tenants admin (Sprint 204 — miroir de TenantAdminEntry Pydantic) ----
+export interface TenantAdminEntry {
+  id: string                       // UUID
+  name: string
+  slug: string
+  plan: string                     // "free" | "pro"
+  stripe_customer_id: string | null
+  created_at: string               // ISO 8601
+}
+
 // ---- Annotations (Sprint 78) ----
 export interface Annotation {
   annotation_id: string
