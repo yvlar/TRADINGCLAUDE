@@ -31,7 +31,7 @@ Lire `architecture-copilote-financier.md` (sections **3.2, 7.3, 8.2, 9.1, 10, 11
 |---|---|
 | **`cost_usd`** | Calculé depuis `response.usage` après chaque appel Claude, persisté dans `analysis_history` (section 10) |
 | **Prompt caching** | Activé sur tous les system prompts de skills via `cache_control` dans `get_system_prompt()` (section 8.2) |
-| **Retry exponentiel** | Utiliser `app/utils/retry.py` pour les erreurs 429/529 — pas de retry ad hoc dans les endpoints |
+| **Retry exponentiel** | Utiliser `app/utils/retry.py` (backoff + jitter sur 529 ; les 429/5xx sont déjà retriés par le SDK Anthropic, `max_retries=2`) — pas de retry ad hoc dans les endpoints |
 | **Validation tickers** | Utiliser `app/utils/ticker_sanitizer.py` pour normaliser les tickers en entrée |
 
 ### Stack infrastructure
@@ -45,6 +45,6 @@ Lire `architecture-copilote-financier.md` (sections **3.2, 7.3, 8.2, 9.1, 10, 11
 
 ### Stack service
 
-- Python 3.11, FastAPI ≥ 0.115, Anthropic SDK ≥ 0.40, asyncpg ≥ 0.29, Pydantic v2, Celery
+- Python 3.11, FastAPI, Anthropic SDK, asyncpg, Pydantic v2, Celery — versions exactes dans `requirements.txt` (source unique, ne pas figer de numéro ici)
 - Tous les appels I/O doivent être async (`asyncpg`, `httpx.AsyncClient`)
 - Lifespan FastAPI gère la connexion au pool PostgreSQL et à Qdrant

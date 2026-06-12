@@ -26,8 +26,16 @@ Un sprint n'est **pas terminé** tant que ces trois étapes n'ont pas été comp
 - **Rotation vers l'archive** : `ROADMAP.md` ne garde que l'état courant + les
   ~4 derniers sprints détaillés. Dès qu'un 5ᵉ bloc apparaît, **déplacer** le plus
   ancien vers `docs/roadmap-archive.md` (couper-coller, jamais recopier de mémoire).
-  Cible : `ROADMAP.md` < 200 lignes (rechargé à chaque session — chaque ligne
-  superflue est un coût de tokens récurrent). Ne jamais lire l'archive à l'amorçage.
+  Cible : `ROADMAP.md` **< 32 000 caractères (~8 000 tokens)** — mesurer par
+  `wc -c ROADMAP.md`, jamais en lignes (une ligne-paragraphe de 800 caractères coûte
+  autant que 10 lignes courtes ; le fichier est rechargé à chaque session). Si la
+  cible est dépassée, déplacer du contenu vers l'archive avant de committer.
+  Ne jamais lire l'archive à l'amorçage.
+- **Concision de « Ce qui fonctionne aujourd'hui »** : 1-2 lignes par endpoint
+  (signature + rôle + contrainte load-bearing). L'historique d'un endpoint
+  (numéros de sprint, justifications, évolutions) appartient à
+  `docs/roadmap-archive.md`, pas à l'état courant. De même, un bloc d'avertissement
+  (`>`) qui décrit un sprint déjà archivé suit ce sprint dans l'archive.
 - **Compteurs de tests vérifiables** : avant d'écrire « N CI verts » / « N Vitest »,
   les obtenir par une **commande réelle**, jamais par estimation ni recopie :
   - Backend : `.venv/bin/python -m pytest tests/ --ignore=tests/e2e --ignore=tests/evals --co -q | tail -1`
@@ -64,7 +72,7 @@ pas vérifiable dans le dépôt, ne pas l'affirmer (le reformuler en « à crée
 ### Sprint N+2 — ...
 ```
 
-Proposer 3-5 sprints distincts, non redondants, qui font avancer le projet vers Phase 3 complète.
+Proposer 3-5 sprints distincts, non redondants, qui font avancer le projet vers la phase active (voir « État courant » de `ROADMAP.md` — ne pas figer de nom de phase ici).
 
 **Anti-hallucination** : un sprint suggéré qui s'appuie sur une capacité « déjà là »
 non vérifiée fait construire la session suivante sur une prémisse fausse. Le champ
@@ -88,7 +96,7 @@ git commit -m "feat(sprintNN): <nom du sprint> — vX.Y.Z
 <description courte des livrables principaux>
 <tests : +N CI verts, +N Vitest verts — chiffres MESURÉS, voir étape 1>
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
 **Cette étape est automatique — ne pas demander confirmation à Yves.**  
@@ -112,5 +120,5 @@ Modèle de branches : **`dev` = branche d'intégration, `master` = branche stabl
 - **Chaque sprint se développe sur sa propre branche de feature** (ex. `claude/sprintNN-<nom-court>`), jamais directement sur `dev` ni `master`.
 - **Toute PR de sprint cible `dev`** (`base = dev`). Ne **jamais** ouvrir une PR de sprint vers `master`.
 - `master` n'est mise à jour qu'au moment d'une release, via une PR `dev → master` — opération explicitement décidée par Yves, jamais automatique.
-- `git push` et l'ouverture/fusion d'une PR restent des actions à **confirmation obligatoire** (cf. `autonomie-confirmations.md`).
+- `git push` et l'ouverture/fusion d'une PR restent des actions à **confirmation obligatoire**, à une exception près : une session de sprint autonome (`prompt-executer-sprint.md`) est pré-autorisée pour le push vers sa branche désignée et la PR de sprint vers `dev` (cf. `autonomie-confirmations.md`).
 - À la création d'une PR via les outils GitHub, vérifier que `base` est bien `dev` avant de soumettre.

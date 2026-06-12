@@ -32,6 +32,15 @@ Ces actions requièrent une confirmation explicite de Yves **avant** toute exéc
 
 > **Stratégie de branches** : `dev` = intégration (cible de toutes les PR de sprint), `master` = stable (mise à jour seulement via PR de promotion `dev → master`). Détails : [`workflow-sprint.md`](workflow-sprint.md).
 
+### Exception — session de sprint autonome
+
+Une session lancée via `.claude/prompts/prompt-executer-sprint.md` (exécution d'un sprint de bout en bout) est **pré-autorisée**, sans re-confirmation, pour exactement deux actions :
+
+- `git push` vers la **branche de développement désignée** de la session (et uniquement elle)
+- Ouverture de la **PR de sprint vers `dev`** (`base = dev`, jamais `master`)
+
+Cette exception couvre la « Définition de terminé » du prompt d'exécution — rien de plus. Fusionner une PR, pousser vers une autre branche, ou toute autre action de la table ci-dessus reste à confirmation obligatoire.
+
 ### Principe de décision
 
 - Action **locale et réversible** (via git, rebuild, ou recréation) → agir directement

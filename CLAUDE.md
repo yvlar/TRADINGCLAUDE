@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — sprint courant, version et dernier sprint complété : voir [`ROADMAP.md`](ROADMAP.md) (source unique, table « État courant »). Ne pas figer de numéro de sprint ici — éviter la dérive entre fichiers.*
+*Phase active, sprint courant, version et dernier sprint complété : voir [`ROADMAP.md`](ROADMAP.md) (source unique, table « État courant »). Ne figer ni numéro de sprint ni nom de phase ici — éviter la dérive entre fichiers.*
 
 ---
 
@@ -26,14 +26,7 @@ C'est un outil d'**analyse fondamentale** (TSX, NYSE, NASDAQ) — **pas un bot d
 
 ## Phases & sprint actif
 
-| Phase | État | Description |
-|-------|------|-------------|
-| Phase 0 | ✅ | API FastAPI + graham_analysis + PostgreSQL |
-| Phase 1 | ✅ | RAG Qdrant, get_citations(), Langfuse, retry backoff |
-| Phase 2 | ✅ | 18 skills en production, extracteurs tier1, screener multi-tickers |
-| Phase 3 | 🔄 | Pipeline de synthèse — rapports PDF (mensuel / ticker / screener / watchlist), auth JWT, dashboard métriques v2, recherche sémantique, refonte micro-UX |
-
-Source de vérité de l'état courant : [`ROADMAP.md`](ROADMAP.md) (sprint actif, version, ce qui fonctionne aujourd'hui) et [`prompt-mise-a-jour-roadmap.md`](prompt-mise-a-jour-roadmap.md) (carte d'embarquement du prochain sprint).
+Phases 0-2 complétées (fondations API → RAG/observabilité → 18 skills + screener). La phase **active**, le sprint courant et la version vivent **uniquement** dans [`ROADMAP.md`](ROADMAP.md) (table « État courant ») — ne pas dupliquer ici. Carte d'embarquement du prochain sprint : [`prompt-mise-a-jour-roadmap.md`](prompt-mise-a-jour-roadmap.md).
 
 ---
 
@@ -68,7 +61,7 @@ app/                      # Backend FastAPI
 ├── middleware/           # auth (JWT cookie), csrf (double-submit), rate_limit (Redis)
 ├── observability/        # Client Langfuse
 ├── workers/              # Celery app + tasks (screener planifié, alertes, rapports)
-└── utils/                # retry (429/529), costs (pricing par modèle), ticker_sanitizer, tool_schema
+└── utils/                # retry (backoff 529 ; 429/5xx couverts par le SDK), costs (pricing par modèle), ticker_sanitizer, tool_schema
 
 frontend/src/             # SPA React 18 + TS
 ├── pages/                # 1 page par route (Analyze, Screener, History, Watchlist,
@@ -164,7 +157,7 @@ Un sprint n'est terminé qu'après ces 3 étapes : (1) mettre à jour `ROADMAP.m
 | [`conventions-python.md`](.claude/rules/conventions-python.md) | `**/*.py` | Pattern `execute()`, docstrings, style Python |
 | [`conventions-frontend.md`](.claude/rules/conventions-frontend.md) | `frontend/**` | React 18, TypeScript strict, Vite, structure pages/composants |
 | [`variables-financieres.md`](.claude/rules/variables-financieres.md) | `app/**/*.py`, `frontend/src/**`, `analyses/**` | Tableau 14 variables financières standardisées (snake_case/camelCase) |
-| [`api-skills-tier2.md`](.claude/rules/api-skills-tier2.md) | `app/skills/tier2/**` | SkillBase, prompt caching > 1024 tokens, Pydantic, procédure ajout skill |
+| [`api-skills-tier2.md`](.claude/rules/api-skills-tier2.md) | `app/skills/tier2/**` | SkillBase, prompt caching ≥ 2048 tokens (4096 sur Haiku), Pydantic, procédure ajout skill |
 | [`api-architecture.md`](.claude/rules/api-architecture.md) | `app/**` | Modèle `claude-sonnet-4-6`, `cost_usd` persisté, sections architecture |
 | [`api-orchestrator.md`](.claude/rules/api-orchestrator.md) | `app/orchestrator/**` | Pattern WORKFLOWS (5 workflows), procédure ajout, `compounder_buffett` 10 steps |
 | [`donnees-financieres.md`](.claude/rules/donnees-financieres.md) | `app/skills/**`, `analyses/**` | Validation None/div0, source+date, suffixe `.TO`, `current_ratio` banques |

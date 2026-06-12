@@ -24,7 +24,8 @@ class DorseyMoatSkill(SkillBase):
 
 ### Prompt caching
 
-- Le system prompt **doit dépasser 1 024 tokens** pour activer le prompt caching Anthropic
+- Le system prompt doit dépasser le **minimum cacheable du modèle cible** : **2 048 tokens sur Sonnet 4.6**, **4 096 sur Haiku 4.5** (un prompt sous le seuil ne cache silencieusement rien — `cache_creation_input_tokens: 0`, aucune erreur)
+- Vérifier avec une commande réelle : `client.messages.count_tokens(model=..., system=...)` ou approximer par `wc -c prompts/system.md` ÷ 4, puis confirmer `cache_read_input_tokens > 0` au 2ᵉ appel
 - `get_system_prompt()` applique `cache_control` sur le bloc système (section 8.2 architecture)
 - **Source de vérité du prompt** : `.claude/skills/{nom-skill}/SKILL.md` + `references/*.md`
 - Lire ce SKILL.md avant d'écrire ou modifier un prompt — le code doit refléter fidèlement les frameworks académiques documentés
@@ -40,7 +41,7 @@ class DorseyMoatSkill(SkillBase):
 
 1. Créer `app/skills/tier2/{skill_name}/` avec : `__init__.py`, `schemas.py`, `skill.py`, `prompts/system.md`
 2. Hériter de `SkillBase` dans `skill.py`
-3. System prompt > 1 024 tokens — vérifier avant de committer
+3. System prompt au-dessus du minimum cacheable (2 048 tokens Sonnet / 4 096 Haiku) — vérifier avant de committer (cf. « Prompt caching » ci-dessus)
 4. Ajouter le skill dans `app/orchestrator/core.py` (instanciation dans `__init__`)
 5. Ajouter le skill dans le ou les `WORKFLOWS` de `app/orchestrator/router.py` (voir `api-orchestrator.md`)
 6. Le prompt reflète fidèlement `.claude/skills/{nom}/SKILL.md` — lire ce fichier d'abord
