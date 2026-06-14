@@ -87,8 +87,8 @@ from app.services.watchlist_pdf_service import WatchlistPdfService
 from app.services.watchlist_service import WatchlistService
 from app.services.webhook_service import WebhookService
 from app.skills.base import SkillConfig
+from app.skills.tier1.factory import build_data_provider
 from app.skills.tier1.sedar_plus import SedarPlusExtractor
-from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
 from app.skills.tier2.buffett_quality.skill import BuffettQualitySkill
 from app.skills.tier2.canadian_tax.skill import CanadianTaxSkill
 from app.skills.tier2.damodaran_narrative.skill import DamodararNarrativeSkill
@@ -345,7 +345,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         esg_skill=esg_skill,
     )
 
-    yahoo_extractor = YahooFinanceExtractor()
+    yahoo_extractor = build_data_provider()
     sedar_extractor = SedarPlusExtractor()
 
     redis_pool = aioredis.from_url(redis_url, decode_responses=True)
