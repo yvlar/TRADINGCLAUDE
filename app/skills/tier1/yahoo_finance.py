@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.skills.tier1.base import FinancialDataProvider
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
@@ -164,9 +165,10 @@ FINANCIAL_SECTORS: frozenset[str] = frozenset(
 RATIOS_SOURCE = "Yahoo Finance"
 
 
-class YahooFinanceExtractor:
+class YahooFinanceExtractor(FinancialDataProvider):
     """
     Extrait les ratios Graham + valuation depuis Yahoo Finance via yfinance.
+    Implémentation de référence de FinancialDataProvider.
     Timeout 10s. HTTPException 404 si ticker inconnu ou données insuffisantes.
     """
 

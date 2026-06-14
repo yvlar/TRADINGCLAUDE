@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from app.orchestrator.core import AnalyzeRequest, AnalyzeResponse, Orchestrator
-from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
+from app.skills.tier1.base import FinancialDataProvider
 from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.utils.error_sanitization import sanitized_http_500
@@ -23,7 +23,7 @@ class ExtractResponse(BaseModel):
     earnings_quality: EarningsQualityRatios | None = None
 
 
-def get_yahoo_extractor(request: Request) -> YahooFinanceExtractor:
+def get_yahoo_extractor(request: Request) -> FinancialDataProvider:
     return request.app.state.yahoo_extractor
 
 
@@ -34,7 +34,7 @@ def get_yahoo_extractor(request: Request) -> YahooFinanceExtractor:
 )
 async def extract_ratios(
     ticker: str,
-    yahoo_extractor: YahooFinanceExtractor = Depends(get_yahoo_extractor),
+    yahoo_extractor: FinancialDataProvider = Depends(get_yahoo_extractor),
 ) -> ExtractResponse:
     """
     Extrait automatiquement les ratios Graham et (si disponibles) les données
@@ -55,7 +55,7 @@ async def extract_ratios(
 async def analyze_auto(
     ticker: str,
     request: Request,
-    yahoo_extractor: YahooFinanceExtractor = Depends(get_yahoo_extractor),
+    yahoo_extractor: FinancialDataProvider = Depends(get_yahoo_extractor),
 ) -> AnalyzeResponse:
     """
     Extrait automatiquement les ratios (Yahoo Finance) puis lance le workflow analyze complet.
