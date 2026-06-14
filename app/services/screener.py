@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 from app.orchestrator.core import AnalyzeRequest, Orchestrator
 from app.services.analysis_cache import AnalysisCacheService
-from app.skills.tier1.yahoo_finance import YahooFinanceExtractor
 
 if TYPE_CHECKING:
     from app.api.endpoints.screen import ScreenEntry, ScreenRequest, ScreenResult
+    from app.skills.tier1.base import FinancialDataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class ScreenerService:
     def __init__(
         self,
         orchestrator: Orchestrator,
-        extractor: YahooFinanceExtractor,
+        extractor: FinancialDataProvider,
         cache: AnalysisCacheService | None = None,
     ) -> None:
         self._orchestrator = orchestrator
