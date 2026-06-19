@@ -113,7 +113,7 @@ describe('ScreenerPage — Exporter PDF', () => {
     })
   })
 
-  it("affiche une alerte en cas d'erreur de téléchargement PDF", async () => {
+  it("affiche une erreur inline (role=alert) en cas d'erreur de téléchargement PDF, sans window.alert", async () => {
     const user = userEvent.setup()
     vi.mocked(analyzeApi.postScreen).mockResolvedValue(MOCK_RESULT)
     vi.mocked(analyzeApi.downloadScreenerPdf).mockRejectedValue(new Error('Serveur indisponible'))
@@ -127,8 +127,11 @@ describe('ScreenerPage — Exporter PDF', () => {
     await user.click(screen.getByTestId('export-pdf'))
 
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Serveur indisponible'))
+      const alert = screen.getByTestId('export-error')
+      expect(alert).toHaveAttribute('role', 'alert')
+      expect(alert).toHaveTextContent('Serveur indisponible')
     })
+    expect(alertSpy).not.toHaveBeenCalled()
 
     alertSpy.mockRestore()
   })
