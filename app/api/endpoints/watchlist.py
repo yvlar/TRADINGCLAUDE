@@ -209,6 +209,7 @@ async def update_esg_threshold(
         raise HTTPException(status_code=404, detail=f"Entrée {entry_id} introuvable")
     await service.update_esg_threshold(entry_id, body.esg_alert_threshold)
     updated = await service.get_entry(entry_id)
+    assert updated is not None  # existence confirmée ci-dessus, mise à jour non destructive
     return updated
 
 
@@ -227,6 +228,7 @@ async def update_price_threshold(
         raise HTTPException(status_code=404, detail=f"Entrée {entry_id} introuvable")
     await service.update_price_threshold(entry_id, body.threshold / 100)
     updated = await service.get_entry(entry_id)
+    assert updated is not None  # existence confirmée ci-dessus, mise à jour non destructive
     return updated
 
 

@@ -67,6 +67,10 @@ class EmailService:
         filename: str,
         to: str,
     ) -> bool:
+        # invariant : appelé seulement si _mode == "smtp", donc host/user/password sont définis
+        assert self._smtp_host is not None and self._smtp_user is not None
+        assert self._smtp_password is not None
+
         msg = MIMEMultipart()
         msg["Subject"] = subject
         msg["From"] = self._smtp_user
