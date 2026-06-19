@@ -37,6 +37,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const [ragResults, setRagResults] = useState<SemanticSearchResult[]>([])
   const [ragLoading, setRagLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   // Réinitialiser l'état à chaque ouverture/fermeture
   useEffect(() => {
@@ -44,6 +45,17 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       setQuery('')
       setRagResults([])
       setRagLoading(false)
+    }
+  }, [open])
+
+  // Focus management : focus initial sur le champ à l'ouverture, restauration sur
+  // l'élément déclencheur à la fermeture (mémorisé via document.activeElement).
+  useEffect(() => {
+    if (!open) return
+    const trigger = document.activeElement as HTMLElement | null
+    dialogRef.current?.querySelector<HTMLElement>('input')?.focus()
+    return () => {
+      trigger?.focus?.()
     }
   }, [open])
 
@@ -86,6 +98,29 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     [navigate, onClose],
   )
 
+  // Piège le focus dans le dialogue : Tab/Shift+Tab boucle entre les éléments
+  // focusables ; Escape ferme. Conserve le comportement clavier existant.
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      onClose()
+      return
+    }
+    if (e.key !== 'Tab') return
+    const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])',
+    )
+    if (!focusables || focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
   if (!open) return null
 
   const trimmed = query.trim()
@@ -106,15 +141,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       />
 
       {/* Fenêtre */}
-      <div className="fixed left-1/2 top-[18%] -translate-x-1/2 w-full max-w-xl px-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Palette de commandes"
+        onKeyDown={handleDialogKeyDown}
+        className="fixed left-1/2 top-[18%] -translate-x-1/2 w-full max-w-xl px-4"
+      >
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl ring-1 ring-black/5">
-          <Command
-            shouldFilter={false}
-            className="w-full"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') onClose()
-            }}
-          >
+          <Command shouldFilter={false} className="w-full">
             {/* Champ de recherche */}
             <div className="flex items-center border-b border-border px-3">
               <Search

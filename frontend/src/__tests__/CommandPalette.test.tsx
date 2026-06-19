@@ -171,4 +171,33 @@ describe('CommandPalette', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/screener')
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('expose role="dialog" et aria-modal pour les lecteurs d\'écran', () => {
+    renderPalette(true)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveAttribute('aria-label')
+  })
+
+  it('place le focus sur le champ à l\'ouverture et le restaure à la fermeture', () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    const { rerender } = render(
+      <MemoryRouter>
+        <CommandPalette open={true} onClose={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(document.activeElement).toBe(screen.getByTestId('command-palette-input'))
+
+    rerender(
+      <MemoryRouter>
+        <CommandPalette open={false} onClose={vi.fn()} />
+      </MemoryRouter>,
+    )
+    expect(document.activeElement).toBe(trigger)
+    document.body.removeChild(trigger)
+  })
 })

@@ -17,6 +17,7 @@ export default function ScreenerPage() {
   const [result, setResult] = useState<ScreenResult | null>(null)
   const [lastRequest, setLastRequest] = useState<ScreenRequest | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const screenMutation = useMutation({
     mutationFn: postScreen,
@@ -37,6 +38,7 @@ export default function ScreenerPage() {
 
   async function handleExport(format: 'csv' | 'xlsx') {
     if (!lastRequest) return
+    setExportError(null)
     try {
       const blob = await exportScreen(lastRequest, format)
       const url = URL.createObjectURL(blob)
@@ -46,12 +48,13 @@ export default function ScreenerPage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      alert(`Erreur export : ${(e as Error).message}`)
+      setExportError(`Erreur export : ${(e as Error).message}`)
     }
   }
 
   async function handleExportPdf() {
     if (!lastRequest) return
+    setExportError(null)
     setPdfLoading(true)
     try {
       const blob = await downloadScreenerPdf(lastRequest)
@@ -62,7 +65,7 @@ export default function ScreenerPage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      alert(`Erreur export PDF : ${(e as Error).message}`)
+      setExportError(`Erreur export PDF : ${(e as Error).message}`)
     } finally {
       setPdfLoading(false)
     }
@@ -159,6 +162,15 @@ export default function ScreenerPage() {
               {pdfLoading ? 'Génération PDF...' : 'Exporter PDF'}
             </Button>
           </div>
+          {exportError && (
+            <div
+              role="alert"
+              data-testid="export-error"
+              className="border border-destructive bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm"
+            >
+              {exportError}
+            </div>
+          )}
           <ScreenerTable
             entries={result.resultats}
             workflow={result.workflow}

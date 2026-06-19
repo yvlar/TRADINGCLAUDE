@@ -136,4 +136,25 @@ describe('ScreenerPage', () => {
     render(<ScreenerPage />, { wrapper })
     expect(screen.queryByTestId('disclaimer')).not.toBeInTheDocument()
   })
+
+  it("affiche une erreur d'export en inline (role=alert) sans window.alert", async () => {
+    const user = userEvent.setup()
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.mocked(analyzeApi.postScreen).mockResolvedValue(MOCK_RESULT)
+    vi.mocked(analyzeApi.exportScreen).mockRejectedValue(new Error('boom'))
+
+    render(<ScreenerPage />, { wrapper })
+
+    await user.click(screen.getByText('Lancer le screener'))
+    await waitFor(() => expect(screen.getByTestId('export-csv')).toBeInTheDocument())
+
+    await user.click(screen.getByTestId('export-csv'))
+    await waitFor(() => {
+      const alert = screen.getByTestId('export-error')
+      expect(alert).toHaveAttribute('role', 'alert')
+      expect(alert).toHaveTextContent('boom')
+    })
+    expect(alertSpy).not.toHaveBeenCalled()
+    alertSpy.mockRestore()
+  })
 })
