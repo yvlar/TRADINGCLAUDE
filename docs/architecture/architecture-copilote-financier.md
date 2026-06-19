@@ -56,7 +56,8 @@ Le corpus RAG est constitué des fichiers `references/*.md` de chaque skill. Ils
 
 ```
 Tier 1 — Extraction automatique (Phase 2+, pas en Phase 0)
-  Extracteurs Yahoo Finance, SEC EDGAR, SEDAR+, Alpha Vantage
+  Extracteur opérationnel : Yahoo Finance (source unique des ratios)
+  Sources additionnelles (SEC EDGAR, SEDAR+, Alpha Vantage) envisagées mais non implémentées
   → Calcul automatique des ratios depuis les états financiers bruts
 
 Tier 2 — Skills analytiques (les 15 skills du corpus)
@@ -648,7 +649,7 @@ curl -X POST localhost:8000/analyze \
 ### 12.3 Phase 2 — Skills restants (mois 1-2)
 
 - Implémentation de `dorsey_moat`, `buffett_quality`, `stock_valuation_triangulation`
-- Tier 1 : extracteurs automatisés Yahoo Finance + SEDAR+ pour les ratios
+- Tier 1 : extracteur automatisé Yahoo Finance pour les ratios (source unique)
 - Workflow `company_analysis` Phase 2 complet
 
 ### 12.4 Phase 3 — Pipeline de synthèse (mois 2-3)

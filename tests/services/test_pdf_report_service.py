@@ -154,13 +154,13 @@ class TestRatiosSourceRows:
 
     def test_les_deux_lignes_rendues(self, ratios_earnings_msft):
         """Earnings + valuation présents → deux lignes ; source sans date → libellé sans « récupéré le »."""
-        valuation = ValuationRatios(ratios_source="SEDAR+", ratios_fetched_at=None)
+        valuation = ValuationRatios(ratios_source="Yahoo Finance", ratios_fetched_at=None)
         rows = _build_ratios_source_rows(
             self._earnings_avec_source(ratios_earnings_msft), valuation
         )
         valeurs = dict(rows)
         assert "Source des ratios (Qualité bénéfices)" in valeurs
-        assert valeurs["Source des ratios (Valorisation)"] == "SEDAR+"
+        assert valeurs["Source des ratios (Valorisation)"] == "Yahoo Finance"
 
     def test_ratio_sans_source_ni_date_omis(self, ratios_earnings_msft):
         """Ratio présent mais traçabilité None → ligne omise (parité Graham None)."""

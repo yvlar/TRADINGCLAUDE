@@ -53,7 +53,7 @@ graph TD
     end
 
     subgraph Skills["Skills Claude API — Tool Use"]
-        T1["Tier1 : yahoo_finance · sedar_plus"]
+        T1["Tier1 : yahoo_finance"]
         T2["Tier2 : 16 frameworks académiques\ngraham · buffett · dorsey · klarman · lynch\nfisher · greenblatt · damodaran · marks · pabrai\nearnings_quality · munger · canadian_tax\nstock_valuation · thesis_builder · esg_simplified"]
     end
 
@@ -103,7 +103,7 @@ graph TD
 
 ---
 
-## Les 18 skills
+## Les 17 skills
 
 ### Tier 2 — Frameworks d'investissement académiques (16)
 
@@ -126,12 +126,11 @@ graph TD
 | `pabrai_dhandho` | Mohnish Pabrai — 9 principes Dhandho, cloning 13F, paris asymétriques |
 | `esg_simplified` | 15 critères proxy (5E + 5S + 5G) — score 0–15, verdict ESG_FORT/MODERE/FAIBLE |
 
-### Tier 1 — Extracteurs de données brutes (2)
+### Tier 1 — Extracteur de données brutes (1)
 
 | Skill | Source |
 |-------|--------|
-| `yahoo_finance_extractor` | Yahoo Finance via `yfinance` — ratios, prix, bilans |
-| `sedar_plus_extractor` | SEDAR+ — dépôts réglementaires canadiens |
+| `yahoo_finance_extractor` | Yahoo Finance via `yfinance` — ratios, prix, bilans (source unique) |
 
 ---
 
@@ -341,7 +340,7 @@ TRADINGCLAUDE/
 │   │   └── endpoints/          # Un module par groupe d'endpoints
 │   ├── orchestrator/           # Orchestrateur 16 skills parallèles + cache Redis
 │   ├── skills/
-│   │   ├── tier1/              # yahoo_finance, sedar_plus
+│   │   ├── tier1/              # yahoo_finance
 │   │   └── tier2/              # 16 frameworks (SkillBase + Tool Use + prompt caching)
 │   ├── services/               # AlertHistoryService, WatchlistService, SlackService, etc.
 │   ├── workers/

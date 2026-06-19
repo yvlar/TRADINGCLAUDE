@@ -7,7 +7,7 @@
 ## Identité
 
 **TradingClaude** est le copilote financier IA de Yves Larivière (développeur C++/Java/React, Québec).  
-Système d'analyse d'investissement multi-frameworks : API FastAPI + 18 skills (16 tier2 + 2 tier1) + RAG Qdrant + frontend React.  
+Système d'analyse d'investissement multi-frameworks : API FastAPI + 17 skills (16 tier2 + 1 tier1) + RAG Qdrant + frontend React.  
 C'est un outil d'**analyse fondamentale** (TSX, NYSE, NASDAQ) — **pas un bot de trading**.  
 **Distinct** du bot de trading C++ Interactive Brokers (projet séparé).
 
@@ -30,7 +30,7 @@ C'est un outil d'**analyse fondamentale** (TSX, NYSE, NASDAQ) — **pas un bot d
 |-------|------|-------------|
 | Phase 0 | ✅ | API FastAPI + graham_analysis + PostgreSQL |
 | Phase 1 | ✅ | RAG Qdrant, get_citations(), Langfuse, retry backoff |
-| Phase 2 | ✅ | 18 skills en production, extracteurs tier1, screener multi-tickers |
+| Phase 2 | ✅ | 17 skills en production, extracteur tier1 Yahoo Finance, screener multi-tickers |
 | Phase 3 | 🔄 | Pipeline de synthèse — rapports PDF (mensuel / ticker / screener / watchlist), auth JWT, dashboard métriques v2, recherche sémantique, refonte micro-UX |
 
 Source de vérité de l'état courant : [`ROADMAP.md`](ROADMAP.md) (sprint actif, version, ce qui fonctionne aujourd'hui) et [`prompt-mise-a-jour-roadmap.md`](prompt-mise-a-jour-roadmap.md) (carte d'embarquement du prochain sprint).
@@ -60,7 +60,7 @@ app/                      # Backend FastAPI
 ├── orchestrator/         # core.py (Orchestrator), router.py (WORKFLOWS)
 ├── skills/
 │   ├── base.py           # SkillBase — contrat commun, prompt caching, tool schema
-│   ├── tier1/            # Extracteurs données brutes : yahoo_finance.py, sedar_plus.py
+│   ├── tier1/            # Extracteur données brutes : yahoo_finance.py (source unique)
 │   └── tier2/<skill>/    # 16 frameworks : skill.py + schemas.py + __init__.py
 ├── services/             # Logique métier (screener, cache, PDF, alertes, auth, email…)
 ├── rag/                  # Client Qdrant, embeddings OpenAI, service de recherche
