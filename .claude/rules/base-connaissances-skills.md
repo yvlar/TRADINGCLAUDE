@@ -15,7 +15,7 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 3. Si un skill requis est absent ou son SKILL.md incomplet → **le signaler avant de continuer**
 4. Si une hypothèse financière est discutable ou des données manquent → **le signaler explicitement**
 
-### Catalogue des skills — 16 tier2 + 2 tier1 = 18 en production + 1 outil batch
+### Catalogue des skills — 16 tier2 + 1 tier1 = 17 en production + 1 outil batch
 
 #### Skills tier2 — frameworks d'analyse conceptuels
 
@@ -38,12 +38,15 @@ Avant toute analyse financière et avant d'écrire ou modifier le prompt d'un sk
 | `pabrai_dhandho` | `pabrai-dhandho-and-cloning/` | `pabrai_dhandho/` |
 | `esg_simplified` | `esg-simplified/` | `esg_simplified/` |
 
-#### Extracteurs tier1 (données brutes — pas de SKILL.md conceptuel)
+#### Extracteur tier1 (données brutes — pas de SKILL.md conceptuel)
 
 | Skill (code API) | Fichier |
 |---|---|
 | `yahoo_finance_extractor` | `app/skills/tier1/yahoo_finance.py` |
-| `sedar_plus_extractor` | `app/skills/tier1/sedar_plus.py` |
+
+Yahoo Finance est la **source unique** des ratios. SEDAR+ ne fournit pas de ratios
+structurés via API publique ; tout second canal de données canadiennes reste à implémenter
+(point d'extension : ajouter un extracteur dans `app/skills/tier1/`).
 
 #### Outil batch (pas un skill LLM — screening mécanique + ingestion Qdrant)
 
@@ -70,7 +73,7 @@ python .claude/skills/graham-screener/scripts/ingest_qdrant.py --input /tmp/t/ca
 ### Note sur les comptages
 
 - **16 skills tier2** en production = 15 frameworks originaux + `esg_simplified` (Sprint 70)
-- **18 en production** = 16 tier2 + 2 tier1
+- **17 en production** = 16 tier2 + 1 tier1
 - **1 outil batch** = `graham-screener` (scripts purement mécaniques, pas de LLM)
 - Le dossier `.claude/skills/` contient **17 SKILL.md** (16 tier2 + 1 batch)
 - Pour les skills tier2 : `app/skills/tier2/` est la source de vérité du code ; `.claude/skills/` est la source de vérité conceptuelle (formules, seuils, frameworks académiques)
