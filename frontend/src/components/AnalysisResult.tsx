@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import type { AnalyzeResponse, CompositeScore, GrahamCriterion } from '../types'
 import { EarningsQualitySection } from './EarningsQualitySection'
 import { RatiosSourceNote } from './RatiosSourceNote'
+import { RatiosFreshnessWarning } from './RatiosFreshnessWarning'
 import { RatiosProvenanceNote } from './RatiosProvenanceNote'
 import { ThesisSection } from './ThesisSection'
 import { DorseyMoatSection } from './DorseyMoatSection'
@@ -328,6 +329,9 @@ export function AnalysisResult({
           </p>
         </CardContent>
       </Card>
+
+      {/* Avertissement global de fraîcheur des ratios — placé avant les sections de skills */}
+      <RatiosFreshnessWarning warnings={result.ratios_freshness_warnings} />
 
       {/* ───── Section Graham — ouverte par défaut ───── */}
       {g && (

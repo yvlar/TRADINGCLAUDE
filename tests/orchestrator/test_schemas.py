@@ -1230,3 +1230,68 @@ class TestRequestRatiosTraces:
         traces = _request_ratios_traces(AnalyzeRequest(ticker="MSFT", ratios=graham))
         assert traces["ratios_fetched_at"] is None
         assert traces["ratios_source"] == "Yahoo Finance"
+
+
+# ---------------------------------------------------------------------------
+# Impl 01 — fraîcheur des ratios propagée dans AnalyzeResponse
+# ---------------------------------------------------------------------------
+
+class TestRatiosFreshnessWarnings:
+    def test_champ_present_par_defaut_vide(self):
+        from app.orchestrator.core import AnalyzeResponse
+
+        resp = AnalyzeResponse(
+            analysis_id="test-id",
+            ticker="TEST",
+            workflow="value_graham",
+            skills_applied=[],
+            cost_usd=0.0,
+            created_at="2026-01-01T00:00:00",
+        )
+        assert resp.ratios_freshness_warnings == []
+
+    def test_requete_sans_ratios_aucun_avertissement(self):
+        from app.orchestrator.core import AnalyzeRequest, _request_freshness_warnings
+
+        assert _request_freshness_warnings(AnalyzeRequest(ticker="MSFT")) == []
+
+    def test_ratios_recents_aucun_avertissement(self):
+        from app.orchestrator.core import AnalyzeRequest, _request_freshness_warnings
+
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_fetched_at=datetime.now(timezone.utc),
+            ratios_source="Yahoo Finance",
+        )
+        assert _request_freshness_warnings(AnalyzeRequest(ticker="MSFT", ratios=graham)) == []
+
+    def test_date_ancienne_peuple_avertissement(self):
+        from datetime import timedelta
+
+        from app.orchestrator.core import AnalyzeRequest, _request_freshness_warnings
+
+        vieux = datetime.now(timezone.utc) - timedelta(days=120)
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_fetched_at=vieux, ratios_source="Yahoo Finance",
+        )
+        valuation = ValuationRatios(pe=34.2, ratios_fetched_at=vieux, ratios_source="Yahoo Finance")
+        warnings = _request_freshness_warnings(
+            AnalyzeRequest(ticker="MSFT", ratios=graham, valuation_ratios=valuation)
+        )
+        assert len(warnings) == 2
+        assert any("Ratios Graham" in w for w in warnings)
+        assert any("Ratios Valorisation" in w for w in warnings)
+
+    def test_date_absente_pas_de_faux_positif(self):
+        """ratios_fetched_at=None → aucun avertissement même si la source est présente."""
+        from app.orchestrator.core import AnalyzeRequest, _request_freshness_warnings
+
+        graham = GrahamRatios(
+            pe=11.0, pb=1.3, current_ratio=None, debt_equity=0.45,
+            eps_growth_total=0.27, price=80.0, book_value=61.5,
+            ratios_source="Yahoo Finance",
+        )
+        assert _request_freshness_warnings(AnalyzeRequest(ticker="MSFT", ratios=graham)) == []
