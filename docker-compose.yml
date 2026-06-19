@@ -9,7 +9,7 @@ services:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
     restart: unless-stopped
@@ -65,6 +65,12 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      # L'image qdrant n'embarque ni curl ni wget ; bash teste l'ouverture du port TCP 6333.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   redis:
