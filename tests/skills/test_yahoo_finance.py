@@ -26,6 +26,7 @@ from app.skills.tier2.earnings_quality.schemas import EarningsQualityRatios
 from app.skills.tier2.graham_analysis.schemas import GrahamRatios
 from app.skills.tier2.stock_valuation.schemas import ValuationRatios
 
+
 def test_yahoo_extractor_respecte_le_contrat_provider() -> None:
     """YahooFinanceExtractor satisfait l'interface FinancialDataProvider (E5-S1)."""
     assert isinstance(YahooFinanceExtractor(), FinancialDataProvider)
