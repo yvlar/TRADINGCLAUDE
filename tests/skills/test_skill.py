@@ -59,11 +59,10 @@ class TestCalculateCost:
         cout_sans_cache = calculate_cost(usage_sans_cache, "claude-sonnet-4-6")
         assert cout_cache < cout_sans_cache
 
-    def test_modele_inconnu_fallback_sur_sonnet(self, mock_usage_no_cache):
-        """Un modèle inconnu utilise la tarification de claude-sonnet-4-6 par défaut."""
-        cout_sonnet = calculate_cost(mock_usage_no_cache, "claude-sonnet-4-6")
-        cout_inconnu = calculate_cost(mock_usage_no_cache, "claude-inconnu-99-0")
-        assert cout_sonnet == cout_inconnu
+    def test_modele_inconnu_leve_valueerror(self, mock_usage_no_cache):
+        """Un modèle absent de PRICING lève ValueError plutôt que de retomber silencieusement."""
+        with pytest.raises(ValueError, match="claude-inconnu-99-0"):
+            calculate_cost(mock_usage_no_cache, "claude-inconnu-99-0")
 
     def test_modele_opus_plus_cher_que_sonnet(self, mock_usage_no_cache):
         """claude-opus-4-7 doit coûter plus cher que claude-sonnet-4-6."""

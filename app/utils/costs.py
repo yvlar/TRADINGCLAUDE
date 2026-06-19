@@ -26,7 +26,9 @@ PRICING: dict[str, dict[str, float]] = {
 
 def calculate_cost(usage: anthropic.types.Usage, model: str) -> float:
     """Calcule le coût en USD depuis l'objet usage de l'API Anthropic."""
-    pricing = PRICING.get(model, PRICING["claude-sonnet-4-6"])
+    if model not in PRICING:
+        raise ValueError(f"Modèle inconnu pour le pricing : {model}")
+    pricing = PRICING[model]
     return (
         usage.input_tokens * pricing["input"]
         + usage.output_tokens * pricing["output"]

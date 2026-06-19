@@ -97,7 +97,7 @@ class ObservabilityService:
                             },
                         )
                 except Exception:
-                    logger.debug(
+                    logger.warning(
                         "Erreur Langfuse ignorée pour skill %s", trace.skill_id
                     )
 
