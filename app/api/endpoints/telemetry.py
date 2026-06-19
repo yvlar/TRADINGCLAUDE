@@ -99,7 +99,7 @@ def get_eval_drift_service(request: Request) -> EvalDriftService | None:
 async def get_eval_drift(
     request: Request,
     dataset: str | None = Query(default=None, description="Nom du dataset (graham/earnings/dorsey/buffett/damodaran). Omis = tous."),
-) -> EvalDriftResult | list[EvalDriftResult]:
+) -> EvalDriftResult | list[EvalDriftResult] | None:
     """
     Lecture seule — retourne le dernier résultat de drift detection depuis Redis.
     Ne déclenche pas d'exécution. Pour déclencher, utiliser la tâche Celery run_eval_drift_check.

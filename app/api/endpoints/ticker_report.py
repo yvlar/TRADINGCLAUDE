@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Request
@@ -18,6 +19,9 @@ from app.services.ratios_recon import (
 )
 from app.utils.error_sanitization import sanitized_http_500
 from app.utils.ticker_sanitizer import sanitize_ticker
+
+if TYPE_CHECKING:
+    from app.orchestrator.core import AnalyzeResponse
 
 logger = logging.getLogger(__name__)
 
