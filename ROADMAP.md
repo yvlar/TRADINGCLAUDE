@@ -1,5 +1,5 @@
 # Roadmap — Copilote Financier IA
-**Dernière mise à jour : 2026-06-11 — Sprint 204 complété**
+**Dernière mise à jour : 2026-06-19 — Sprint 205 complété**
 **Auteur : Yves Larivière**
 
 ---
@@ -8,10 +8,10 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **Version** | 10.91.0 |
+| **Version** | 10.92.0 |
 | **Phase active** | Transformation B2B/SaaS — P0→P1 (plan directeur FinTech) |
-| **Sprint actif** | Sprint 205 — Ops : étendre le garde anti-contournement asyncpg à `app/` entier (allowlist) |
-| **Dernier sprint complété** | Sprint 204 — Full-stack : page d'administration des tenants (super-admin) ✅ |
+| **Sprint actif** | Sprint 206 — Ops : meta-test « tout test d'intégration est câblé dans le CI » |
+| **Dernier sprint complété** | Sprint 205 — Ops : garde anti-contournement asyncpg généralisé à `app/` (allowlist) ✅ |
 
 > **Pivot stratégique 2026-06-05** — la roadmap adopte la **transformation B2B/SaaS** : plan directeur `docs/plan-directeur-fintech-2026.md` (audit FinTech → 44 sprints `E#-S#`, phases P0→P3). Les sprints **154+ exécutent ce backlog** (154 = E1-S1, sécurité fail-closed). Le backlog analyse-tool antérieur (provenance PDF…) est parqué (historique git).
 
@@ -99,6 +99,23 @@
 ### Phase 0 — Bootstrap ✅
 API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
+### Sprint 205 — Ops : garde anti-contournement asyncpg généralisé à `app/` (allowlist) ✅
+
+**Objectif :** S200 a posé un meta-test (scan AST) interdisant tout `asyncpg.create_pool`/`connect` direct dans `app/workers/`. Mais un endpoint ou service de `app/` pouvait encore fabriquer un pool direct — contournant à la fois le garde insecure-creds (`require_secure_db_url`) ET le hook tenant RLS câblés par `create_runtime_pool`. Ce sprint généralise le scan à **tout `app/**/*.py`** avec une allowlist explicite des deux usages légitimes. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
+
+**Décision tranchée — meta-test AST généralisé (patron S200) vs ruff banned-api (TID251) :** retenu le **meta-test AST**. Le scan S200 est éprouvé et couvre déjà toutes les formes dérivées exigées (alias, sous-modules, `from asyncpg import *`, chaînes d'attributs) avec immunité AST aux commentaires/docstrings/type-hints ; ruff `banned-api` est plus faible sur les alias/wildcard. Surtout, l'anti-vacuité (« retirer un fichier de l'allowlist → rouge ») s'exprime naturellement en **constante Python + assertion pytest**, là où ruff disperserait l'allowlist dans `per-file-ignores` et exigerait un sous-process pour la prouver load-bearing. Mécanisme unique, moindre coût de maintenance.
+
+**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `_scan_violations` (`:85`)/`_is_asyncpg_module` (`:32`)/boucle de scan (S200) ; usages légitimes `app/db/pool.py:25` (`asyncpg.create_pool`, après `require_secure_db_url(dsn)` `:24`) + `app/db/provision_app_runtime.py:47` (`asyncpg.connect(admin_url)`, provisioning admin hors RLS) ; `grep` exhaustif de `app/` confirme que tous les autres usages sont des type hints (`asyncpg.Pool`/`Record`/`Connection`) ou des exceptions (`asyncpg.UniqueViolationError`, `asyncpg.exceptions.…`) — non matchés par le scan.
+
+**Livrables :** `tests/meta/test_no_direct_asyncpg_in_app.py` (renommé depuis `…_in_workers.py`, scope élargi) : scan AST de tout `app/**/*.py` moins `_ALLOWLIST` (constante nommée+commentée, le WHY de chaque exemption). **5 tests** : (1) scan vert en l'état (2 usages allowlistés) ; (2) `test_allowlist_est_load_bearing` — anti-vacuité, chaque fichier allowlisté contient bien une fabrique (retirer un fichier → rouge) ; (3) `test_le_scanner_detecte_chaque_forme_de_fabrique_directe` — 7 formes de contournement détectées ; (4) `test_le_scanner_ignore_les_usages_legitimes` — zéro faux positif (type hints/exceptions/commentaires/docstrings) ; (5) `test_chokepoint_…_utilise_par_les_workers` — invariant worker S200 préservé. **Fixes incidents pré-existants** (hors sprint, déblocage du gate) : `tests/services/test_api_key_service.py` (test time-bomb ancré sur l'horloge réelle — l'expiry figée `_NOW+30j` était dépassée au 2026-06-19) ; `tests/skills/test_yahoo_finance.py` (autofix ruff I001 import-sort, hérité du merge E5-S1).
+
+**Preuve d'acceptation observable :** `asyncpg.create_pool(...)` injecté dans `app/api/endpoints/admin.py` → meta-test **rouge** avec localisation exacte (`admin.py ligne 195 : asyncpg.create_pool`) ; retiré → **vert** ; fichier restauré **sha256-identique** (vérifié).
+
+**Revue indépendante à contexte frais (correctness high + qualité) :** **0 correctif** — correctness (sous-agent nourri des critères d'acceptation) : scanner détecte les 7 formes dérivées, zéro faux positif sur type hints/exceptions, allowlist load-bearing non vacueuse, scan principal non vacueux (garde `.is_file()` + présence `tasks.py`), égalité de chemins saine (pas de symlink sous `app/`). Qualité (`/simplify`) : extraction des helpers AST vers un module partagé **écartée YAGNI** (consommateur unique) ; cache de parsing AST **écarté** (test 1×/CI) ; docstrings/commentaires WHY-bearing conformes.
+
+**Version** : 10.92.0
+**Tests** : **2 407 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+3** nets : 5 nouveaux tests meta vs 2 anciens) — 2 360 passés / 46 skipped / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert. **Frontend non touché** (525 Vitest S204, inchangés par construction). *(Note env conteneur web : `stripe` + `alembic` manquaient au venv — réinstallés en session.)*
+
 ### Sprint 204 — Full-stack : page d'administration des tenants (super-admin) ✅
 
 **Objectif :** aucune UI n'exposait la liste des tenants — l'admin devait inspecter la DB à la main pour l'onboarding B2B et le support. Ce sprint livre `GET /admin/tenants` (admin only) + une section « Tenants » sur la page Admin. **Sprint FULL-STACK** (backend endpoint + frontend section), additif pur (zéro migration, pas d'eval).
@@ -143,21 +160,6 @@ API FastAPI + graham_analysis + PostgreSQL + prompt caching.
 
 **Version** : 10.89.0
 **Tests** : **frontend 520 Vitest** (mesuré `vitest run` ; **+4** vs 516 S198) — 520/520 passés (86 fichiers) ; `tsc --noEmit` 0 erreur ; ESLint 0/0. **Backend non touché** (2 382 collectés S201, inchangés par construction). *(Env : `node_modules` réinstallé — `npm ci` + binaire rollup.)*
-
-### Sprint 201 — E5 : bascule de plan Stripe → quotas, prouvée sans redémarrage ✅
-
-**Objectif :** S172 a livré la synchro webhook → `tenants.plan` et E4-S7 l'a prouvée en intégration. Restait la **promesse produit complète** : un `QuotaService` du même process voit la **nouvelle** borne immédiatement après `customer.subscription.updated` (free→pro) — et symétriquement au downgrade (`customer.subscription.deleted` → repli free). Si un futur refactor introduisait un cache de plan en mémoire dans `_resolve_limits`, la bascule resterait invisible jusqu'au redémarrage : régression de facturation silencieuse qu'aucun test ne détectait. **Sprint BACKEND/OPS seul, test pur** (zéro `app/` modifié, zéro frontend, pas d'eval).
-
-**Réconciliation carte↔code (anti-hallucination) :** prémisses **toutes vérifiées vraies** — `handle_event` (`stripe_service.py:247`, claim+mutation transactionnel), libellé `customer.subscription.updated` (`:41`), `UPDATE tenants SET plan` (`:315`) ; `_resolve_limits` (`quota_service.py:89`) lit `SELECT pl.plan … JOIN plan_limits` (`:93-95`) **à chaque appel, sans cache** ; `read_status` (`:165`) fail-open ; router billing lit `app.state.stripe_service` (`billing.py:43`) ; patron prouvé `tests/integration/test_stripe_billing_webhook.py` (E4-S7, même job CI).
-
-**Livrables :** `tests/integration/test_stripe_plan_to_quota.py` (nouveau — 2 tests upgrade free→pro / downgrade pro→free) : `QuotaService` construit **AVANT** le webhook (même process, aucune recréation), `read_status` asserté avant (borne du plan initial — pré-condition non vacue) puis après (borne du nouveau plan) ; bornes lues dans `plan_limits` (jamais codées en dur) + garde anti-vacuité `free != pro` ; webhook signé HMAC localement (aucun appel réseau Stripe) ; Redis du compteur mocké `get→None` (le sprint prouve la résolution de **plan**) ; probe NOSUPERUSER ; cleanup FK-safe (enfants → parent) ; `finally` imbriqué (un échec de nettoyage ne masque ni l'échec d'origine ni la fermeture du pool). Câblage CI : fichier ajouté à la liste explicite du job « Migrations — Alembic + RLS » (`ci.yml:240`).
-
-**Preuve d'acceptation observable** : pas de PG dans le conteneur web → constaté localement : collection + **2 skipped propres** ; le gate vert complet vient du **CI** (rôle NOSUPERUSER, DB migrée `alembic upgrade head`). La structure garantit l'échec sous mémoïsation : l'appel `before` amorcerait le cache, l'appel `after` verrait la borne périmée → assertions rouges. Limites documentées dans la PR : un cache à TTL court ou un cache Redis distribué échapperaient à un test de ce niveau (consigné, hors périmètre).
-
-**Revue indépendante à contexte frais (7 angles sous-agents nourris des critères d'acceptation, 17 candidats bruts)** : **correctness** — angle ligne-par-ligne **0 finding** (10 vérifications explicites passées : ordre params SQL du seed, schéma de signature `t=…,v1=…`, FK du cleanup, UUIDs, asyncio) ; cross-file « pool sans `apply_tenant_context` → vacuité » **RÉFUTÉ par construction** (les 4 tables touchées — `tenants`/`subscriptions`/`stripe_events`/`plan_limits` — hors RLS, `_TABLES` migration 0005 vérifié ; et le fail-open de `read_status` → `plan="unknown"` → échec **bruyant**, jamais silencieux ; absence de GUC = miroir de la sémantique prod du webhook, décision S172) ; cleanup inline du fichier frère E4-S7 → hors diff. **Qualité** — duplication `_sign`/`_build`/probe avec le frère **écartée** (auto-portance actée S197, seuil non atteint) ; `parametrize` upgrade/downgrade **écarté** (masquerait l'asymétrie sémantique `updated`/`deleted`) ; micro-coûts efficacité **écartés** (test 1×/CI). **Altitude** : liste explicite `ci.yml` sans meta-test (un fichier d'intégration oublié ne tournerait jamais en CI, silencieusement) → **sprint suggéré S206**.
-
-**Version** : 10.88.0
-**Tests** : **2 382 backend collectés** (mesuré `pytest --co -q | tail -1` ; **+2** vs 2 380 S200) — 2 337 passés / **44 skipped** (+2 : les 2 nouveaux tests d'intégration, skip propre sans PG local) / 1 xfailed (`pytest tests/ --ignore=tests/e2e --ignore=tests/evals`) ; `ruff check app/ tests/` vert ; **frontend non touché** (Vitest inchangés par construction). *(Note env conteneur web : `stripe` manquait au venv — réinstallé via `pip install -r requirements.txt`.)*
 
 ## Sprints antérieurs (Sprint 199 → Sprint 0)
 

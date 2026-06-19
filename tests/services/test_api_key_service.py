@@ -151,7 +151,10 @@ class TestValidateKey:
 
     @pytest.mark.asyncio
     async def test_validate_key_retourne_record_si_valide(self):
-        row = _make_row(expires_at=_NOW + timedelta(days=30))
+        # Expiry ancré sur l'horloge réelle : validate_key compare expires_at à
+        # datetime.now() — un `_NOW` figé devient un faux échec dès que la date du jour
+        # dépasse `_NOW + 30 j`.
+        row = _make_row(expires_at=datetime.now(timezone.utc) + timedelta(days=30))
         pool = _make_pool(fetchrow_return=row)
         svc = ApiKeyService(db_pool=pool)
         result = await svc.validate_key(_TOKEN)
