@@ -16,6 +16,7 @@ from app.db.tenant_context import resolve_tenant
 from app.services.composite_score import CompositeScore, compute_composite_score
 from app.services.usage_event_service import record_usage_safe
 from app.skills.base import UsageDetail
+from app.utils.ratios_freshness import check_ratios_age
 from app.utils.ticker_sanitizer import sanitize_ticker
 
 if TYPE_CHECKING:
@@ -304,6 +305,10 @@ class AnalyzeResponse(BaseModel):
         default=None,
         description="Clé yfinance effectivement retenue par ratio Graham à repli (pb/debt_equity/book_value) — affichée en signal-only sur l'analyse rendue/rechargée. None si saisie manuelle ou analyse antérieure au champ.",
     )
+    ratios_freshness_warnings: list[str] = Field(
+        default_factory=list,
+        description="Avertissements de fraîcheur (> 30 j) par famille de ratios. Vide si toutes récentes ou dates absentes (honnêteté None).",
+    )
 
 
 def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | dict[str, str] | None]:
@@ -326,6 +331,23 @@ def _request_ratios_traces(request: AnalyzeRequest) -> dict[str, str | dict[str,
             request.ratios.ratios_provenance if request.ratios is not None else None
         ),
     }
+
+
+def _request_freshness_warnings(request: AnalyzeRequest) -> list[str]:
+    """Avertissements de fraîcheur des trois familles de ratios d'entrée (Graham, earnings, valuation)."""
+    familles = (
+        (request.ratios, "Ratios Graham"),
+        (request.earnings_ratios, "Ratios Qualité bénéfices"),
+        (request.valuation_ratios, "Ratios Valorisation"),
+    )
+    warnings: list[str] = []
+    for ratios, label in familles:
+        if ratios is None:
+            continue
+        message = check_ratios_age(ratios.ratios_fetched_at, label=label)
+        if message is not None:
+            warnings.append(message)
+    return warnings
 
 
 def _build_input_data(request: AnalyzeRequest) -> str:
@@ -618,6 +640,7 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
+                    ratios_freshness_warnings=_request_freshness_warnings(request),
                     **_request_ratios_traces(request),
                 )
 
@@ -1152,6 +1175,7 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
+            ratios_freshness_warnings=_request_freshness_warnings(request),
             **_request_ratios_traces(request),
         )
 
@@ -1220,6 +1244,7 @@ class Orchestrator:
                         detail={},
                     ),
                     depuis_cache_composite=True,
+                    ratios_freshness_warnings=_request_freshness_warnings(request),
                     **_request_ratios_traces(request),
                 )
                 yield {"event": "cached", "data": cached_response.model_dump()}
@@ -1731,6 +1756,7 @@ class Orchestrator:
             created_at=datetime.now(timezone.utc).isoformat(),
             inter_skill_conflicts=inter_skill_conflicts,
             composite_score=composite,
+            ratios_freshness_warnings=_request_freshness_warnings(request),
             **_request_ratios_traces(request),
         )
 
