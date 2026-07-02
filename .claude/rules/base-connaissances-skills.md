@@ -80,4 +80,4 @@ python .claude/skills/graham-screener/scripts/ingest_qdrant.py --input /tmp/t/ca
 
 ### Cohérence du corpus RAG
 
-Les ~69 documents `references/*.md` dans `.claude/skills/` alimentent le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus. L'outil batch `graham-screener` alimente sa propre collection `graham_screening` via `ingest_qdrant.py`.
+La soixantaine de documents `references/*.md` dans `.claude/skills/` alimente le RAG Qdrant (collection `investment_knowledge`). Tout nouveau skill tier2 doit avoir son SKILL.md + `references/` pour maintenir la cohérence du corpus. L'outil batch `graham-screener` alimente sa propre collection `graham_screening` via `ingest_qdrant.py`.

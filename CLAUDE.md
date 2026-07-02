@@ -1,6 +1,6 @@
 # TradingClaude — Index Claude Code
 
-*Phase 3 active — sprint courant, version et dernier sprint complété : voir [`ROADMAP.md`](ROADMAP.md) (source unique, table « État courant »). Ne pas figer de numéro de sprint ici — éviter la dérive entre fichiers.*
+*Phase active, sprint courant, version et dernier sprint complété : voir [`ROADMAP.md`](ROADMAP.md) (source unique, table « État courant »). Ne pas figer de phase ni de numéro de sprint ici — éviter la dérive entre fichiers.*
 
 ---
 
@@ -26,14 +26,7 @@ C'est un outil d'**analyse fondamentale** (TSX, NYSE, NASDAQ) — **pas un bot d
 
 ## Phases & sprint actif
 
-| Phase | État | Description |
-|-------|------|-------------|
-| Phase 0 | ✅ | API FastAPI + graham_analysis + PostgreSQL |
-| Phase 1 | ✅ | RAG Qdrant, get_citations(), Langfuse, retry backoff |
-| Phase 2 | ✅ | 17 skills en production, extracteur tier1 Yahoo Finance, screener multi-tickers |
-| Phase 3 | 🔄 | Pipeline de synthèse — rapports PDF (mensuel / ticker / screener / watchlist), auth JWT, dashboard métriques v2, recherche sémantique, refonte micro-UX |
-
-Source de vérité de l'état courant : [`ROADMAP.md`](ROADMAP.md) (sprint actif, version, ce qui fonctionne aujourd'hui) et [`prompt-mise-a-jour-roadmap.md`](prompt-mise-a-jour-roadmap.md) (carte d'embarquement du prochain sprint).
+L'état des phases est de l'**état courant** — il ne vit pas ici (toute table de phases figée dans ce fichier a déjà dérivé une fois). Phase active, sprint actif, version et « ce qui fonctionne aujourd'hui » : [`ROADMAP.md`](ROADMAP.md) (source unique). Trajectoire long terme depuis le pivot B2B/SaaS : plan directeur [`docs/plan-directeur-fintech-2026.md`](docs/plan-directeur-fintech-2026.md). Carte d'embarquement du prochain sprint : [`prompt-mise-a-jour-roadmap.md`](prompt-mise-a-jour-roadmap.md).
 
 ---
 
@@ -86,11 +79,13 @@ frontend/src/             # SPA React 18 + TS
 │                         #   → scoring 7 critères Graham sur univers complet + ingestion Qdrant
 │                         #     collection graham_screening (text-embedding-3-small, 1536 dims)
 ├── prompts/              # Prompts réutilisables (bootstrap, exécution de sprint…)
-└── docs/                 # Notes projet
+└── agents/               # 5 sous-agents : 4 auditeurs (architecture, code, investissement, UI/UX)
+                          #   + vérificateur adverse d'hypothèses
 
 tests/                    # Pyramide pytest : api/ services/ skills/ orchestrator/
 │                         #   workers/ + evals/ (Claude réel) + e2e/ (Playwright) + load/
-docs/                     # architecture-copilote-financier.md, cheatsheet.md
+docs/                     # cheatsheet.md, plan-directeur-fintech-2026.md, roadmap-archive.md,
+│                         #   architecture/ (architecture-copilote-financier.md), audits/, revues
 infra/                    # postgres (init.sql + migrations), caddy, monitoring, backup
 scripts/                  # analyze_cli.py (CLI), ingest_rag.py (peuplement Qdrant)
 ```

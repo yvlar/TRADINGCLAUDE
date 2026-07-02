@@ -9,11 +9,7 @@
       "Edit",
       "Write",
       "MultiEdit",
-      "Bash(Get-ChildItem \"c:\\\\Users\\\\ivess\\\\OneDrive\\\\Documents\\\\tradingClaude\\\\tests\\\\\" -Name)",
-      "Bash(dir \"c:\\\\Users\\\\ivess\\\\OneDrive\\\\Documents\\\\tradingClaude\")",
       "Bash(python -m http.server 3000 --directory frontend)",
-      "Bash(Start-Process \"http://localhost:3000\")",
-      "Bash(powershell -command \"Start-Process 'http://localhost:3000'\")",
       "Bash(curl -s http://localhost:3000/)",
       "Bash(docker-compose ps *)",
       "Bash(curl -s http://localhost:8000/healthz)",
@@ -57,10 +53,6 @@
       "Bash(curl -s localhost:8000/openapi.json)",
       "Bash(python -c \"import json,sys; [print\\(k\\) for k in json.load\\(sys.stdin\\)['paths'].keys\\(\\)]\")",
       "Bash(curl -s \"localhost:8000/watchlist\" -H \"X-API-Key: $\\(grep API_SECRET_KEY .env)",
-      "Bash(netstat -ano)",
-      "Bash(findstr \":8000\")",
-      "Bash(findstr \"LISTENING\")",
-      "Bash(Start-Sleep -Seconds 5)",
       "Bash(python -m pytest tests/test_watchlist_xlsx_esg.py -v)"
     ]
   },

@@ -86,7 +86,7 @@
 - **UI skills 100 % riche** — les 16 skills tier2 rendus en composants React structurés et typés depuis les schemas Pydantic (plus aucun JSON brut ; `SkillSection` générique retiré) — Sprints 118-121 ; la carte Z-Score (Earnings Quality) affiche désormais ses termes auditables X1-X5 en grille, en parité avec les 8 indices du M-Score (Sprint 136)
 
 #### Outillage & corpus
-- `.claude/rules/` — 16 règles path-scoped (CLAUDE.md allégé) ; `docs/cheatsheet.md` — commandes opérationnelles ; `.gitignore` durci
+- `.claude/rules/` — 16 règles, scopées par glob ou universelles (CLAUDE.md allégé) ; `docs/cheatsheet.md` — commandes opérationnelles ; `.gitignore` durci
 - `.claude/skills/` — 16/16 skills tier2 documentés (SKILL.md + references) → corpus RAG `investment_knowledge` complet
 
 ### Skills opérationnels
@@ -195,7 +195,3 @@ streaming SSE, scoring composite, etc.) sont documentées au fil des sprints dan
    (voir `.claude/rules/workflow-sprint.md`).
 5. **Version** : semver — incrément mineur (`X.Y.0`) par sprint livré, patch
    (`X.Y.Z`) pour un correctif isolé.
-
----
-
-*Roadmap mise à jour le 2026-05-28 — historique complet dans `docs/roadmap-archive.md`.*

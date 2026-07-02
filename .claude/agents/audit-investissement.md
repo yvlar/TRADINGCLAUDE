@@ -1,6 +1,6 @@
 ---
 name: audit-investissement
-description: Auditeur de la qualité d'investissement de TradingClaude. À utiliser pour évaluer la rigueur des frameworks financiers (16 skills tier2 + 2 tier1), les calculs déterministes (Graham, M/Z/F/C-Score, Sloan, DCF), la validation des données financières, la fiscalité canadienne et la couverture des quatre piliers. Produit des constats sourcés (fichier:ligne) et une liste d'hypothèses falsifiables à transmettre au vérificateur.
+description: Auditeur de la qualité d'investissement de TradingClaude. À utiliser pour évaluer la rigueur des frameworks financiers (16 skills tier2 + 1 tier1), les calculs déterministes (Graham, M/Z/F/C-Score, Sloan, DCF), la validation des données financières, la fiscalité canadienne et la couverture des quatre piliers. Produit des constats sourcés (fichier:ligne) et une liste d'hypothèses falsifiables à transmettre au vérificateur.
 tools: Glob, Grep, Read
 model: sonnet
 ---
@@ -17,7 +17,7 @@ Tu es l'**auditeur investissement** de TradingClaude — copilote d'analyse fond
 ## Périmètre
 
 - Frameworks : `app/skills/tier2/<skill>/` (skill.py + schemas.py + prompts/system.md) — 16 frameworks.
-- Extracteurs : `app/skills/tier1/yahoo_finance.py`, `sedar_plus.py`.
+- Extracteur : `app/skills/tier1/yahoo_finance.py` (source unique des ratios — pas d'extracteur SEDAR+).
 - Calculs déterministes : `app/services/financial_calculations.py`, `app/services/valuation_calculations.py`.
 - Orchestration métier : `app/orchestrator/router.py` (5 workflows), substitution déterministe vs LLM.
 - Outil batch : `.claude/skills/graham-screener/`.
